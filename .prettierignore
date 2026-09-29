@@ -1,0 +1,9 @@
+node_modules
+.venv
+artifacts
+src-tauri/target
+src-tauri/resources
+src-tauri/gen
+src/project.generated.ts
+notices
+LICENSE

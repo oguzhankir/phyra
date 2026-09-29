@@ -1,0 +1,28 @@
+Phyra is licensed under GPL-3.0-or-later; see the root LICENSE.
+
+The managed engine includes Gmsh 4.15.2 (GPL-2.0-or-later with the
+Gmsh exception), Python (PSF license), NumPy and SciPy (BSD licenses),
+and JSON Schema validation libraries. Gmsh's native library embeds other
+components; its original LICENSE and CREDITS are retained alongside the
+corresponding source-license texts. The Gmsh exception is limited to the
+upstream components named in that exception.
+
+Packaging copies licenses and copyright notices from the exact installed
+Python distributions and frontend packages into resources/licenses. It also
+records the resolved versions. The application includes these legal resources.
+
+Before redistributing any installer, provide its complete Corresponding Source,
+including Phyra, the exact Gmsh native source and embedded copyleft components,
+and the scripts/toolchain information needed to rebuild it. Hosting the same
+source alongside a binary is one route under GPLv3 section 6(d); a generic
+upstream link alone is not a source offer. No source-offer service or public
+release is configured here. Review the generated native and Rust dependency
+inventory for the target package before public redistribution.
+
+Primary upstream sources:
+https://gmsh.info/
+https://gmsh.info/src/gmsh-4.15.2-source.tgz
+https://www.python.org/downloads/source/
+https://numpy.org/
+https://scipy.org/
+https://www.gnu.org/licenses/gpl-3.0.html

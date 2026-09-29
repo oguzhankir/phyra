@@ -1,0 +1,50 @@
+name: Check and package
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: engine/requirements*.txt
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:numerics-slow
+      - run: npm run package
+      - run: npm run test:desktop
+      - run: npm run test:native
+      - run: npm run check:native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phyra-${{ matrix.os }}
+          path: |
+            src-tauri/target/release/bundle/
+            artifacts/desktop-runtime.log
+            artifacts/desktop-verification.json
+            artifacts/packaged-viewport.png
+            artifacts/engine-platform.json
+          if-no-files-found: error

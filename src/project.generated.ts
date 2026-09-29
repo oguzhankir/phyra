@@ -1,0 +1,69 @@
+/* Generated from contracts/project.schema.json. Run npm run generate. */
+
+/**
+ * @minItems 1
+ * @maxItems 20
+ */
+export type Regions = [
+  "x0" | "x1" | "y0" | "y1" | "z0" | "z1" | "outer" | "inner-x" | "inner-y",
+  ...("x0" | "x1" | "y0" | "y1" | "z0" | "z1" | "outer" | "inner-x" | "inner-y")[]
+];
+/**
+ * @minItems 3
+ * @maxItems 3
+ */
+export type Vector = [number, number, number];
+
+export interface Project {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  revision: number;
+  displayUnits: "m" | "mm";
+  geometry: {
+    kind: "box" | "cylinder" | "bracket";
+    length: number;
+    width: number;
+    height: number;
+    radius: number;
+    thickness: number;
+  };
+  study: {
+    id: string;
+    type: "linear-static";
+    material: {
+      name: string;
+      young: number;
+      poisson: number;
+    };
+    mesh: {
+      size: number;
+    };
+    /**
+     * @maxItems 100
+     */
+    constraints: Constraint[];
+    /**
+     * @maxItems 100
+     */
+    loads: Load[];
+  };
+}
+export interface Constraint {
+  id: string;
+  name: string;
+  regions: Regions;
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  components: [number | null, number | null, number | null];
+}
+export interface Load {
+  id: string;
+  name: string;
+  regions: Regions;
+  kind: "force" | "pressure";
+  vector: Vector;
+  pressure: number;
+}

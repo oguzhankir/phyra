@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "example-cylinder",
+  "name": "Axial cylinder",
+  "revision": 0,
+  "displayUnits": "mm",
+  "geometry": {
+    "kind": "cylinder",
+    "length": 0.1,
+    "width": 0.04,
+    "height": 0.02,
+    "radius": 0.02,
+    "thickness": 0.012
+  },
+  "study": {
+    "id": "study-cylinder",
+    "type": "linear-static",
+    "material": {
+      "name": "Generic elastic material",
+      "young": 70000000000.0,
+      "poisson": 0.3
+    },
+    "mesh": {
+      "size": 0.009
+    },
+    "constraints": [
+      {
+        "id": "support-root",
+        "name": "Fixed start cap",
+        "regions": ["x0"],
+        "components": [0, 0, 0]
+      }
+    ],
+    "loads": [
+      {
+        "id": "load-tip",
+        "name": "Axial force",
+        "kind": "force",
+        "regions": ["x1"],
+        "vector": [1000, 0, 0],
+        "pressure": 0
+      }
+    ]
+  }
+}

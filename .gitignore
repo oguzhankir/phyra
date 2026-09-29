@@ -1,0 +1,14 @@
+node_modules/
+.venv/
+dist/
+artifacts/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/engine/
+src-tauri/resources/licenses/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+.DS_Store

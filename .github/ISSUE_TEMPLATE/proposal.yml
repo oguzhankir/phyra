@@ -1,0 +1,14 @@
+name: Feature or physics proposal
+description: Propose a specific workbench or numerical improvement.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Problem and proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: physics
+    attributes:
+      label: Verification and scope
+      description: For physics work, describe governing equations, assumptions, independent references, failure cases and resource costs.

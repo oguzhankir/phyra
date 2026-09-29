@@ -1,0 +1,17 @@
+name: Bug or numerical discrepancy
+description: Report a reproducible desktop, meshing, or mechanics problem.
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include platform, version, steps and a small project when safe to share.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: For numerical discrepancies, include units, boundary conditions, mesh settings, reference provenance and error quantities.
+    validations:
+      required: true
