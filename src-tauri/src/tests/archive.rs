@@ -1,10 +1,11 @@
 use super::*;
 fn project() -> Value {
-    json!({"schemaVersion":2,"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
+    json!({"schemaVersion":3,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
 }
 fn legacy_project() -> Value {
     let mut project = project();
     project["schemaVersion"] = json!(1);
+    project.as_object_mut().unwrap().remove("namedSelections");
     for field in ["dimension", "formulation", "thickness", "solver"] {
         project["study"].as_object_mut().unwrap().remove(field);
     }
@@ -64,7 +65,7 @@ fn legacy_schema_is_validated_before_defaults_are_added() {
     legacy["study"]["solver"] = json!({"kind":"pinn"});
     assert!(migrate_project(legacy).is_err());
     let mut unknown = legacy_project();
-    unknown["schemaVersion"] = json!(3);
+    unknown["schemaVersion"] = json!(4);
     assert!(migrate_project(unknown).is_err());
     let (unchanged, migrated) = migrate_project(project()).unwrap();
     assert_eq!(unchanged, project());
@@ -88,4 +89,143 @@ fn current_archive_restores_bounded_cache_into_new_directory() {
         fs::read(restored.join("buffer.bin")).unwrap(),
         b"typed binary"
     );
+}
+
+fn version_two_project() -> Value {
+    let mut value = project();
+    value["schemaVersion"] = json!(2);
+    value.as_object_mut().unwrap().remove("namedSelections");
+    value
+}
+
+#[test]
+fn version_two_migration_keeps_cache_for_normal_worker_validation() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("v2 cache");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("manifest.json"), b"{}").unwrap();
+    fs::write(source.join("buffer.bin"), b"original bounded bytes").unwrap();
+    let path = temporary.path().join("version 2.phyra");
+    write_archive(&path, &version_two_project(), Some(&source)).unwrap();
+    let restored = temporary.path().join("new cache");
+    let opened = read_archive_details(&path, &restored).unwrap();
+    assert_eq!(opened.project, project());
+    assert!(opened.migrated);
+    assert_eq!(opened.source_version, 2);
+    assert!(!opened.dropped_cache);
+    assert_eq!(
+        fs::read(restored.join("buffer.bin")).unwrap(),
+        b"original bounded bytes"
+    );
+    assert!(restored.join("manifest.json").exists());
+    // Archive reading only stages the bounded bytes. The open command runs the
+    // isolated worker's full fingerprint/field validator before publishing them.
+}
+
+#[test]
+fn version_two_schema_is_checked_before_adding_boundary_sets() {
+    let mut value = version_two_project();
+    value["namedSelections"] = json!([]);
+    assert!(migrate_project(value).is_err());
+    let mut value = version_two_project();
+    value["study"]["solver"]["pinn"]["steps"] = json!(0);
+    assert!(migrate_project(value).is_err());
+}
+
+fn boundary_set() -> Value {
+    json!({"id":"root","name":"Root boundaries","geometryKind":"box","dimension":"3d","regions":["x0","z0"]})
+}
+
+#[test]
+fn orphaned_boundary_sets_persist_without_changing_conditions() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("orphan.phyra");
+    let mut value = project();
+    value["geometry"]["kind"] = json!("cylinder");
+    value["namedSelections"] = json!([boundary_set()]);
+    validate_project(&value).unwrap();
+    write_archive(&path, &value, None).unwrap();
+    assert_eq!(read_archive(&path, temporary.path()).unwrap(), value);
+    assert_eq!(value["study"]["constraints"], json!([]));
+}
+
+#[test]
+fn boundary_set_names_ids_stamps_and_resource_limits_are_checked() {
+    for defect in [
+        "blank-name",
+        "blank-feff",
+        "blank-control",
+        "blank-id",
+        "duplicate-id",
+        "duplicate-name",
+        "duplicate-control-name",
+        "empty",
+        "duplicate-region",
+        "wrong-region",
+        "wrong-dimension",
+        "unsupported-plane",
+        "oversized",
+    ] {
+        let mut set = boundary_set();
+        let mut value = project();
+        let mut sets = vec![set.clone()];
+        match defect {
+            "blank-name" => sets[0]["name"] = json!("   "),
+            "blank-feff" => sets[0]["name"] = json!("\u{FEFF}"),
+            "blank-control" => sets[0]["name"] = json!("\u{001C}"),
+            "blank-id" => sets[0]["id"] = json!("   "),
+            "duplicate-id" => {
+                set["name"] = json!("Other");
+                sets.push(set);
+            }
+            "duplicate-name" => {
+                set["id"] = json!("other");
+                set["name"] = json!("  ROOT boundaries  ");
+                sets.push(set);
+            }
+            "duplicate-control-name" => {
+                set["id"] = json!("other");
+                set["name"] = json!("\u{001C}ROOT boundaries\u{FEFF}");
+                sets.push(set);
+            }
+            "empty" => sets[0]["regions"] = json!([]),
+            "duplicate-region" => sets[0]["regions"] = json!(["x0", "x0"]),
+            "wrong-region" => sets[0]["regions"] = json!(["outer"]),
+            "wrong-dimension" => sets[0]["dimension"] = json!("2d"),
+            "unsupported-plane" => {
+                sets[0]["dimension"] = json!("2d");
+                sets[0]["geometryKind"] = json!("cylinder");
+            }
+            "oversized" => {
+                sets = (0..101)
+                    .map(|index| {
+                        let mut item = boundary_set();
+                        item["id"] = json!(format!("id-{index}"));
+                        item["name"] = json!(format!("Name {index}"));
+                        item
+                    })
+                    .collect()
+            }
+            _ => unreachable!(),
+        }
+        value["namedSelections"] = json!(sets);
+        assert!(validate_project(&value).is_err(), "{defect}");
+    }
+}
+
+#[test]
+fn boundary_set_name_folding_preserves_non_ascii_identity() {
+    let mut value = project();
+    let names = ["Straße", "STRASSE", "İ", "i"];
+    value["namedSelections"] = json!(names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let mut item = boundary_set();
+            item["id"] = json!(format!("set-{index}"));
+            item["name"] = json!(name);
+            item
+        })
+        .collect::<Vec<_>>());
+    validate_project(&value).unwrap();
 }

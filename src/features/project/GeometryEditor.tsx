@@ -16,6 +16,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
     regions,
     selected,
     selectRegion,
+    setNotice,
   } = workbench;
   return (
     <>
@@ -29,14 +30,20 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
                 setError('Complete or revert the numeric input before changing primitive.');
                 return;
               }
+              const kind = event.target.value as Project['geometry']['kind'];
+              if (kind === project.geometry.kind) return;
+              const count = project.study.constraints.length + project.study.loads.length;
               edit((next) => {
-                next.geometry.kind = event.target.value as Project['geometry']['kind'];
+                next.geometry.kind = kind;
                 next.study.constraints = [];
                 next.study.loads = [];
               });
               setSelected([]);
               setConstraintId(null);
               setLoadId(null);
+              setNotice(
+                `Primitive changed · ${count} boundary assignments cleared. Named sets require repair; Undo restores the definition.`,
+              );
             }}
           >
             <option value="box">{is2D ? 'Rectangular domain' : 'Rectangular solid'}</option>

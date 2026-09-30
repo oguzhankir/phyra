@@ -8,6 +8,7 @@ import type {
   Project,
 } from '../../domain/contracts/types';
 import type { RegionId } from '../../domain/project/regions';
+import type { NamedSelection } from '../../domain/project/namedSelections';
 import type { FieldId, ResultData } from '../../domain/results/fields';
 import type { Probe } from '../../domain/results/probe';
 import type { Section } from '../workbench/navigation';
@@ -20,6 +21,13 @@ export interface ProjectInspectorModel {
   showHelp: (context?: HelpContext) => void;
   locked: boolean;
   project: Project;
+  namedSelectionId: string | null;
+  namedSelection: NamedSelection | undefined;
+  addNamedSelection: () => void;
+  editNamedSelection: (change: (item: NamedSelection) => void) => void;
+  useNamedSelection: (item: NamedSelection) => void;
+  setNamedSelectionId: Setter<string | null>;
+  setNotice: (value: string | null) => void;
   edit: (change: (next: Project) => void, physical?: boolean) => void;
   is2D: boolean;
   chooseDimension: (dimension: Project['study']['dimension']) => void;

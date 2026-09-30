@@ -16,6 +16,15 @@ export function classifyProblem(cause: unknown, operation?: ProblemOperation): P
   const details = (cause instanceof Error ? cause.message : String(cause)).slice(0, 8000);
   const text = details.toLowerCase();
   const base = { id: 'operation', severity: 'error' as const, details };
+  if (/named selection|named boundaries|boundary set/.test(text))
+    return {
+      ...base,
+      title: 'Review the boundary set',
+      message:
+        'Give each set a unique nonempty name and valid boundaries. Sets from another geometry must be explicitly repaired before use.',
+      section: 'selections',
+      action: 'Review named selections',
+    };
   if (text.startsWith('recovery cleanup:'))
     return {
       ...base,

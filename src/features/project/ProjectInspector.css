@@ -207,3 +207,33 @@
   grid-template-columns: 1fr 1fr;
   gap: 0 12px;
 }
+.selection-definition {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.saved-boundaries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 0;
+}
+.saved-boundaries code {
+  padding: 3px 6px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.selection-repair {
+  padding: 10px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-left: 2px solid var(--warning);
+  font-size: 11px;
+}
+.selection-repair p {
+  margin: 5px 0 0;
+  line-height: 1.5;
+}

@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bookmark,
   ArrowUpRight,
   Box,
   Check,
@@ -11,6 +12,7 @@ import {
   Settings2,
 } from 'lucide-react';
 import type { Project } from '../../domain/contracts/types';
+import { selectionIsCompatible } from '../../domain/project/namedSelections';
 import type { ExampleId } from '../examples/projects';
 import type { Section } from './navigation';
 
@@ -19,6 +21,7 @@ type Props = {
   section: Section;
   constraintId: string | null;
   loadId: string | null;
+  namedSelectionId: string | null;
   locked: boolean;
   cells?: number;
   solved: boolean;
@@ -27,6 +30,8 @@ type Props = {
   onExample: (id: ExampleId) => void;
   onAddSupport: () => void;
   onAddLoad: () => void;
+  onAddSelection: () => void;
+  hasSelection: boolean;
 };
 
 export default function ModelTree(props: Props) {
@@ -90,6 +95,41 @@ export default function ModelTree(props: Props) {
                 : 'L bracket',
         )}
         {row('material', <Layers3 size={16} />, 'Material', project.study.material.name)}
+        <div className={`tree-group-label ${section === 'selections' ? 'selected-group' : ''}`}>
+          <button onClick={() => onSection('selections')}>
+            <Bookmark size={15} />
+            Named selections <span>{project.namedSelections.length}</span>
+          </button>
+          <button
+            aria-label="Save boundary selection"
+            title="Select boundaries, then save a named set"
+            disabled={props.locked || !props.hasSelection || project.namedSelections.length >= 100}
+            onClick={props.onAddSelection}
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+        {project.namedSelections.map((item) => (
+          <button
+            key={item.id}
+            className={`tree-row child ${section === 'selections' && props.namedSelectionId === item.id ? 'active' : ''}`}
+            aria-current={
+              section === 'selections' && props.namedSelectionId === item.id ? 'page' : undefined
+            }
+            onClick={() => onSection('selections', item.id)}
+            title={item.name}
+          >
+            <span className="tree-branch" />
+            <span>
+              {item.name}
+              <small>
+                {selectionIsCompatible(project, item)
+                  ? `${item.regions.length} ${item.regions.length === 1 ? 'boundary' : 'boundaries'}`
+                  : 'Repair required · geometry changed'}
+              </small>
+            </span>
+          </button>
+        ))}
         <div className="tree-category">Boundary conditions</div>
         <div className={`tree-group-label ${section === 'constraints' ? 'selected-group' : ''}`}>
           <button onClick={() => onSection('constraints')}>

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "example-extension",
   "name": "Prescribed extension",
   "revision": 0,
@@ -56,5 +56,21 @@
         "device": "auto"
       }
     }
-  }
+  },
+  "namedSelections": [
+    {
+      "id": "selection-support-root",
+      "name": "Fixed root boundaries",
+      "geometryKind": "box",
+      "dimension": "3d",
+      "regions": ["x0"]
+    },
+    {
+      "id": "selection-support-extension",
+      "name": "End extension boundaries",
+      "geometryKind": "box",
+      "dimension": "3d",
+      "regions": ["x1"]
+    }
+  ]
 }

@@ -14,6 +14,8 @@ describe('offline engineering examples', () => {
       expect(first.study.material.young).toBe(70e9);
       expect(first.study.constraints[0].components).toEqual([0, 0, 0]);
       expect(first.study.constraints[0].id).not.toBe(second.study.constraints[0].id);
+      expect(first.namedSelections[0].id).not.toBe(second.namedSelections[0].id);
+      expect(first.namedSelections[0].regions).toEqual(first.study.constraints[0].regions);
     },
   );
   it('creates an editable new project without implicit restraints or forces', () => {
@@ -21,6 +23,12 @@ describe('offline engineering examples', () => {
     expect(project.study.constraints).toEqual([]);
     expect(project.study.loads).toEqual([]);
     expect(project.name).toBe('Untitled project');
+    expect(project.namedSelections).toEqual([]);
+  });
+  it('copies example boundary sets without linking them to existing conditions', () => {
+    const project = makeProject('cantilever');
+    project.namedSelections[0].regions = ['x1'];
+    expect(project.study.constraints[0].regions).toEqual(['x0']);
   });
   it('retains nonzero displacement and genuinely free components without external loading', () => {
     const project = makeProject('extension');
