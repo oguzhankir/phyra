@@ -1,9 +1,11 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/phyra-wordmark-dark.svg" />
-  <img src="assets/phyra-wordmark.svg" alt="Phyra — engineering analysis with Physics ML" width="440" />
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/phyra-wordmark-dark.svg" />
+    <img src="assets/phyra-wordmark.svg" alt="Phyra — engineering analysis with Physics ML" width="440" />
+  </picture>
+</p>
 
-**Prepare a physical problem. Solve locally. Understand the result.**
+<p align="center"><strong>Prepare a physical problem. Solve locally. Understand the result.</strong></p>
 
 Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.1.0 development line** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
 
