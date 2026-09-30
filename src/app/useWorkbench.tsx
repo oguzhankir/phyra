@@ -59,6 +59,7 @@ import { useModalFocus } from '../shared/ui/useModalFocus';
 import { useDesktopLifecycle } from './useDesktopLifecycle';
 import { useRecoverySession } from './useRecoverySession';
 import { useVerificationWorkflow } from './useVerificationWorkflow';
+import { verificationLaunch } from './verificationLaunch';
 
 const uid = () => crypto.randomUUID();
 export function useWorkbench() {
@@ -532,7 +533,7 @@ export function useWorkbench() {
       setCancelling(false);
     }
   };
-  const { verification, verified } = useVerificationWorkflow({
+  const { verification, verified, requestedOperation } = useVerificationWorkflow({
     desktop,
     project,
     currentData,
@@ -540,7 +541,6 @@ export function useWorkbench() {
     fieldSource,
     fieldId,
     replace,
-    execute,
     setDeformation,
     setFieldId,
     setFieldSource,
@@ -639,6 +639,30 @@ export function useWorkbench() {
   recoveryBusyRef.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
   const locked = !!busy || !!fileBusy || deviceBusy || recoveryBusyRef.current;
+  const verificationJobStarted = useRef(false);
+  useEffect(() => {
+    const operation = verificationLaunch(
+      requestedOperation,
+      verificationJobStarted.current,
+      !desktop ||
+        locked ||
+        confirmation ||
+        help ||
+        !!validation ||
+        invalidDraftsRef.current.size > 0 ||
+        !!busyRef.current ||
+        !!fileBusyRef.current ||
+        confirmationRef.current ||
+        deviceBusyRef.current ||
+        recoveryBusyRef.current,
+    );
+    if (!operation) return;
+    // Claim only after the same gates as execute are open. A later readiness
+    // render can retry a pending launch; StrictMode cannot dispatch it twice.
+    verificationJobStarted.current = true;
+    void invoke('verification_trace', { message: `frontend verification launching ${operation}` });
+    void execute(operation);
+  }, [requestedOperation, desktop, locked, confirmation, help, validation, execute]);
   useModalFocus(
     confirmation || help || recovery.prompt,
     () => {
