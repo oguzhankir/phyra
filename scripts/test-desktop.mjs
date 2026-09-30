@@ -191,6 +191,9 @@ async function verify(mode) {
     !report.recovery?.activeSessionProtected ||
     !report.recovery?.closedSessionOffered ||
     !report.recovery?.lateWriteRejected ||
+    !report.recovery?.reloadSessionOffered ||
+    !report.recovery?.supersededRequestsRejected ||
+    !report.recovery?.newClientSequenceAccepted ||
     report.recovery?.resultsIncluded !== false ||
     report.engineCapabilities?.schemaVersion !== 1
   )

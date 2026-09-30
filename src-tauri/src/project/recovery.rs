@@ -22,19 +22,29 @@ use crate::{
 const MAX_RECORDS: usize = 64;
 const MAX_RECORD_BYTES: u64 = MAX_JSON + 4096;
 const MAX_SEQUENCE: u64 = 9_007_199_254_740_991;
+const MAX_CLIENT_GENERATIONS: usize = 256;
 
+#[derive(Default)]
 pub(crate) struct RecoveryState {
-    session: String,
-    sequence: Mutex<u64>,
-    lease: Mutex<Option<File>>,
+    session: Mutex<RecoverySession>,
 }
 
-impl Default for RecoveryState {
+struct RecoverySession {
+    id: String,
+    client: Option<String>,
+    sequence: u64,
+    lease: Option<File>,
+    retired_clients: std::collections::HashSet<String>,
+}
+
+impl Default for RecoverySession {
     fn default() -> Self {
         Self {
-            session: uuid::Uuid::new_v4().to_string(),
-            sequence: Mutex::new(0),
-            lease: Mutex::new(None),
+            id: uuid::Uuid::new_v4().to_string(),
+            client: None,
+            sequence: 0,
+            lease: None,
+            retired_clients: std::collections::HashSet::new(),
         }
     }
 }
@@ -151,22 +161,29 @@ fn write_checkpoint(
     project: &Value,
     sequence: u64,
 ) -> Result<Value, String> {
+    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+    write_session_checkpoint(directory, &mut session, project, sequence)
+}
+
+fn write_session_checkpoint(
+    directory: &Path,
+    session: &mut RecoverySession,
+    project: &Value,
+    sequence: u64,
+) -> Result<Value, String> {
     validate_project(project)?;
     if sequence == 0 || sequence > MAX_SEQUENCE {
         return Err("Invalid recovery sequence".into());
     }
-    let mut latest = state.sequence.lock().map_err(|e| e.to_string())?;
-    if sequence <= *latest {
+    if sequence <= session.sequence {
         return Ok(json!({"accepted":false,"savedAt":0,"revision":project["revision"]}));
     }
     ensure_directory(directory)?;
-    let mut lease = state.lease.lock().map_err(|e| e.to_string())?;
-    if lease.is_none() {
-        *lease = Some(
-            lock_record(directory, &state.session)?.ok_or("Recovery session is already owned")?,
-        );
+    if session.lease.is_none() {
+        session.lease =
+            Some(lock_record(directory, &session.id)?.ok_or("Recovery session is already owned")?);
     }
-    let path = record_path(directory, &state.session)?;
+    let path = record_path(directory, &session.id)?;
     let paths = journal_paths(directory)?;
     if !path.exists() && paths.len() >= MAX_RECORDS {
         return Err("Recovery storage is full. Review and discard unused recovery copies.".into());
@@ -193,7 +210,7 @@ fn write_checkpoint(
     temporary.write_all(&bytes).map_err(|e| e.to_string())?;
     temporary.as_file().sync_all().map_err(|e| e.to_string())?;
     temporary.persist(&path).map_err(|e| e.to_string())?;
-    *latest = sequence;
+    session.sequence = sequence;
     Ok(json!({"accepted":true,"savedAt":saved_at,"revision":project["revision"]}))
 }
 
@@ -203,19 +220,28 @@ fn clear_checkpoint(
     sequence: u64,
     recovery_id: Option<&str>,
 ) -> Result<(), String> {
+    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+    clear_session_checkpoint(directory, &mut session, sequence, recovery_id)
+}
+
+fn clear_session_checkpoint(
+    directory: &Path,
+    session: &mut RecoverySession,
+    sequence: u64,
+    recovery_id: Option<&str>,
+) -> Result<(), String> {
     if sequence == 0 || sequence > MAX_SEQUENCE {
         return Err("Invalid recovery sequence".into());
     }
-    let mut latest = state.sequence.lock().map_err(|e| e.to_string())?;
-    let id = recovery_id.unwrap_or(&state.session);
-    if (recovery_id.is_none() || id == state.session) && sequence <= *latest {
+    let id = recovery_id.unwrap_or(&session.id);
+    if (recovery_id.is_none() || id == session.id) && sequence <= session.sequence {
         return Ok(());
     }
     if directory.exists() {
         ensure_directory(directory)?;
     }
     let path = record_path(directory, id)?;
-    let _lease = if id != state.session && directory.exists() {
+    let _lease = if id != session.id && directory.exists() {
         Some(
             lock_record(directory, id)?
                 .ok_or("This recovery copy belongs to an open application")?,
@@ -228,8 +254,8 @@ fn clear_checkpoint(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
-    if recovery_id.is_none() || id == state.session {
-        *latest = sequence.max(*latest);
+    if recovery_id.is_none() || id == session.id {
+        session.sequence = sequence.max(session.sequence);
     }
     Ok(())
 }
@@ -248,23 +274,110 @@ fn directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub(crate) async fn get_recovery(app: tauri::AppHandle) -> Result<Value, String> {
+pub(crate) async fn get_recovery(
+    app: tauri::AppHandle,
+    client_id: String,
+) -> Result<Value, String> {
     if verification_enabled() {
         return Ok(json!({"records":[],"unreadableCount":0}));
     }
+    activate_client(&app.state::<RecoveryState>(), &client_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<RecoveryState>();
-        inventory(&directory(&app)?, &state)
+        client_inventory(&directory(&app)?, &state, &client_id)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 fn inventory(root: &Path, state: &RecoveryState) -> Result<Value, String> {
+    let session = state.session.lock().map_err(|e| e.to_string())?;
+    session_inventory(root, &session)
+}
+
+fn activate_client(state: &RecoveryState, client: &str) -> Result<(), String> {
+    let parsed = uuid::Uuid::parse_str(client).map_err(|_| "Invalid recovery client identity")?;
+    if parsed.to_string() != client {
+        return Err("Invalid recovery client identity".into());
+    }
+    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+    if session.retired_clients.contains(client) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    if session.client.as_deref() != Some(client) {
+        if session.retired_clients.len() >= MAX_CLIENT_GENERATIONS {
+            return Err(
+                "Recovery session limit reached. Save the project and restart Phyra.".into(),
+            );
+        }
+        // A reloaded webview owns a new sequence and journal. Releasing the
+        // previous lease makes its valid work recoverable by this new UI.
+        if let Some(previous) = session.client.take() {
+            session.retired_clients.insert(previous);
+        }
+        session.id = uuid::Uuid::new_v4().to_string();
+        session.client = Some(client.to_owned());
+        session.sequence = 0;
+        session.lease = None;
+    }
+    Ok(())
+}
+
+fn client_inventory(root: &Path, state: &RecoveryState, client: &str) -> Result<Value, String> {
+    let session = state.session.lock().map_err(|e| e.to_string())?;
+    require_client(&session, client)?;
+    session_inventory(root, &session)
+}
+
+fn require_client(session: &RecoverySession, client: &str) -> Result<(), String> {
+    if session.client.as_deref() != Some(client) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    Ok(())
+}
+
+fn write_client_checkpoint(
+    directory: &Path,
+    state: &RecoveryState,
+    client: &str,
+    project: &Value,
+    sequence: u64,
+) -> Result<Value, String> {
+    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+    require_client(&session, client)?;
+    write_session_checkpoint(directory, &mut session, project, sequence)
+}
+
+fn clear_client_checkpoint(
+    directory: &Path,
+    state: &RecoveryState,
+    client: &str,
+    sequence: u64,
+    recovery_id: Option<&str>,
+) -> Result<(), String> {
+    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+    require_client(&session, client)?;
+    clear_session_checkpoint(directory, &mut session, sequence, recovery_id)
+}
+
+fn read_client_record(
+    root: &Path,
+    state: &RecoveryState,
+    client: &str,
+    recovery_id: &str,
+) -> Result<Record, String> {
+    let session = state.session.lock().map_err(|e| e.to_string())?;
+    require_client(&session, client)?;
+    let _lease = lock_record(root, recovery_id)?
+        .ok_or("This recovery copy belongs to an open application")?;
+    read_record(&record_path(root, recovery_id)?)
+}
+
+fn session_inventory(root: &Path, session: &RecoverySession) -> Result<Value, String> {
     let mut records = Vec::new();
     let mut unreadable = 0;
     for (id, path) in journal_paths(root)? {
-        if id == state.session {
+        if id == session.id {
             continue;
         }
         let _lease = match lock_record(root, &id) {
@@ -291,7 +404,7 @@ pub(crate) fn verify_definition_recovery(project: &Value, parent: &Path) -> Resu
         .tempdir_in(parent)
         .map_err(|e| e.to_string())?;
     let state = RecoveryState::default();
-    let id = state.session.clone();
+    let id = state.session.lock().map_err(|e| e.to_string())?.id.clone();
     write_checkpoint(temporary.path(), &state, project, 1)?;
     let another_window = RecoveryState::default();
     let protected = inventory(temporary.path(), &another_window)?["records"]
@@ -314,10 +427,43 @@ pub(crate) fn verify_definition_recovery(project: &Value, parent: &Path) -> Resu
         return Err("Native project-definition recovery verification failed".into());
     }
     drop(another_window);
+    let reload = RecoveryState::default();
+    let previous_client = uuid::Uuid::new_v4().to_string();
+    let current_client = uuid::Uuid::new_v4().to_string();
+    activate_client(&reload, &previous_client)?;
+    write_client_checkpoint(temporary.path(), &reload, &previous_client, project, 7)?;
+    let prior_id = reload.session.lock().map_err(|e| e.to_string())?.id.clone();
+    activate_client(&reload, &current_client)?;
+    let reload_offered = client_inventory(temporary.path(), &reload, &current_client)?["records"]
+        .as_array()
+        .is_some_and(|records| records.len() == 1 && records[0]["id"] == prior_id);
+    let superseded = activate_client(&reload, &previous_client).is_err()
+        && client_inventory(temporary.path(), &reload, &previous_client).is_err()
+        && write_client_checkpoint(temporary.path(), &reload, &previous_client, project, 8)
+            .is_err()
+        && clear_client_checkpoint(
+            temporary.path(),
+            &reload,
+            &previous_client,
+            8,
+            Some(&prior_id),
+        )
+        .is_err()
+        && read_client_record(temporary.path(), &reload, &previous_client, &prior_id).is_err();
+    let reset_accepted =
+        write_client_checkpoint(temporary.path(), &reload, &current_client, project, 1)?
+            ["accepted"]
+            == true;
+    if !reload_offered || !superseded || !reset_accepted {
+        return Err("Native recovery webview generation verification failed".into());
+    }
+    drop(reload);
     temporary.close().map_err(|e| e.to_string())?;
     Ok(
         json!({"projectMatches":matches,"activeSessionProtected":protected,
-        "closedSessionOffered":offered,"lateWriteRejected":rejected,"resultsIncluded":false}),
+        "closedSessionOffered":offered,"lateWriteRejected":rejected,"resultsIncluded":false,
+        "reloadSessionOffered":reload_offered,"supersededRequestsRejected":superseded,
+        "newClientSequenceAccepted":reset_accepted}),
     )
 }
 
@@ -327,6 +473,7 @@ pub(crate) async fn write_recovery(
     project: Value,
     sequence: u64,
     restored: Option<bool>,
+    client_id: String,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if app
@@ -349,9 +496,10 @@ pub(crate) async fn write_recovery(
         } else {
             None
         };
-        let receipt = write_checkpoint(
+        let receipt = write_client_checkpoint(
             &directory(&app)?,
             &app.state::<RecoveryState>(),
+            &client_id,
             &project,
             sequence,
         )?;
@@ -372,6 +520,7 @@ pub(crate) async fn write_recovery(
 pub(crate) async fn read_recovery(
     app: tauri::AppHandle,
     recovery_id: String,
+    client_id: String,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if app
@@ -384,9 +533,12 @@ pub(crate) async fn read_recovery(
             return Err("Wait for or cancel the analysis before restoring a recovery copy".into());
         }
         let root = directory(&app)?;
-        let _lease = lock_record(&root, &recovery_id)?
-            .ok_or("This recovery copy belongs to an open application")?;
-        let record = read_record(&record_path(&root, &recovery_id)?)?;
+        let record = read_client_record(
+            &root,
+            &app.state::<RecoveryState>(),
+            &client_id,
+            &recovery_id,
+        )?;
         Ok(json!({"project":record.project,"savedAt":record.saved_at}))
     })
     .await
@@ -398,11 +550,13 @@ pub(crate) async fn clear_recovery(
     app: tauri::AppHandle,
     sequence: u64,
     recovery_id: Option<String>,
+    client_id: String,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        clear_checkpoint(
+        clear_client_checkpoint(
             &directory(&app)?,
             &app.state::<RecoveryState>(),
+            &client_id,
             sequence,
             recovery_id.as_deref(),
         )
@@ -414,6 +568,10 @@ pub(crate) async fn clear_recovery(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn session_id(state: &RecoveryState) -> String {
+        state.session.lock().unwrap().id.clone()
+    }
 
     fn project(revision: u64) -> Value {
         let mut value: Value =
@@ -432,7 +590,7 @@ mod tests {
         let receipt = write_checkpoint(&root, &state, &original, 1).unwrap();
         assert_eq!(receipt["accepted"], true);
         assert_eq!(
-            read_record(&record_path(&root, &state.session).unwrap())
+            read_record(&record_path(&root, &session_id(&state)).unwrap())
                 .unwrap()
                 .project,
             original
@@ -440,7 +598,7 @@ mod tests {
         write_checkpoint(&root, &state, &project(5), 2).unwrap();
         assert_eq!(journal_paths(&root).unwrap().len(), 1);
         assert_eq!(
-            read_record(&record_path(&root, &state.session).unwrap())
+            read_record(&record_path(&root, &session_id(&state)).unwrap())
                 .unwrap()
                 .project["revision"],
             5
@@ -458,9 +616,9 @@ mod tests {
         assert!(journal_paths(temp.path()).unwrap().is_empty());
         write_checkpoint(temp.path(), &state, &project(6), 5).unwrap();
         clear_checkpoint(temp.path(), &state, 3, None).unwrap();
-        clear_checkpoint(temp.path(), &state, 3, Some(&state.session)).unwrap();
+        clear_checkpoint(temp.path(), &state, 3, Some(&session_id(&state))).unwrap();
         assert_eq!(
-            read_record(&record_path(temp.path(), &state.session).unwrap())
+            read_record(&record_path(temp.path(), &session_id(&state)).unwrap())
                 .unwrap()
                 .project["revision"],
             6
@@ -480,7 +638,7 @@ mod tests {
         interrupted.write_all(b"incomplete new data").unwrap();
         assert_eq!(journal_paths(temp.path()).unwrap().len(), 1);
         assert_eq!(
-            read_record(&record_path(temp.path(), &state.session).unwrap())
+            read_record(&record_path(temp.path(), &session_id(&state)).unwrap())
                 .unwrap()
                 .project,
             original
@@ -495,7 +653,7 @@ mod tests {
         write_checkpoint(temp.path(), &a, &project(1), 1).unwrap();
         write_checkpoint(temp.path(), &b, &project(2), 1).unwrap();
         clear_checkpoint(temp.path(), &a, 2, None).unwrap();
-        let b_path = record_path(temp.path(), &b.session).unwrap();
+        let b_path = record_path(temp.path(), &session_id(&b)).unwrap();
         assert_eq!(read_record(&b_path).unwrap().project["revision"], 2);
         assert!(record_path(temp.path(), "../project").is_err());
         fs::write(&b_path, b"{broken").unwrap();
@@ -510,7 +668,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let active = RecoveryState::default();
         let other = RecoveryState::default();
-        let id = active.session.clone();
+        let id = session_id(&active);
         write_checkpoint(temp.path(), &active, &project(1), 1).unwrap();
         assert!(lock_record(temp.path(), &id).unwrap().is_none());
         assert!(clear_checkpoint(temp.path(), &other, 1, Some(&id)).is_err());
@@ -534,7 +692,7 @@ mod tests {
     fn inventory_preserves_lock_identity_before_first_checkpoint_and_after_discard() {
         let temp = tempfile::tempdir().unwrap();
         let state = RecoveryState::default();
-        let id = state.session.clone();
+        let id = session_id(&state);
         let lock_path = record_path(temp.path(), &id)
             .unwrap()
             .with_extension("lock");
@@ -582,7 +740,7 @@ mod tests {
         }
         assert!(write_checkpoint(temp.path(), &state, &project(1), 1).is_err());
         assert_eq!(journal_paths(temp.path()).unwrap().len(), MAX_RECORDS);
-        assert_eq!(*state.sequence.lock().unwrap(), 0);
+        assert_eq!(state.session.lock().unwrap().sequence, 0);
     }
 
     #[test]
@@ -622,6 +780,92 @@ mod tests {
                 .unwrap()
                 .len(),
             MAX_RECORDS
+        );
+    }
+
+    #[test]
+    fn webview_reload_offers_previous_journal_and_accepts_a_fresh_sequence() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let before = uuid::Uuid::new_v4().to_string();
+        let after = uuid::Uuid::new_v4().to_string();
+        activate_client(&state, &before).unwrap();
+        let original = project(7);
+        write_client_checkpoint(temp.path(), &state, &before, &original, 100).unwrap();
+        let old_id = session_id(&state);
+        activate_client(&state, &after).unwrap();
+        let offered = client_inventory(temp.path(), &state, &after).unwrap();
+        assert_eq!(offered["records"].as_array().unwrap().len(), 1);
+        assert_eq!(offered["records"][0]["id"], old_id);
+        assert_eq!(
+            read_client_record(temp.path(), &state, &after, &old_id)
+                .unwrap()
+                .project,
+            original
+        );
+        assert_eq!(
+            write_client_checkpoint(temp.path(), &state, &after, &project(8), 1).unwrap()
+                ["accepted"],
+            true
+        );
+        assert!(write_client_checkpoint(temp.path(), &state, &before, &project(9), 101).is_err());
+        assert!(clear_client_checkpoint(temp.path(), &state, &before, 102, Some(&old_id)).is_err());
+        assert!(read_client_record(temp.path(), &state, &before, &old_id).is_err());
+        assert_eq!(
+            read_record(&record_path(temp.path(), &old_id).unwrap())
+                .unwrap()
+                .project,
+            original
+        );
+    }
+
+    #[test]
+    fn late_old_handshake_cannot_retire_current_client_or_reset_its_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let before = uuid::Uuid::new_v4().to_string();
+        let after = uuid::Uuid::new_v4().to_string();
+        activate_client(&state, &before).unwrap();
+        activate_client(&state, &after).unwrap();
+        write_client_checkpoint(temp.path(), &state, &after, &project(4), 5).unwrap();
+        let current_id = session_id(&state);
+        assert!(activate_client(&state, &before).is_err());
+        assert!(client_inventory(temp.path(), &state, &before).is_err());
+        activate_client(&state, &after).unwrap();
+        assert_eq!(session_id(&state), current_id);
+        assert_eq!(state.session.lock().unwrap().sequence, 5);
+        assert_eq!(
+            write_client_checkpoint(temp.path(), &state, &after, &project(5), 6).unwrap()
+                ["accepted"],
+            true
+        );
+    }
+
+    #[test]
+    fn client_generation_limit_retains_tombstones_and_preserves_active_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let first = uuid::Uuid::new_v4().to_string();
+        activate_client(&state, &first).unwrap();
+        let mut current = first.clone();
+        for _ in 0..MAX_CLIENT_GENERATIONS {
+            current = uuid::Uuid::new_v4().to_string();
+            activate_client(&state, &current).unwrap();
+        }
+        assert_eq!(
+            state.session.lock().unwrap().retired_clients.len(),
+            MAX_CLIENT_GENERATIONS
+        );
+        let current_id = session_id(&state);
+        assert!(activate_client(&state, &uuid::Uuid::new_v4().to_string())
+            .unwrap_err()
+            .contains("Save the project and restart"));
+        assert!(activate_client(&state, &first).is_err());
+        assert_eq!(session_id(&state), current_id);
+        assert_eq!(
+            write_client_checkpoint(temp.path(), &state, &current, &project(1), 1).unwrap()
+                ["accepted"],
+            true
         );
     }
 }
