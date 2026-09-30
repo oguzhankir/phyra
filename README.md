@@ -1,4 +1,7 @@
-<p><img src="assets/phyra-wordmark.svg" alt="Phyra — engineering analysis with Physics ML" width="440" /></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/phyra-wordmark-dark.svg" />
+  <img src="assets/phyra-wordmark.svg" alt="Phyra — engineering analysis with Physics ML" width="440" />
+</picture>
 
 **Prepare a physical problem. Solve locally. Understand the result.**
 
@@ -63,7 +66,7 @@ The current PINN uses a neural displacement field and automatic differentiation 
 
 ## Validation and direction
 
-Independent analytical/manufactured references live in [engine tests](engine/tests); typed scientific/project tests live beside [domain logic](src/domain), with interface tests beside [frontend features](src/features); [native tests](src-tauri/src/tests) cover safe files and worker lifecycle. [Hosted verification at runtime commit `3388a92`](https://github.com/oguzhankir/phyra/actions/runs/36729139336) built and packaged the preceding iteration on macOS 15 Apple Silicon and Windows Server 2022 x64, then exercised actual rendering, probing, FEM/PINN comparison, persistence and cancellation outside the checkout.
+Independent analytical/manufactured references live in [engine tests](engine/tests); typed scientific/project tests live beside [domain logic](src/domain), with interface tests beside [frontend features](src/features); [native tests](src-tauri/src/tests) cover safe files and worker lifecycle. [Hosted packaged verification at runtime commit `d3616d3`](https://github.com/oguzhankir/phyra/actions/runs/36744426687) passed on macOS 15 Apple Silicon and Windows Server 2022 x64: actual rendering/probing, FEM/PINN comparison, persistence, cancellation, native definition-only recovery and method/device capability queries. [Current scientific checks at `00eea34`](https://github.com/oguzhankir/phyra/actions/runs/36747235053) passed on both targets; that commit changes only tests, with the production runtime unchanged.
 
 Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and prior-iteration demonstration media are available; public installers require the redistribution work below.
 
