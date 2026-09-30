@@ -49,7 +49,102 @@ def _rigid_modes(mesh):
         yield np.cross(axis, mesh.positions)
 
 
-def _assert_rigid_roundoff(mesh, young, poisson, stiffness, displacement):
+def _up(value):
+    """Round a nonnegative bound upward after each elementary operation."""
+    return np.nextafter(value, np.inf)
+
+
+def _positive_sum(values, axis):
+    terms = np.moveaxis(values, axis, 0)
+    total = np.zeros_like(terms[0])
+    for term in terms:
+        total = _up(total + term)
+    return total
+
+
+def _up_gamma(operations):
+    product = _up(operations * np.finfo(np.float64).eps)
+    return _up(product / np.nextafter(1 - product, -np.inf))
+
+
+def _strain_formation_bound(mesh, strain, local_r, rotation):
+    """Include inverse/gradient formation, independently of the production B.
+
+    GEPP inverse solves have backward envelope 2γ₃|L||U| (Higham, eq.3.5,
+    https://www.netlib.org/lapack/lawnspdf/lawn104.pdf). Partial pivoting gives
+    Computed pivot multipliers obey ell=1/(1−γ₂), allowing reciprocal/scaling;
+    each floating elimination update grows by at most (1+ε)[1+(1+ε)ell].
+    With two updates, |||L||U|||∞≤(1+2ell)·3g·max|J|. Edge subtraction adds ΔJ.
+    With η bounding ||I−J_exact Q||∞, the inverse identity gives
+    ||Q−J_exact⁻¹||∞≤||Q||∞η/(1−η). Reference gradients P Q then add
+    |P|δQ+γ₃|P||Q|. Only physically populated B entries receive this error.
+    ε is machine eps, conservatively exceeding the true unit roundoff.
+    All positive-bound operations round upward, including their reductions.
+    """
+    epsilon = np.finfo(np.float64).eps
+    points = mesh.positions[mesh.cells]
+    jacobian = np.stack(
+        (points[:, 1] - points[:, 0], points[:, 2] - points[:, 0], points[:, 3] - points[:, 0]),
+        axis=2,
+    )
+    inverse = np.linalg.inv(jacobian)
+    inverse_norm = _positive_sum(np.abs(inverse), axis=2).max(axis=1)
+    one_plus_epsilon = _up(1 + epsilon)
+    ell = _up(1 / np.nextafter(1 - _up_gamma(2), -np.inf))
+    growth_step = _up(one_plus_epsilon * _up(1 + _up(one_plus_epsilon * ell)))
+    growth = _up(growth_step * growth_step)
+    lower_norm = _up(1 + _up(2 * ell))
+    upper_norm = _up(_up(3 * growth) * np.abs(jacobian).max(axis=(1, 2)))
+    lu_envelope = _up(lower_norm * upper_norm)
+    inverse_residual = _up(_up(_up(2 * _up_gamma(3)) * lu_envelope) * inverse_norm)
+    edge_error = _up(epsilon * _up(np.abs(points[:, 1:]) + np.abs(points[:, :1])))
+    edge_error_norm = _positive_sum(edge_error.transpose(0, 2, 1), axis=2).max(axis=1)
+    eta = _up(inverse_residual + _up(edge_error_norm * inverse_norm))
+    assert np.all(eta < 1), "The independent inverse-formation certificate is ill-conditioned."
+    inverse_error = _up(_up(inverse_norm * eta) / np.nextafter(1 - eta, -np.inf))
+    reference = np.abs(np.array([[-1, -1, -1], [1, 0, 0], [0, 1, 0], [0, 0, 1]]))
+    gradient_scale = _positive_sum(
+        _up(reference[None, :, :, None] * np.abs(inverse)[:, None, :, :]), axis=2
+    )
+    gradient_error = _up(
+        _up(reference.sum(axis=1)[None, :, None] * inverse_error[:, None, None])
+        + _up(_up_gamma(3) * gradient_scale)
+    )
+    error_b = np.zeros_like(strain)
+    # Independent engineering-strain definition: normal ∂ui/∂xi, shear
+    # ∂ui/∂xj+∂uj/∂xi, in the documented xx,yy,zz,xy,yz,xz order.
+    components = (
+        ((0, 0),),
+        ((1, 1),),
+        ((2, 2),),
+        ((0, 1), (1, 0)),
+        ((1, 2), (2, 1)),
+        ((0, 2), (2, 0)),
+    )
+    for row, pairs in enumerate(components):
+        for component, derivative in pairs:
+            error_b[:, row, component::3] = gradient_error[:, :, derivative]
+    contraction = _up(
+        _up_gamma(12) * _positive_sum(_up(np.abs(strain) * np.abs(local_r)[:, None, :]), axis=2)
+    )
+    formation = _positive_sum(_up(error_b * np.abs(local_r)[:, None, :]), axis=2)
+    bound = _up(contraction + formation)
+    if rotation is not None:
+        x, y, z = rotation
+        skew = np.abs(np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]]))
+        mode_error = _up(
+            _up_gamma(3)
+            * _positive_sum(_up(skew[None, :, :] * np.abs(mesh.positions)[:, None, :]), axis=2)
+        )
+        local_error = mode_error[mesh.cells].reshape(-1, 12)
+        construction = _positive_sum(
+            _up(_up(np.abs(strain) + error_b) * local_error[:, None, :]), axis=2
+        )
+        bound = _up(bound + construction)
+    return bound
+
+
+def _assert_rigid_roundoff(mesh, young, poisson, stiffness, displacement, rotation=None):
     """Bound representation error; no stiffness correction or physical tolerance change.
 
     With A = Σ V|B|ᵀ|D||B|, two six-term products and volume scaling cost
@@ -57,7 +152,8 @@ def _assert_rigid_roundoff(mesh, young, poisson, stiffness, displacement):
     a CSR row product adds m terms. Thus γ_(13+q+m) A|r| bounds formation,
     assembly and multiplication. A uses positive terms before cancellation.
     Represented Br contributes separately: |Br| ≤ |fl(Br)| + γ₁₂|B||r|.
-    The strain assertion prevents that term from excusing a defective B.
+    The strain assertion independently includes J inverse/gradient formation,
+    preventing that term from excusing a defective B.
     """
     strain, volumes, _ = element_matrices(mesh.positions, mesh.cells, young, poisson)
     material = constitutive_matrix(young, poisson)
@@ -66,7 +162,7 @@ def _assert_rigid_roundoff(mesh, young, poisson, stiffness, displacement):
     absolute_b, absolute_d = np.abs(strain), np.abs(material)
     measured_strain = np.einsum("cai,ci->ca", strain, local_r, optimize=False)
     strain_scale = np.einsum("cai,ci->ca", absolute_b, np.abs(local_r), optimize=False)
-    strain_bound = _gamma(12) * strain_scale / (1 - _gamma(14))
+    strain_bound = _strain_formation_bound(mesh, strain, local_r, rotation)
     assert np.all(np.abs(measured_strain) <= np.nextafter(strain_bound, np.inf)), (
         "Rigid mode has strain exceeding its float64 representation bound."
     )
@@ -119,7 +215,12 @@ def test_element_symmetry_and_rigid_energy(cube):
     for displacement in _rigid_modes(cube):
         _assert_rigid_roundoff(cube, 210e9, 0.3, stiffness, displacement)
     _assert_rigid_roundoff(
-        cube, 210e9, 0.3, stiffness, np.cross(np.array([0.3, -0.2, 0.7]), cube.positions)
+        cube,
+        210e9,
+        0.3,
+        stiffness,
+        np.cross(np.array([0.3, -0.2, 0.7]), cube.positions),
+        rotation=np.array([0.3, -0.2, 0.7]),
     )
 
 
@@ -146,6 +247,54 @@ def test_rigid_roundoff_guard_rejects_a_positive_ground_spring(cube, material_sc
     displacement = next(_rigid_modes(cube))
     with pytest.raises(AssertionError, match="Rigid force"):
         _assert_rigid_roundoff(cube, young, 0.3, broken, displacement)
+
+
+@pytest.mark.parametrize("length_scale", [1e-3, 1, 1e3])
+def test_rigid_strain_guard_accounts_for_backward_stable_inverse_roundoff(
+    cube, length_scale, monkeypatch
+):
+    mesh = replace(cube, positions=cube.positions * length_scale)
+    original_inverse = np.linalg.inv
+
+    def rounded_inverse(jacobian):
+        inverse = original_inverse(jacobian)
+        assert inverse[0, 2, 1] == 0
+        inverse[0, 2, 1] = np.spacing(np.abs(inverse[0]).max()) / 4
+        residual = jacobian @ inverse - np.eye(3)
+        envelope = np.abs(jacobian) @ np.abs(inverse)
+        backward = np.linalg.norm(residual, ord=np.inf, axis=(1, 2)) / np.linalg.norm(
+            envelope, ord=np.inf, axis=(1, 2)
+        )
+        assert backward.max() < np.finfo(float).eps
+        return inverse
+
+    monkeypatch.setattr(np.linalg, "inv", rounded_inverse)
+    strain, _, _ = element_matrices(mesh.positions, mesh.cells, 210e9, 0.3)
+    displacement = np.cross([1, 0, 0], mesh.positions)
+    local_r = displacement[mesh.cells].reshape(-1, 12)
+    measured = np.einsum("cai,ci->ca", strain, local_r, optimize=False)
+    old_scale = np.einsum("cai,ci->ca", np.abs(strain), np.abs(local_r), optimize=False)
+    # The previous final-dot-only assertion rejected a backward-stable inverse:
+    # its componentwise scale omitted formation of an off-axis coefficient.
+    assert abs(measured[0, 1]) > _gamma(12) * old_scale[0, 1] / (1 - _gamma(14))
+    stiffness = assemble(mesh, 210e9, 0.3)
+    _assert_rigid_roundoff(mesh, 210e9, 0.3, stiffness, displacement)
+
+
+@pytest.mark.parametrize("length_scale", [1e-3, 1, 1e3])
+def test_rigid_strain_guard_rejects_an_off_axis_gradient_defect(cube, length_scale, monkeypatch):
+    mesh = replace(cube, positions=cube.positions * length_scale)
+    stiffness = assemble(mesh, 210e9, 0.3)
+    original_elements = element_matrices
+
+    def broken_elements(*args):
+        strain, volumes, local = original_elements(*args)
+        strain[0, 1, 10] += 1e-6 / length_scale
+        return strain, volumes, local
+
+    monkeypatch.setitem(globals(), "element_matrices", broken_elements)
+    with pytest.raises(AssertionError, match="Rigid mode has strain"):
+        _assert_rigid_roundoff(mesh, 210e9, 0.3, stiffness, np.cross([1, 0, 0], mesh.positions))
 
 
 def test_affine_patch_with_nonzero_prescribed_displacement(cube):
