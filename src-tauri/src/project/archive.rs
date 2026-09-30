@@ -11,6 +11,7 @@ pub(crate) struct OpenedArchive {
     pub(crate) project: Value,
     pub(crate) migrated: bool,
     pub(crate) dropped_cache: bool,
+    pub(crate) source_version: u64,
 }
 
 pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<OpenedArchive, String> {
@@ -24,7 +25,7 @@ pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<Open
     }
     let mut seen = std::collections::HashSet::new();
     let mut total = 0u64;
-    let mut project = None;
+    let mut project: Option<Value> = None;
     let mut cache = Vec::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
@@ -62,9 +63,15 @@ pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<Open
         }
     }
     let project = project.ok_or("Project metadata is missing")?;
+    let source_version = project["schemaVersion"]
+        .as_u64()
+        .ok_or("Unsupported project schema version")?;
     let (project, migrated) = migrate_project(project)?;
-    let dropped_cache = migrated && !cache.is_empty();
-    if !migrated && !cache.is_empty() {
+    // v1 has a different study contract. v2 -> v3 only adds copied boundary
+    // sets; its cached physics must still pass the worker's normal field,
+    // ownership and canonical fingerprint validation before the UI sees it.
+    let dropped_cache = source_version == 1 && !cache.is_empty();
+    if !dropped_cache && !cache.is_empty() {
         fs::create_dir_all(directory).map_err(|e| e.to_string())?;
         for (name, bytes) in cache {
             fs::write(directory.join(name), bytes).map_err(|e| e.to_string())?;
@@ -74,6 +81,7 @@ pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<Open
         project,
         migrated,
         dropped_cache,
+        source_version,
     })
 }
 

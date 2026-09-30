@@ -16,6 +16,7 @@ describe('offline workbench help', () => {
     const contexts: HelpContext[] = [
       'overview',
       'geometry',
+      'selections',
       'material',
       'conditions',
       'constraints',

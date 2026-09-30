@@ -1,6 +1,7 @@
-import { Check, GitCompareArrows, Magnet, Play, Save, Square, X } from 'lucide-react';
+import { Bookmark, Check, GitCompareArrows, Magnet, Play, Save, Square, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { primaryOperation } from '../domain/project/study';
+import { selectionIsCompatible } from '../domain/project/namedSelections';
 import { type FieldId } from '../domain/results/fields';
 import { displayValue, formatValue } from '../domain/units';
 import { referenceLabels } from '../features/examples/references';
@@ -27,6 +28,16 @@ export default function App() {
   const workbench = useWorkbench();
   const {
     recovery,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
+    namedSelectionId,
+    addNamedSelection,
+    selectionMode,
+    setSelectionMode,
     reportDraftValidity,
     project,
     path,
@@ -105,6 +116,18 @@ export default function App() {
     const items: Problem[] = [];
     if (validation) items.push(validationProblem(validation));
     if (error) items.push(classifyProblem(error));
+    const orphaned = project.namedSelections.filter(
+      (item) => !selectionIsCompatible(project, item),
+    );
+    if (orphaned.length)
+      items.push({
+        id: 'orphaned-selections',
+        severity: 'warning',
+        title: 'Named boundaries need repair',
+        message: `${orphaned.length} saved boundary set(s) belong to a different geometry or dimension. They remain preserved and cannot be copied until repaired. Existing copied supports and loads are separate.`,
+        section: 'selections',
+        action: 'Review boundary sets',
+      });
     if (data && !currentData)
       items.push({
         id: 'stale',
@@ -119,7 +142,7 @@ export default function App() {
     for (const [index, warning] of (currentData?.manifest.warnings ?? []).entries())
       items.push(warningProblem(warning, index));
     return items;
-  }, [validation, error, data, currentData]);
+  }, [validation, error, data, currentData, project]);
   useEffect(() => {
     if (error) setProblemsOpen(true);
   }, [error]);
@@ -137,6 +160,12 @@ export default function App() {
     <NumericDraftContext.Provider value={reportDraftValidity}>
       <div className="app-shell">
         <WorkbenchHeader
+          canUndo={canUndo}
+          canRedo={canRedo}
+          undoLabel={undoLabel}
+          redoLabel={redoLabel}
+          onUndo={undo}
+          onRedo={redo}
           name={project.name}
           path={path}
           dirty={dirty}
@@ -169,6 +198,9 @@ export default function App() {
               section={section}
               constraintId={constraintId}
               loadId={loadId}
+              namedSelectionId={namedSelectionId}
+              onAddSelection={addNamedSelection}
+              hasSelection={selected.length > 0}
               locked={locked}
               cells={stat?.cells}
               solved={solved}
@@ -260,6 +292,18 @@ export default function App() {
                 <span className="toolbar-divider" />
                 {is2D ? 'RECTANGLE' : project.geometry.kind.toUpperCase()}
               </div>
+              <select
+                aria-label="Boundary selection mode"
+                value={selectionMode}
+                onChange={(event) =>
+                  setSelectionMode(event.target.value as 'replace' | 'add' | 'toggle')
+                }
+                title="Click replaces; Shift adds; Ctrl/Command toggles"
+              >
+                <option value="replace">Replace selection</option>
+                <option value="add">Add to selection</option>
+                <option value="toggle">Toggle selection</option>
+              </select>
               <label className="edge-toggle">
                 <input
                   type="checkbox"
@@ -307,6 +351,8 @@ export default function App() {
             )}
             <div className="viewport-wrap">
               <Viewport
+                selectionMode={selectionMode}
+                onSelectionChange={setSelected}
                 theme={theme}
                 project={project}
                 data={currentData}
@@ -377,6 +423,13 @@ export default function App() {
                   </button>
                   <button className="text-button" disabled={locked} onClick={addLoad}>
                     Add load
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={locked || project.namedSelections.length >= 100}
+                    onClick={addNamedSelection}
+                  >
+                    <Bookmark size={13} /> Save boundary set
                   </button>
                   <button
                     className="icon-button"

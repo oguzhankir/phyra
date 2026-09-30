@@ -1,6 +1,7 @@
 export type HelpContext =
   | 'overview'
   | 'geometry'
+  | 'selections'
   | 'material'
   | 'conditions'
   | 'constraints'
@@ -16,6 +17,7 @@ export const helpCategories = ['Get started', 'Prepare', 'Solve', 'Inspect', 'Re
 export type HelpCategory = (typeof helpCategories)[number];
 export type HelpArticleId =
   | 'first-study'
+  | 'preparation-tools'
   | 'geometry'
   | 'material'
   | 'study'
@@ -67,6 +69,72 @@ export interface HelpArticle {
 }
 
 export const helpArticles: readonly HelpArticle[] = [
+  {
+    id: 'preparation-tools',
+    title: 'Selection, boundary sets and edit history',
+    summary: 'Select boundaries, preserve reusable sets, and safely undo model edits.',
+    category: 'Prepare',
+    kind: 'Guide',
+    keywords: [
+      'named selection',
+      'boundary set',
+      'undo',
+      'redo',
+      'camera',
+      'isolate',
+      'measurement',
+      'repair',
+    ],
+    sections: [
+      {
+        title: 'Select and inspect',
+        paragraphs: [
+          'In 3D, selection addresses supported boundary faces; in 2D, it addresses boundary edges. Click replaces the selection, Shift adds, and Control/Command toggles. The selection-mode menu offers the same choices. Hover identifies a boundary before committing it.',
+          'Use standard camera directions and Fit to inspect the model. Isolate preserves a visible snapshot of the chosen boundaries; Restore all returns the full domain. Isolation changes presentation only, never the mesh, physics or solved domain.',
+        ],
+      },
+      {
+        title: 'Save and copy boundary sets',
+        steps: [
+          'Select the intended boundaries and choose Save boundary set.',
+          'Give the set a unique nonempty name. The model tree and editor show its boundary IDs and geometry context.',
+          'In a support or load editor, choose Copy a named selection. Review the copied boundaries before running.',
+          'If the primitive type or study dimension changes, repair incompatible sets explicitly using the current viewport selection.',
+        ],
+        note: {
+          tone: 'info',
+          text: 'These are reusable copied boundary groups. Changing or deleting a set does not update previously assigned supports or loads. General CAD topology mapping and associative selections are future work.',
+        },
+        screenshots: [
+          {
+            src: '/help/preparation-workbench.jpg',
+            alt: 'Current workbench with a saved boundary set, standard camera tools and an undeformed node-distance measurement.',
+            caption:
+              'Saved boundary groups and preparation tools in the current interface. Measurement uses undeformed SI node or preview-vertex coordinates; it is not a CAD sketch dimension.',
+          },
+        ],
+      },
+      {
+        title: 'Undo and redo',
+        paragraphs: [
+          'Use Edit → Undo/Redo, Command/Control Z, Shift Command/Control Z, or Control Y on Windows. Text fields keep their own native editing shortcuts; finish or revert incomplete numeric drafts before using model history.',
+          'History stores project definitions in this session, with up to 80 edits and a 16 MiB budget. New/open/recover/reference actions start a new history. File destinations, scientific result buffers and trained weights are not history payloads.',
+          'Physical undo/redo makes previous fields stale and requires a new analysis. Project-name, display-unit and boundary-set metadata edits preserve current results. Material/support/load edits retain conservative result invalidation.',
+        ],
+        note: {
+          tone: 'warning',
+          text: 'History is temporary and is not persisted across restart. Save a project explicitly; definition-only recovery provides separate protection. Changing primitive or study dimension clears incompatible assignments, with an explicit notice; Undo restores the prior definition.',
+        },
+      },
+      {
+        title: 'Geometry measurement',
+        paragraphs: [
+          'Viewport measurement reports node/vertex-to-node distance using the original undeformed coordinates in SI, converted only for display. In a meshed result, the available points are mesh nodes; in a primitive preview, they are tessellation vertices. It is not a CAD feature dimension or a distance measured on amplified deformation.',
+        ],
+      },
+    ],
+    related: ['geometry', 'supports', 'loads', 'files', 'results'],
+  },
   {
     id: 'first-study',
     title: 'Run your first study',
@@ -704,7 +772,8 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Project files',
         paragraphs: [
           'Save or Save as creates a .phyra archive with the project definition and available compatible cached fields. Reopening validates metadata and binary arrays before displaying results.',
-          'Version 1 projects migrate to version 2 with an explicit notice. Legacy cached results are discarded; solve the migrated study again.',
+          'Version 1 and 2 definitions are validated before migrating to version 3. Version 1 cached fields are discarded explicitly. Version 2 caches pass the normal input-fingerprint and scientific-field validation before retention; an invalid cache rejects opening rather than displaying untrusted fields.',
+          'Version 3 preserves named boundary sets. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
       {
@@ -958,7 +1027,7 @@ export const helpArticles: readonly HelpArticle[] = [
             src: '/help/training-workbench.jpg',
             alt: 'Stored total, PDE and boundary loss history from a completed CPU plane-stress training reference.',
             caption:
-              'Recorded CPU training history in the current browser workbench. This saved reference predates independent-point diagnostics; absent diagnostics are not zero residual.',
+              'Recorded CPU training history and independent-point residual measurements from the saved plane-stress reference. Residuals measure this trained problem and do not establish field-error bounds.',
           },
         ],
         note: {
@@ -1082,6 +1151,7 @@ export const helpArticles: readonly HelpArticle[] = [
 const contextArticles: Record<HelpContext, HelpArticleId> = {
   overview: 'first-study',
   geometry: 'geometry',
+  selections: 'preparation-tools',
   material: 'material',
   conditions: 'supports',
   constraints: 'supports',

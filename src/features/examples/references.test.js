@@ -33,6 +33,29 @@ function fixture(id) {
   };
 }
 
+function reportedNormMatchesBuffer(data, reported) {
+  const values = numericArray(data, 'displacement');
+  let maximumSquared = 0;
+  for (let index = 0; index < values.length; index += 3) {
+    const [x, y, z] = [values[index], values[index + 1], values[index + 2]];
+    maximumSquared = Math.max(maximumSquared, x * x + y * y + z * z);
+  }
+  // These saved examples have normal finite magnitudes. Positive squared sums
+  // have three products + two additions (gamma_5). The producer adds one sqrt;
+  // squaring its reported norm adds another product (gamma_8 in total). Compare
+  // to the independently reduced buffer within the combined forward envelope.
+  // This tests authoritative summary/buffer agreement without assuming that
+  // NumPy's norm and the renderer's scaled Math.hypot are bitwise identical.
+  const u = Number.EPSILON / 2;
+  const gamma = (count) => (count * u) / (1 - count * u);
+  const envelope = ((gamma(8) + gamma(5)) / (1 - gamma(5))) * maximumSquared;
+  return (
+    Number.isFinite(reported) &&
+    reported >= 0 &&
+    Math.abs(reported * reported - maximumSquared) <= envelope
+  );
+}
+
 describe('actual bundled CPU reference data', () => {
   it.each(['3d', '2d-compare'])(
     'validates %s schema, digests, owned buffers and physical fields',
@@ -47,7 +70,10 @@ describe('actual bundled CPU reference data', () => {
       expect(resultIsCurrent(result.project, result.data)).toBe(true);
       const displacement = extractField(result.data, 'displacement-mag');
       expect(displacement.values.every(Number.isFinite)).toBe(true);
-      expect(displacement.maximum).toBe(saved.manifest.summary.maxDisplacement);
+      expect(displacement.maximum).toBeGreaterThan(0);
+      expect(reportedNormMatchesBuffer(result.data, saved.manifest.summary.maxDisplacement)).toBe(
+        true,
+      );
       expect(extractField(result.data, 'vonMises').maximum).toBe(
         saved.manifest.summary.maxVonMises,
       );
@@ -57,6 +83,13 @@ describe('actual bundled CPU reference data', () => {
     const saved = fixture('3d');
     new Uint8Array(saved.buffer)[0] ^= 1;
     await expect(verifyDigest(saved.buffer, saved.item.sha256.buffer)).rejects.toThrow('digest');
+  });
+  it('rejects a genuinely wrong displacement maximum beyond the arithmetic envelope', () => {
+    const saved = fixture('3d');
+    const result = validateReference('3d', saved.project, saved.manifest, saved.buffer);
+    expect(
+      reportedNormMatchesBuffer(result.data, saved.manifest.summary.maxDisplacement * (1 + 1e-10)),
+    ).toBe(false);
   });
   it('rejects reference URLs outside the exact bundled asset paths', () => {
     const changed = structuredClone(index);
@@ -128,6 +161,26 @@ describe('actual bundled CPU reference data', () => {
       'array layout',
     );
   });
+  it.each(['missing', 'oversized', 'duplicate-name', 'blank-control', 'stamp', 'regions'])(
+    'rejects malformed %s boundary-set metadata before rendering',
+    (defect) => {
+      const saved = fixture('3d');
+      if (defect === 'missing') delete saved.project.namedSelections;
+      else if (defect === 'oversized')
+        saved.project.namedSelections = Array(101).fill(saved.project.namedSelections[0]);
+      else if (defect === 'duplicate-name') {
+        const duplicate = structuredClone(saved.project.namedSelections[0]);
+        duplicate.id = 'other';
+        duplicate.name = `  ${duplicate.name.toUpperCase()}  `;
+        saved.project.namedSelections.push(duplicate);
+      } else if (defect === 'blank-control') saved.project.namedSelections[0].name = '\u001c';
+      else if (defect === 'stamp') saved.project.namedSelections[0].dimension = '4d';
+      else saved.project.namedSelections[0].regions = ['outer'];
+      expect(() => validateReference('3d', saved.project, saved.manifest, saved.buffer)).toThrow(
+        'boundary-set',
+      );
+    },
+  );
   it('rejects overlapping fields and mesh indices outside the node table', () => {
     const saved = fixture('3d');
     const result = validateReference('3d', saved.project, saved.manifest, saved.buffer);

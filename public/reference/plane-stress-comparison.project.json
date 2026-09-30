@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "plane-stress-tension",
   "name": "Plane stress · tension",
   "revision": 0,
@@ -83,5 +83,34 @@
         "device": "cpu"
       }
     }
-  }
+  },
+  "namedSelections": [
+    {
+      "id": "selection-ux",
+      "name": "X restraint boundaries",
+      "geometryKind": "box",
+      "dimension": "2d",
+      "regions": [
+        "x0"
+      ]
+    },
+    {
+      "id": "selection-uy",
+      "name": "Y restraint boundaries",
+      "geometryKind": "box",
+      "dimension": "2d",
+      "regions": [
+        "y0"
+      ]
+    },
+    {
+      "id": "selection-tension",
+      "name": "Axial force boundaries",
+      "geometryKind": "box",
+      "dimension": "2d",
+      "regions": [
+        "x1"
+      ]
+    }
+  ]
 }

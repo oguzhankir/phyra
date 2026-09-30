@@ -134,5 +134,11 @@ export function useVerificationWorkflow({
       },
     }).catch((cause) => setError(String(cause)));
   };
-  return { verification, verificationConfiguration, verified };
+  const requestedOperation: 'solve' | 'compare' | null =
+    verification && verificationConfiguration
+      ? verificationConfiguration === '2d-compare'
+        ? 'compare'
+        : 'solve'
+      : null;
+  return { verification, verified, requestedOperation };
 }

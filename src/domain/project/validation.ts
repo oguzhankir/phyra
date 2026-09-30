@@ -1,6 +1,9 @@
 import type { Project } from '../contracts/types';
+import { namedSelectionError } from './namedSelections';
 
 export function inputError(project: Project): string | null {
+  const selectionError = namedSelectionError(project);
+  if (selectionError) return selectionError;
   const g = project.geometry;
   const dimensions =
     project.study.dimension === '2d'

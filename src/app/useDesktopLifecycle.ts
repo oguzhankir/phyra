@@ -4,6 +4,7 @@ import type { Operation } from '../domain/contracts/types';
 import type { Section } from '../features/workbench/navigation';
 import type { HelpContext } from '../features/help/content';
 import type { ExampleId } from '../features/examples/projects';
+import { historyShortcut } from './historyShortcut';
 type Props = {
   desktop: boolean;
   busyRef: RefObject<Operation | null>;
@@ -20,6 +21,9 @@ type Props = {
   setHelpContext: Dispatch<SetStateAction<HelpContext>>;
   setHelp: Dispatch<SetStateAction<boolean>>;
   setError: (message: string | null) => void;
+  undo: () => void;
+  redo: () => void;
+  historyBlocked: boolean;
 };
 export function useDesktopLifecycle({
   desktop,
@@ -37,6 +41,9 @@ export function useDesktopLifecycle({
   setHelpContext,
   setHelp,
   setError,
+  undo,
+  redo,
+  historyBlocked,
 }: Props) {
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -46,6 +53,17 @@ export function useDesktopLifecycle({
           setHelpContext(section);
           setHelp(true);
         }
+        return;
+      }
+      const platform = /Mac|iPhone|iPad/i.test(navigator.platform)
+        ? 'mac'
+        : /Win/i.test(navigator.platform)
+          ? 'windows'
+          : 'other';
+      const action = historyShortcut(event, { platform, blocked: historyBlocked });
+      if (action) {
+        event.preventDefault();
+        (action === 'redo' ? redo : undo)();
         return;
       }
       if (!event.metaKey && !event.ctrlKey) return;
@@ -69,7 +87,7 @@ export function useDesktopLifecycle({
       window.removeEventListener('keydown', key);
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [save, open, create, help, confirmation, section]);
+  }, [save, open, create, help, confirmation, section, undo, redo, historyBlocked]);
   useEffect(() => {
     if (!desktop) return;
     let unsubscribe: (() => void) | undefined;

@@ -3,10 +3,19 @@
   "title": "Project",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "id", "name", "revision", "displayUnits", "geometry", "study"],
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "revision",
+    "displayUnits",
+    "geometry",
+    "study",
+    "namedSelections"
+  ],
   "properties": {
     "schemaVersion": {
-      "const": 2
+      "const": 3
     },
     "id": {
       "type": "string",
@@ -157,6 +166,13 @@
           }
         }
       }
+    },
+    "namedSelections": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/definitions/NamedSelection"
+      }
     }
   },
   "definitions": {
@@ -293,6 +309,32 @@
         },
         "device": {
           "enum": ["auto", "cpu", "mps", "cuda"]
+        }
+      }
+    },
+    "NamedSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "geometryKind", "dimension", "regions"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "geometryKind": {
+          "enum": ["box", "cylinder", "bracket"]
+        },
+        "dimension": {
+          "enum": ["2d", "3d"]
+        },
+        "regions": {
+          "$ref": "#/definitions/Regions"
         }
       }
     }

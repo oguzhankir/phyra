@@ -12,7 +12,10 @@ use std::{
 };
 use tauri::Manager;
 
-use super::{state::ProjectState, validation::validate_project};
+use super::{
+    state::ProjectState,
+    validation::{migrate_project, validate_project},
+};
 use crate::{
     execution::state::EngineState,
     platform::files::{read_bounded, MAX_JSON},
@@ -84,7 +87,7 @@ fn read_record(path: &Path) -> Result<Record, String> {
     {
         return Err("Recovery copy is not a regular file".into());
     }
-    let record: Record = serde_json::from_slice(&read_bounded(path, MAX_RECORD_BYTES)?)
+    let mut record: Record = serde_json::from_slice(&read_bounded(path, MAX_RECORD_BYTES)?)
         .map_err(|_| "The recovery copy could not be read")?;
     if record.format_version != 1
         || record.saved_at == 0
@@ -94,7 +97,9 @@ fn read_record(path: &Path) -> Result<Record, String> {
     {
         return Err("Unsupported recovery metadata".into());
     }
-    validate_project(&record.project)?;
+    // Legacy definitions are validated before conversion. The old journal is
+    // never overwritten during discovery/read; Restore checkpoints a new copy.
+    record.project = migrate_project(record.project)?.0;
     Ok(record)
 }
 
@@ -597,6 +602,49 @@ mod tests {
         value["name"] = json!("Çalışma ü recovery");
         value["revision"] = json!(revision);
         value
+    }
+
+    #[test]
+    fn legacy_definition_journal_is_migrated_without_overwriting_original_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("legacy.json");
+        let mut previous = project(4);
+        previous["schemaVersion"] = json!(2);
+        previous.as_object_mut().unwrap().remove("namedSelections");
+        let bytes = serde_json::to_vec(&Record {
+            format_version: 1,
+            saved_at: 1,
+            app_version: "0.1.0".into(),
+            project: previous.clone(),
+        })
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let restored = read_record(&path).unwrap();
+        assert_eq!(restored.project["schemaVersion"], 3);
+        assert_eq!(restored.project["namedSelections"], json!([]));
+        assert_eq!(restored.project["revision"], previous["revision"]);
+        assert_eq!(restored.project["geometry"], previous["geometry"]);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn malformed_legacy_journal_is_rejected_and_preserved() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("invalid.json");
+        let mut previous = project(4);
+        previous["schemaVersion"] = json!(2);
+        previous.as_object_mut().unwrap().remove("namedSelections");
+        previous["study"]["material"]["young"] = json!(-1);
+        let bytes = serde_json::to_vec(&Record {
+            format_version: 1,
+            saved_at: 1,
+            app_version: "0.1.0".into(),
+            project: previous,
+        })
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        assert!(read_record(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
     }
 
     #[test]

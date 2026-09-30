@@ -15,12 +15,18 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_CELLS, MAX_NODES, MAX_TRIANGLES
 from phyra_engine.geometry.regions import SOLID_REGIONS
 
+SELECTION_WHITESPACE = (
+    "\u0009\u000a\u000b\u000c\u000d\u001c\u001d\u001e\u001f\u0020\u0085\u00a0\u1680"
+    "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
 
-@lru_cache(maxsize=2)
-def project_validator(version: int = 2) -> Draft7Validator:
+
+@lru_cache(maxsize=3)
+def project_validator(version: int = 3) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = "project-v1.schema.json" if version == 1 else "project.schema.json"
+    filename = f"project-v{version}.schema.json" if version in (1, 2) else "project.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -46,8 +52,8 @@ def _finite_tree(value: Any) -> None:
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2):
-        raise EngineError("unsupported-version", "Supported project versions are 1 and 2.")
+    if type(version) is not int or version not in (1, 2, 3):
+        raise EngineError("unsupported-version", "Supported project versions are 1, 2 and 3.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -55,7 +61,7 @@ def validate_project(project: Any) -> dict[str, Any]:
         raise EngineError("invalid-project", f"{path}: {error.message}")
     if type(project["revision"]) is not int:
         raise EngineError("invalid-project", "Project revision must be an integer.")
-    if version == 2 and any(
+    if version >= 2 and any(
         type(project["study"]["solver"]["pinn"][key]) is not int
         for key in ("layers", "width", "steps", "interiorPoints", "boundaryPoints", "seed")
     ):
@@ -67,7 +73,7 @@ def validate_project(project: Any) -> dict[str, Any]:
         raise EngineError("invalid-geometry", "Bracket thickness must be below length and width.")
     study = project["study"]
     plane = study.get("dimension") == "2d"
-    if version == 2:
+    if version >= 2:
         if plane and (geometry["kind"] != "box" or study["formulation"] != "plane-stress"):
             raise EngineError(
                 "unsupported-study", "2D currently supports rectangular plane stress."
@@ -76,6 +82,43 @@ def validate_project(project: Any) -> dict[str, Any]:
             raise EngineError(
                 "unsupported-study", "3D currently supports solid elasticity with FEM."
             )
+    if version == 3:
+        selection_ids: set[str] = set()
+        selection_names: set[str] = set()
+        for selection in project["namedSelections"]:
+            # Sets are copied preparation metadata. Validate their stamped
+            # topology even when it differs from the current geometry; an
+            # orphan cannot assign loads but must survive save/reopen.
+            name = (
+                selection["name"]
+                .strip(SELECTION_WHITESPACE)
+                .translate(
+                    str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+                )
+            )
+            if not selection["id"].strip(SELECTION_WHITESPACE) or not name:
+                raise EngineError(
+                    "invalid-selection", "Boundary set identifiers and names must not be blank."
+                )
+            if selection["id"] in selection_ids or name in selection_names:
+                raise EngineError(
+                    "invalid-selection", "Boundary set identifiers and names must be unique."
+                )
+            selection_ids.add(selection["id"])
+            selection_names.add(name)
+            if selection["dimension"] == "2d" and selection["geometryKind"] != "box":
+                raise EngineError(
+                    "invalid-selection", "2D boundary sets require rectangular geometry."
+                )
+            selection_regions = (
+                ("x0", "x1", "y0", "y1")
+                if selection["dimension"] == "2d"
+                else SOLID_REGIONS[selection["geometryKind"]]
+            )
+            if not set(selection["regions"]).issubset(selection_regions):
+                raise EngineError(
+                    "invalid-selection", "A boundary set refers to an unavailable stamped boundary."
+                )
     ids = [item["id"] for item in study["constraints"] + study["loads"]]
     if len(ids) != len(set(ids)):
         raise EngineError("invalid-assignment", "Support and load identifiers must be unique.")
@@ -160,30 +203,32 @@ def validate_project(project: Any) -> dict[str, Any]:
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 2:
+    if project["schemaVersion"] == 3:
         return project
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 2
-    upgraded["study"].update(
-        dimension="3d",
-        formulation="solid",
-        thickness=project["geometry"]["height"],
-        solver={
-            "kind": "fem",
-            "pinn": {
-                "layers": 3,
-                "width": 32,
-                "activation": "tanh",
-                "optimizer": "adam",
-                "learningRate": 0.001,
-                "steps": 1000,
-                "interiorPoints": 128,
-                "boundaryPoints": 32,
-                "seed": 42,
-                "device": "auto",
+    upgraded["schemaVersion"] = 3
+    upgraded["namedSelections"] = []
+    if project["schemaVersion"] == 1:
+        upgraded["study"].update(
+            dimension="3d",
+            formulation="solid",
+            thickness=project["geometry"]["height"],
+            solver={
+                "kind": "fem",
+                "pinn": {
+                    "layers": 3,
+                    "width": 32,
+                    "activation": "tanh",
+                    "optimizer": "adam",
+                    "learningRate": 0.001,
+                    "steps": 1000,
+                    "interiorPoints": 128,
+                    "boundaryPoints": 32,
+                    "seed": 42,
+                    "device": "auto",
+                },
             },
-        },
-    )
+        )
     return validate_project(upgraded)
 
 
@@ -192,7 +237,11 @@ def fingerprint(project: dict[str, Any]) -> str:
     canonical = {
         key: value
         for key, value in project.items()
-        if key not in {"name", "revision", "displayUnits"}
+        if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
+    # v3 only adds nonphysical copied boundary sets. Preserve the v2 digest
+    # format so its validated fields remain reusable after explicit migration.
+    if canonical.get("schemaVersion") == 3:
+        canonical["schemaVersion"] = 2
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

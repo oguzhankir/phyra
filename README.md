@@ -18,10 +18,17 @@ The video records the previous interface iteration using actual CPU reference st
 ## What you can do today
 
 - **Prepare and solve:** edit box, cylinder and connected bracket primitives or a 2D rectangle; assign material, component supports, total force and inward pressure; generate a mesh and run classical FEM.
+- **Prepare boundaries:** use replace/add/toggle selection and save named boundary sets for reuse in support/load editors. Assignments copy the selected boundaries; later set edits do not move existing conditions.
 - **Train from physics:** solve rectangular plane-stress elasticity with a real PyTorch PINN, using equilibrium and boundary conditions without FEM training labels. Inspect training settings, live PDE/boundary losses, device and precision.
-- **Compare and inspect:** switch FEM, PINN, absolute and relative differences; probe authoritative values; inspect stress/displacement, reactions and force/moment balance, with scientific color scales and actual or amplified deformation.
+- **Compare and inspect:** switch FEM, PINN, absolute and relative differences; probe authoritative values; inspect stress/displacement, reactions and balance. Use standard camera views, fit/reset, boundary isolation and undeformed node/preview-vertex distance measurement.
 - **Understand the method:** open offline Workbench help or contextual screen help for workflow, assumptions, physical conditions, mesh quality, interpretation and limitations.
 - **Keep ownership:** local isolated workers, cancellation, stale-result detection, versioned `.phyra` save/reopen, definition-only recovery copies and SI CSV exports. Analysis needs no account, API key or network service.
+
+Undo/redo preserves up to 80 definition edits within a 16 MiB session budget. Physical undo restores the inputs and requires a new analysis; it cannot reactivate earlier fields. Project names, display units and named-set metadata leave physical results current. Opening or restoring a project starts a fresh edit history.
+
+![Current Phyra primitive preparation and named boundary sets](public/help/preparation-workbench.jpg)
+
+Current interface · primitive preparation and copied boundary sets; constrained sketching and CAD import remain future work.
 
 ![Current Phyra light workspace inspecting a saved CPU structural solution](public/help/solid-workbench.jpg)
 
@@ -54,9 +61,11 @@ The implemented physics is homogeneous, isotropic, small-strain **linear static 
 
 The PINN is **experimental**. Comparison evaluates displacement at the same nodes and stress at the same cell centroids as FEM, reporting unweighted relative L2, maximum absolute differences and measured timings. Undefined zero-reference relative values are explicitly omitted. New runs also measure normalized residuals at independently sampled points after training; those diagnostics are not field-error bounds. Low training loss alone does not establish accuracy or equilibrium; use independent references, balance and mesh convergence.
 
-Idealized corners/restraints may produce stress singularities, and first-order tetrahedra can be stiff in bending. Poisson ratios above 0.45 are rejected. Deformation playback scales a static field; it is not dynamics. Projects retain settings, seeds, metrics, fields and provenance, but do not resume trained weights. Version 1 archives migrate with an explicit old-cache discard notice.
+Idealized corners/restraints may produce stress singularities, and first-order tetrahedra can be stiff in bending. Poisson ratios above 0.45 are rejected. Deformation playback scales a static field; it is not dynamics. Distance measurement uses undeformed mesh nodes or primitive-preview vertices, rather than exact CAD edge/face distances. Projects retain settings, seeds, metrics, fields and provenance, but do not resume trained weights.
 
-Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
+Project version 3 persists up to 100 named boundary sets, stamped with their primitive type and study dimension. A type/dimension change preserves the sets for explicit repair. Version 1/2 archives are validated before migration: version 1 caches are discarded with a notice; version 2 fields can survive normal ownership, fingerprint and field validation. Named sets provide copied assignments, rather than associative CAD references.
+
+Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Older valid journals migrate in memory while their original bytes remain intact. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
 
 General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](roadmap.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
 
@@ -68,7 +77,9 @@ The current PINN uses a neural displacement field and automatic differentiation 
 
 ## Validation and direction
 
-Independent analytical/manufactured references live in [engine tests](engine/tests); typed scientific/project tests live beside [domain logic](src/domain), with interface tests beside [frontend features](src/features); [native tests](src-tauri/src/tests) cover safe files and worker lifecycle. [Hosted packaged verification at runtime commit `d3616d3`](https://github.com/oguzhankir/phyra/actions/runs/36744426687) passed on macOS 15 Apple Silicon and Windows Server 2022 x64: actual rendering/probing, FEM/PINN comparison, persistence, cancellation, native definition-only recovery and method/device capability queries. [Current scientific checks at `00eea34`](https://github.com/oguzhankir/phyra/actions/runs/36747235053) passed on both targets; that commit changes only tests, with the production runtime unchanged.
+Independent analytical/manufactured references live in [engine tests](engine/tests); typed scientific/project tests live beside [domain logic](src/domain), with interface tests beside [frontend features](src/features); [native tests](src-tauri/src/tests) cover safe files and worker lifecycle.
+
+**Current runtime evidence:** [scientific and packaged verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed on macOS 15 Apple Silicon and Windows Server 2022 x64. The run covers the current preparation and project-version changes, actual FEM/PINN rendering and comparison, persistence, cancellation and native recovery. That production code is unchanged after integration with the current repository documentation. Representative-user usability remains open.
 
 Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and prior-iteration demonstration media are available; public installers require the redistribution work below.
 
