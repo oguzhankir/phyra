@@ -36,11 +36,18 @@
       "../LICENSE": "LICENSE"
     },
     "category": "DeveloperTool",
-    "shortDescription": "Local 3D structural analysis workbench",
-    "macOS": { "minimumSystemVersion": "14.0" },
+    "shortDescription": "Engineering analysis with FEM and experimental Physics ML",
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    },
     "windows": {
-      "webviewInstallMode": { "type": "offlineInstaller" },
-      "nsis": { "installMode": "currentUser", "languages": ["English"] }
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"]
+      }
     }
   }
 }

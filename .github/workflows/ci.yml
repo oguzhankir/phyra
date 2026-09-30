@@ -45,6 +45,9 @@ jobs:
             src-tauri/target/release/bundle/
             artifacts/desktop-runtime.log
             artifacts/desktop-verification.json
+            artifacts/desktop-physicsml-runtime.log
+            artifacts/desktop-physicsml-verification.json
             artifacts/packaged-viewport.png
+            artifacts/packaged-physicsml-viewport.png
             artifacts/engine-platform.json
           if-no-files-found: error

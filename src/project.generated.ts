@@ -15,7 +15,7 @@ export type Regions = [
 export type Vector = [number, number, number];
 
 export interface Project {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   revision: number;
@@ -47,6 +47,13 @@ export interface Project {
      * @maxItems 100
      */
     loads: Load[];
+    dimension: "2d" | "3d";
+    formulation: "plane-stress" | "solid";
+    thickness: number;
+    solver: {
+      kind: "fem" | "pinn";
+      pinn: PinnConfiguration;
+    };
   };
 }
 export interface Constraint {
@@ -66,4 +73,16 @@ export interface Load {
   kind: "force" | "pressure";
   vector: Vector;
   pressure: number;
+}
+export interface PinnConfiguration {
+  layers: number;
+  width: number;
+  activation: "tanh";
+  optimizer: "adam";
+  learningRate: number;
+  steps: number;
+  interiorPoints: number;
+  boundaryPoints: number;
+  seed: number;
+  device: "auto" | "cpu" | "mps" | "cuda";
 }

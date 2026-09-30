@@ -57,6 +57,14 @@ names = [
     "rpds-py",
     "typing_extensions",
     "pyinstaller",
+    "torch",
+    "filelock",
+    "fsspec",
+    "Jinja2",
+    "MarkupSafe",
+    "mpmath",
+    "networkx",
+    "sympy",
 ]
 for name in names:
     distribution = importlib.metadata.distribution(name)

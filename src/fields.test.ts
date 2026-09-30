@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   deformationScale,
+  deformationPhase,
   displayValue,
   extractField,
   normalizedValue,
   vectorValues,
+  regionNames,
 } from './fields';
 import type { ResultData } from './fields';
 
@@ -37,5 +39,40 @@ describe('physical presentation conversions', () => {
     expect(field!.minimum).toBe(-5);
     expect(field!.maximum).toBe(5);
     expect(normalizedValue(0, 0, 0)).toBe(0.5);
+  });
+});
+
+describe('matched Physics ML field presentation', () => {
+  const values = new Float64Array([0, 0, 0, 3, 4, 0, 1, 0, 0, 6, 8, 0]);
+  const data = {
+    buffer: values.buffer,
+    manifest: {
+      operation: 'compare',
+      arrays: {
+        displacement: { dtype: 'float64', offset: 0, byteLength: 48 },
+        pinnDisplacement: { dtype: 'float64', offset: 48, byteLength: 48 },
+      },
+    },
+  } as unknown as ResultData;
+  it('uses identical nodes and vector differences rather than magnitude subtraction', () => {
+    expect(Array.from(extractField(data, 'displacement-mag', 'pinn')!.values)).toEqual([1, 10]);
+    expect(Array.from(extractField(data, 'displacement-mag', 'difference')!.values)).toEqual([
+      1, 5,
+    ]);
+    const relative = extractField(data, 'displacement-mag', 'relative')!;
+    expect(Number.isNaN(relative.values[0])).toBe(true);
+    expect(relative.values[1]).toBe(100);
+    expect(relative.units).toBe('%');
+    expect(relative.minimum).toBe(100);
+  });
+  it('cycles only the visualization factor from zero to maximum and back', () => {
+    expect(deformationPhase(0)).toBe(0);
+    expect(deformationPhase(2000)).toBe(1);
+    expect(deformationPhase(4000)).toBe(0);
+    expect(deformationPhase(1000)).toBeCloseTo(0.5);
+    expect(Array.from(values)).toEqual([0, 0, 0, 3, 4, 0, 1, 0, 0, 6, 8, 0]);
+  });
+  it('exposes only true 2D edges for planar assignment', () => {
+    expect(regionNames('box', '2d').map((region) => region.id)).toEqual(['x0', 'x1', 'y0', 'y1']);
   });
 });

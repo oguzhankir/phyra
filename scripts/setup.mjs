@@ -25,6 +25,19 @@ await run(python, [
   '-c',
   'import sys; assert sys.version_info[:2] == (3, 12), "Phyra development requires Python 3.12"',
 ]);
+// Install the CPU wheel first on Windows: PyPI's GPU runtime is unnecessary for
+// the portable default bundle. Matching local version tags satisfy the pin.
+if (process.platform === 'win32')
+  await run(python, [
+    '-m',
+    'pip',
+    'install',
+    '--no-input',
+    '--no-deps',
+    'torch==2.14.0',
+    '--index-url',
+    'https://download.pytorch.org/whl/cpu',
+  ]);
 await run(python, [
   '-m',
   'pip',

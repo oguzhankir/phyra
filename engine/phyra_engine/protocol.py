@@ -5,6 +5,7 @@ import json
 import math
 import platform
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -66,7 +67,23 @@ def write_output(
     operation: str,
     mesh: Mesh,
     result: dict[str, Any] | None = None,
+    *,
+    started_at: str | None = None,
+    duration_seconds: float | None = None,
 ) -> dict[str, Any]:
+    if project["study"].get("dimension") == "2d":
+        from .protocol2d import write_output as write_2d
+
+        return write_2d(
+            output,
+            project,
+            job_id,
+            operation,
+            cast(Any, mesh),
+            result,
+            started_at=started_at,
+            duration_seconds=duration_seconds,
+        )
     values = {
         "positions": mesh.positions,
         "cells": mesh.cells,
@@ -122,6 +139,12 @@ def write_output(
         "bufferHash": hashlib.sha256(blob).hexdigest(),
         "coordinateFrame": "cartesian-global-SI",
         "stressComponents": STRESS_COMPONENTS,
+        "dimension": "3d",
+        "formulation": "solid",
+        "cellType": "tetra4",
+        "solver": "fem",
+        "device": "cpu",
+        "startedAt": started_at or datetime.now(timezone.utc).isoformat(),
         "regions": region_metadata(mesh),
         "statistics": {
             "nodes": len(mesh.positions),
@@ -145,6 +168,8 @@ def write_output(
     }
     if result:
         manifest["summary"] = result["summary"]
+    if duration_seconds is not None:
+        manifest["durationSeconds"] = duration_seconds
     validate_cached(project, manifest, bytes(blob))
     output.mkdir(parents=True, exist_ok=True)
     binary_temp = output / "buffer.bin.tmp"
@@ -165,9 +190,39 @@ def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dic
     corruption; they are integrity checks, not a scientific authenticity claim.
     """
     validate_project(project)
+    if project["study"].get("dimension") == "2d":
+        from .protocol2d import validate_cached as validate_2d
+
+        return validate_2d(project, manifest, blob)
     _finite_tree(manifest)
     if not isinstance(manifest, dict):
         raise EngineError("invalid-cache", "Result manifest must be an object.")
+    for key, expected_value in {
+        "dimension": "3d",
+        "formulation": "solid",
+        "cellType": "tetra4",
+        "solver": "fem",
+        "device": "cpu",
+    }.items():
+        if key in manifest and manifest[key] != expected_value:
+            raise EngineError("invalid-cache", "Invalid classical run provenance.")
+    if "startedAt" in manifest:
+        started = manifest["startedAt"]
+        if not isinstance(started, str) or not 1 <= len(started) <= 64:
+            raise EngineError("invalid-cache", "Run start time must be an ISO timestamp.")
+        try:
+            if datetime.fromisoformat(started).tzinfo is None:
+                raise ValueError("Missing timestamp timezone")
+        except ValueError as error:
+            raise EngineError(
+                "invalid-cache", "Run start time must have a valid timezone."
+            ) from error
+    if "durationSeconds" in manifest and (
+        type(manifest["durationSeconds"]) not in (int, float)
+        or not math.isfinite(manifest["durationSeconds"])
+        or manifest["durationSeconds"] < 0
+    ):
+        raise EngineError("invalid-cache", "Run duration must be finite and nonnegative.")
     if (
         type(manifest.get("protocolVersion")) is not int
         or type(manifest.get("revision")) is not int

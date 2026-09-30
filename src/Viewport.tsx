@@ -6,13 +6,16 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Project } from './types';
 import {
   deformationScale,
+  deformationPhase,
   formatValue,
   numericArray,
+  solutionArray,
   normalizedValue,
   regionNames,
   type Field,
   type RegionId,
   type ResultData,
+  type FieldSource,
 } from './fields';
 
 export type Probe = {
@@ -34,6 +37,8 @@ type Props = {
   edges: boolean;
   deformation: 'off' | 'actual' | 'auto' | 'custom';
   customScale: number;
+  source?: FieldSource;
+  animate?: boolean;
 };
 type SurfaceData = {
   positions: Float64Array;
@@ -41,7 +46,11 @@ type SurfaceData = {
   regions: Uint32Array;
   regionIds: RegionId[];
   cells?: Uint32Array;
+  volumeCells?: Uint32Array;
+  cellWidth?: number;
   displacement?: Float64Array;
+  boundaryEdges?: Uint32Array;
+  edgeRegions?: Uint32Array;
 };
 type Runtime = {
   renderer: THREE.WebGLRenderer;
@@ -57,6 +66,9 @@ type Runtime = {
   field?: Field | null;
   scale: number;
   bounds: THREE.Box3;
+  maximumScale: number;
+  animationStart: number | null;
+  moving: { attribute: THREE.BufferAttribute; nodes: Uint32Array }[];
 };
 const palette = [
   new THREE.Color('#287fc3'),
@@ -77,7 +89,16 @@ function contourColor(
 }
 function primitiveSurface(project: Project): SurfaceData {
   const { kind, length: l, width: w, height: h, radius: r, thickness: t } = project.geometry;
-  const regionIds = regionNames(kind).map((region) => region.id);
+  const regionIds = regionNames(kind, project.study.dimension).map((region) => region.id);
+  if (project.study.dimension === '2d')
+    return {
+      positions: new Float64Array([0, 0, 0, l, 0, 0, l, w, 0, 0, w, 0]),
+      triangles: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      regions: new Uint32Array(2),
+      regionIds,
+      boundaryEdges: new Uint32Array([3, 0, 1, 2, 0, 1, 2, 3]),
+      edgeRegions: new Uint32Array([0, 1, 2, 3]),
+    };
   const vertices: number[] = [];
   const triangles: number[] = [];
   const regions: number[] = [];
@@ -146,7 +167,11 @@ function primitiveSurface(project: Project): SurfaceData {
     regionIds,
   };
 }
-function surfaceData(project: Project, data: ResultData | null): SurfaceData {
+function surfaceData(
+  project: Project,
+  data: ResultData | null,
+  source: FieldSource = 'primary',
+): SurfaceData {
   if (!data) return primitiveSurface(project);
   return {
     positions: numericArray(data, 'positions') as Float64Array,
@@ -154,12 +179,63 @@ function surfaceData(project: Project, data: ResultData | null): SurfaceData {
     regions: numericArray(data, 'surfaceRegions') as Uint32Array,
     regionIds: data.manifest.regions.map((region) => region.id as RegionId),
     cells: numericArray(data, 'surfaceCells') as Uint32Array,
+    volumeCells: numericArray(data, 'cells') as Uint32Array,
+    cellWidth: data.manifest.arrays.cells.shape[1],
     displacement:
-      data.manifest.operation === 'solve'
-        ? (numericArray(data, 'displacement') as Float64Array)
+      data.manifest.operation !== 'mesh' ? solutionArray(data, 'displacement', source) : undefined,
+    boundaryEdges:
+      data.manifest.dimension === '2d'
+        ? (numericArray(data, 'boundaryEdges') as Uint32Array)
+        : undefined,
+    edgeRegions:
+      data.manifest.dimension === '2d'
+        ? (numericArray(data, 'edgeRegions') as Uint32Array)
         : undefined,
   };
 }
+function pickedRegion(
+  source: SurfaceData,
+  triangle: number,
+  point: THREE.Vector3,
+  scale: number,
+  length: number,
+): string {
+  let region: string = source.regionIds[source.regions[triangle]];
+  if (source.boundaryEdges) {
+    let distance = Infinity;
+    let nearest = -1;
+    const line = new THREE.Line3();
+    for (let edge = 0; edge < source.boundaryEdges.length / 2; edge++) {
+      for (const [endpoint, node] of [
+        [line.start, source.boundaryEdges[2 * edge]],
+        [line.end, source.boundaryEdges[2 * edge + 1]],
+      ] as const)
+        endpoint
+          .fromArray(source.positions, 3 * node)
+          .add(
+            new THREE.Vector3()
+              .fromArray(
+                source.displacement ?? new Float64Array(3),
+                source.displacement ? 3 * node : 0,
+              )
+              .multiplyScalar(scale),
+          );
+      const candidate = line
+        .closestPointToPoint(point, true, new THREE.Vector3())
+        .distanceToSquared(point);
+      if (candidate < distance) {
+        distance = candidate;
+        nearest = edge;
+      }
+    }
+    region =
+      distance < Math.pow(length * 0.035, 2)
+        ? source.regionIds[source.edgeRegions![nearest]]
+        : 'Interior';
+  }
+  return region;
+}
+
 function clearGroup(group: THREE.Group) {
   group.traverse((item) => {
     if (
@@ -220,7 +296,7 @@ export default function Viewport(props: Props) {
     // StrictMode can recreate the renderer while retaining component refs.
     lastProject.current = '';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x141e28, 1);
+    renderer.setClearColor(0x15191f, 1);
     element.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.00001, 10000);
@@ -248,14 +324,25 @@ export default function Viewport(props: Props) {
       invalidate,
       scale: 0,
       bounds: new THREE.Box3(),
+      maximumScale: 0,
+      animationStart: null,
+      moving: [],
       fit: () => {
         const bounds = state.bounds;
         const center = bounds.getCenter(new THREE.Vector3());
         const size = Math.max(bounds.getSize(new THREE.Vector3()).length(), 0.000001);
         controls.target.copy(center);
+        const plane = current.current.project.study.dimension === '2d';
+        controls.enableRotate = !plane;
+        controls.mouseButtons.LEFT = plane ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+        camera.up.set(0, plane ? 1 : 0, plane ? 0 : 1);
         camera.position
           .copy(center)
-          .add(new THREE.Vector3(1.3, -1.8, 1.3).normalize().multiplyScalar(size * 1.7));
+          .add(
+            (plane ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1.3, -1.8, 1.3))
+              .normalize()
+              .multiplyScalar(size * 1.7),
+          );
         camera.near = size / 10000;
         camera.far = size * 100;
         camera.updateProjectionMatrix();
@@ -286,8 +373,21 @@ export default function Viewport(props: Props) {
         state.fit();
     };
     window.addEventListener('keydown', fitKey);
-    const animate = () => {
+    const animate = (now = performance.now()) => {
       controls.update();
+      if (current.current.animate && state.data?.displacement && state.maximumScale > 0) {
+        state.animationStart ??= now;
+        state.scale = state.maximumScale * deformationPhase(now - state.animationStart);
+        for (const item of state.moving) {
+          for (let i = 0; i < item.nodes.length; i++)
+            for (let axis = 0; axis < 3; axis++)
+              item.attribute.array[3 * i + axis] =
+                state.data.positions[3 * item.nodes[i] + axis] +
+                state.data.displacement[3 * item.nodes[i] + axis] * state.scale;
+          item.attribute.needsUpdate = true;
+        }
+        dirty = true;
+      } else state.animationStart = null;
       if (dirty) {
         renderer.render(scene, camera);
         dirty = false;
@@ -322,8 +422,14 @@ export default function Viewport(props: Props) {
       }
       const triangle = hit.faceIndex;
       const source = state.data;
-      const region = source.regionIds[source.regions[triangle]];
-      current.current.onSelect(region);
+      const region = pickedRegion(
+        source,
+        triangle,
+        hit.point,
+        state.scale,
+        state.bounds.getSize(new THREE.Vector3()).length(),
+      );
+      if (region !== 'Interior') current.current.onSelect(region as RegionId);
       if (!state.field) {
         current.current.onProbe(null);
         return;
@@ -360,7 +466,13 @@ export default function Viewport(props: Props) {
       const position: [number, number, number] =
         state.field.association === 'node'
           ? [source.positions[id * 3], source.positions[id * 3 + 1], source.positions[id * 3 + 2]]
-          : [hit.point.x, hit.point.y, hit.point.z];
+          : [0, 0, 0];
+      if (state.field.association === 'cell' && source.volumeCells && source.cellWidth)
+        for (let corner = 0; corner < source.cellWidth; corner++)
+          for (let axis = 0; axis < 3; axis++)
+            position[axis] +=
+              source.positions[3 * source.volumeCells[id * source.cellWidth + corner] + axis] /
+              source.cellWidth;
       current.current.onProbe({
         association: state.field.association,
         id,
@@ -397,7 +509,7 @@ export default function Viewport(props: Props) {
     }
     let data: SurfaceData;
     try {
-      data = surfaceData(props.project, props.data);
+      data = surfaceData(props.project, props.data, props.source);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Cannot render this mesh.';
       setError(message);
@@ -406,6 +518,8 @@ export default function Viewport(props: Props) {
     }
     setError(null);
     clearGroup(state.model);
+    state.moving = [];
+    state.animationStart = null;
     state.data = data;
     state.field = props.field;
     const bounds = new THREE.Box3();
@@ -423,17 +537,20 @@ export default function Viewport(props: Props) {
       props.customScale,
     );
     setScale(state.scale);
+    state.maximumScale = state.scale;
     const positions = new Float32Array(data.triangles.length * 3);
     const colors = new Float32Array(positions.length);
     const undeformed = new Float32Array(positions.length);
-    const supportedRegions = new Set(
+    const supportedRegions = new Set<string>(
       props.project.study.constraints.flatMap((item) => item.regions),
     );
-    const loadedRegions = new Set(props.project.study.loads.flatMap((item) => item.regions));
-    const selectedRegions = new Set(props.selected);
+    const loadedRegions = new Set<string>(
+      props.project.study.loads.flatMap((item) => item.regions),
+    );
+    const selectedRegions = new Set<string>(props.selected);
     const color = new THREE.Color();
     for (let triangle = 0; triangle < data.triangles.length / 3; triangle++) {
-      const region = data.regionIds[data.regions[triangle]];
+      const region = data.boundaryEdges ? 'Interior' : data.regionIds[data.regions[triangle]];
       if (!props.field)
         color.set(
           selectedRegions.has(region)
@@ -469,6 +586,10 @@ export default function Viewport(props: Props) {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    state.moving.push({
+      attribute: geometry.getAttribute('position') as THREE.BufferAttribute,
+      nodes: data.triangles,
+    });
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
@@ -484,9 +605,29 @@ export default function Viewport(props: Props) {
     state.surface = surface;
     state.model.add(surface);
     if (props.edges || !props.data) {
-      const edges = props.data
-        ? new THREE.WireframeGeometry(geometry)
-        : new THREE.EdgesGeometry(geometry, 24);
+      let edges: THREE.BufferGeometry;
+      if (props.data) {
+        const nodes = new Uint32Array(data.triangles.length * 2);
+        for (let t = 0; t < data.triangles.length / 3; t++)
+          for (let side = 0; side < 3; side++) {
+            nodes[t * 6 + side * 2] = data.triangles[t * 3 + side];
+            nodes[t * 6 + side * 2 + 1] = data.triangles[t * 3 + ((side + 1) % 3)];
+          }
+        const values = new Float32Array(nodes.length * 3);
+        for (let i = 0; i < nodes.length; i++)
+          for (let a = 0; a < 3; a++)
+            values[3 * i + a] =
+              data.positions[3 * nodes[i] + a] +
+              (data.displacement?.[3 * nodes[i] + a] ?? 0) * state.scale;
+        edges = new THREE.BufferGeometry().setAttribute(
+          'position',
+          new THREE.BufferAttribute(values, 3),
+        );
+        state.moving.push({
+          attribute: edges.getAttribute('position') as THREE.BufferAttribute,
+          nodes,
+        });
+      } else edges = new THREE.EdgesGeometry(geometry, 24);
       state.model.add(
         new THREE.LineSegments(
           edges,
@@ -497,6 +638,41 @@ export default function Viewport(props: Props) {
           }),
         ),
       );
+    }
+    if (data.boundaryEdges && data.edgeRegions) {
+      for (let edge = 0; edge < data.edgeRegions.length; edge++) {
+        const region = data.regionIds[data.edgeRegions[edge]];
+        const nodes = data.boundaryEdges.slice(edge * 2, edge * 2 + 2);
+        const values = new Float32Array(6);
+        for (let i = 0; i < 2; i++)
+          for (let a = 0; a < 3; a++)
+            values[3 * i + a] =
+              data.positions[3 * nodes[i] + a] +
+              (data.displacement?.[3 * nodes[i] + a] ?? 0) * state.scale;
+        const line = new THREE.BufferGeometry().setAttribute(
+          'position',
+          new THREE.BufferAttribute(values, 3),
+        );
+        state.moving.push({
+          attribute: line.getAttribute('position') as THREE.BufferAttribute,
+          nodes,
+        });
+        state.model.add(
+          new THREE.LineSegments(
+            line,
+            new THREE.LineBasicMaterial({
+              color: selectedRegions.has(region)
+                ? '#ffffff'
+                : supportedRegions.has(region)
+                  ? '#70d6b5'
+                  : loadedRegions.has(region)
+                    ? '#f5ac66'
+                    : '#8296a7',
+              depthTest: false,
+            }),
+          ),
+        );
+      }
     }
     if (state.scale > 0) {
       const ghost = new THREE.BufferGeometry();
@@ -509,7 +685,7 @@ export default function Viewport(props: Props) {
       );
       ghost.dispose();
     }
-    if (props.selected.length && props.field) {
+    if (props.selected.length && props.field && !data.boundaryEdges) {
       const selectedVertices: number[] = [];
       for (let i = 0; i < data.regions.length; i++)
         if (props.selected.includes(data.regionIds[data.regions[i]]))
@@ -538,12 +714,16 @@ export default function Viewport(props: Props) {
     for (const region of data.regionIds) {
       const index = data.regionIds.indexOf(region);
       const triangle = data.regions.findIndex((candidate) => candidate === index);
-      if (triangle < 0) continue;
-      const ids = [
-        data.triangles[triangle * 3],
-        data.triangles[triangle * 3 + 1],
-        data.triangles[triangle * 3 + 2],
-      ];
+      const boundary = data.edgeRegions?.findIndex((candidate) => candidate === index) ?? -1;
+      if (triangle < 0 && boundary < 0) continue;
+      const ids =
+        data.boundaryEdges && boundary >= 0
+          ? Array.from(data.boundaryEdges.slice(boundary * 2, boundary * 2 + 2))
+          : [
+              data.triangles[triangle * 3],
+              data.triangles[triangle * 3 + 1],
+              data.triangles[triangle * 3 + 2],
+            ];
       const points = ids.map(
         (node) =>
           new THREE.Vector3(
@@ -554,12 +734,10 @@ export default function Viewport(props: Props) {
       );
       const center = points
         .reduce((sum, value) => sum.add(value), new THREE.Vector3())
-        .multiplyScalar(1 / 3);
-      const normal = points[1]
-        .clone()
-        .sub(points[0])
-        .cross(points[2].clone().sub(points[0]))
-        .normalize();
+        .multiplyScalar(1 / points.length);
+      const normal = data.boundaryEdges
+        ? new THREE.Vector3(points[1].y - points[0].y, points[0].x - points[1].x, 0).normalize()
+        : points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])).normalize();
       if (props.project.study.constraints.some((item) => item.regions.includes(region))) {
         const marker = new THREE.Mesh(
           new THREE.BoxGeometry(length * 0.022, length * 0.022, length * 0.022),
@@ -603,15 +781,13 @@ export default function Viewport(props: Props) {
     );
     state.grid = grid;
     state.scene.add(grid);
-    if (lastProject.current !== props.project.id) {
+    if (lastProject.current !== `${props.project.id}-${props.project.study.dimension}`) {
       state.fit();
-      lastProject.current = props.project.id;
+      lastProject.current = `${props.project.id}-${props.project.study.dimension}`;
     }
     state.invalidate();
-    let verificationFrame = 0;
-    let verificationTimer = 0;
     let verificationDone = false;
-    if (props.onVerified && props.field && props.data?.manifest.operation === 'solve') {
+    if (props.onVerified && props.field && props.data && props.data.manifest.operation !== 'mesh') {
       const verify = () => {
         if (
           verificationDone ||
@@ -622,16 +798,22 @@ export default function Viewport(props: Props) {
         )
           return;
         verificationDone = true;
-        window.clearTimeout(verificationTimer);
-        if (verificationFrame) cancelAnimationFrame(verificationFrame);
         traceVerification('viewport verification render');
         try {
           state.renderer.render(state.scene, state.camera);
           surface.updateMatrixWorld(true);
           const center = bounds.getCenter(new THREE.Vector3());
+          const plane = props.project.study.dimension === '2d';
+          const target = plane
+            ? new THREE.Vector3(bounds.max.x - length * 1e-6, center.y, 0)
+            : center;
           const ray = new THREE.Raycaster(
-            center.clone().add(new THREE.Vector3(length * 3, 0, 0)),
-            new THREE.Vector3(-1, 0, 0),
+            target
+              .clone()
+              .add(
+                plane ? new THREE.Vector3(0, 0, length * 3) : new THREE.Vector3(length * 3, 0, 0),
+              ),
+            plane ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(-1, 0, 0),
           );
           const hit = ray.intersectObject(surface)[0];
           const triangle = hit?.faceIndex ?? -1;
@@ -654,7 +836,10 @@ export default function Viewport(props: Props) {
             renderedTriangles: data.triangles.length / 3,
             field: props.field!.label,
             association: props.field!.association,
-            pickedRegion: triangle >= 0 ? data.regionIds[data.regions[triangle]] : null,
+            pickedRegion:
+              triangle >= 0 && hit
+                ? pickedRegion(data, triangle, hit.point, state.scale, length)
+                : null,
             probedIndex: index,
             probedValue: index >= 0 ? props.field!.values[index] : null,
             fieldMinimum: props.field!.minimum,
@@ -670,21 +855,13 @@ export default function Viewport(props: Props) {
           );
         }
       };
-      traceVerification('viewport verification scheduled');
-      verificationFrame = requestAnimationFrame(() => {
-        verificationFrame = requestAnimationFrame(verify);
-      });
-      // Native hidden windows can suppress animation frames. This fallback still
-      // performs the same actual render, capture, and pick after bounded setup time.
-      verificationTimer = window.setTimeout(() => {
-        traceVerification('viewport verification timer fallback');
-        verify();
-      }, 1000);
+      // Scene setup is complete. Verify its actual render synchronously because
+      // native background/locked windows can suspend both timers and rAF.
+      traceVerification('viewport verification ready');
+      verify();
     }
     return () => {
       verificationDone = true;
-      if (verificationFrame) cancelAnimationFrame(verificationFrame);
-      window.clearTimeout(verificationTimer);
     };
   }, [
     props.project,
@@ -694,6 +871,8 @@ export default function Viewport(props: Props) {
     props.edges,
     props.deformation,
     props.customScale,
+    props.source,
+    props.animate,
     !!props.onVerified,
   ]);
 
@@ -702,7 +881,11 @@ export default function Viewport(props: Props) {
       <div
         ref={container}
         className="viewport-canvas"
-        aria-label="Interactive 3D model. Drag to orbit, scroll to zoom, click boundaries to select."
+        aria-label={
+          props.project.study.dimension === '2d'
+            ? 'Interactive plane stress model. Drag to pan, scroll to zoom, click edges to select.'
+            : 'Interactive 3D model. Drag to orbit, scroll to zoom, click boundaries to select.'
+        }
       />
       {error && <div className="viewport-error">{error}</div>}
       <div className="viewport-actions">
@@ -720,26 +903,35 @@ export default function Viewport(props: Props) {
       <div className="viewport-caption">
         <ScanLine size={13} />
         <span>
-          {props.data ? 'Volume mesh · surface view' : 'Geometry preview'}
+          {props.data
+            ? props.project.study.dimension === '2d'
+              ? 'Plane stress · triangle mesh'
+              : 'Volume mesh · surface view'
+            : 'Geometry preview'}
           {props.field
             ? ` · ${props.field.association === 'cell' ? 'Element values, flat contours' : 'Nodal values'}`
             : ''}
         </span>
       </div>
-      {props.data?.manifest.operation === 'solve' && (
+      {props.data && props.data.manifest.operation !== 'mesh' && (
         <div className="deformation-badge">
-          Deformation × {formatValue(scale)}
+          {props.animate ? 'Peak deformation' : 'Deformation'} × {formatValue(scale)}
           {scale === 0 ? ' · undeformed' : scale === 1 ? ' · actual scale' : ' · amplified'}
+          {props.animate ? ' · static deformation cycle' : ''}
         </div>
       )}
       <div className="axis-key">
         <span className="axis-x">X</span>
         <span className="axis-y">Y</span>
-        <span className="axis-z">Z</span>
+        {props.project.study.dimension !== '2d' && <span className="axis-z">Z</span>}
         <small>Global axes</small>
       </div>
       <div className="viewport-help">
-        Drag to orbit <i /> Scroll to zoom <i /> Click faces to toggle selection
+        {props.project.study.dimension === '2d' ? 'Drag to pan' : 'Drag to orbit'} <i /> Scroll to
+        zoom <i />{' '}
+        {props.project.study.dimension === '2d'
+          ? 'Click edges to select · interior to probe'
+          : 'Click faces to toggle selection'}
       </div>
     </div>
   );

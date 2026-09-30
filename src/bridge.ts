@@ -1,9 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Project, Manifest, Progress } from './types';
+import type { Project, Manifest, Progress, Operation, TrainingMetric, Devices } from './types';
 
-export function runJob(operation: 'mesh' | 'solve', project: Project): Promise<Manifest> {
+export function runJob(operation: Operation, project: Project): Promise<Manifest> {
   return invoke('run_job', { operation, project });
+}
+export function getDevices(project: Project): Promise<Devices> {
+  return invoke('get_devices', { project });
+}
+export function subscribeMetrics(callback: (value: TrainingMetric) => void): Promise<() => void> {
+  return listen<TrainingMetric>('engine-metrics', (event) => callback(event.payload));
 }
 export async function readBuffer(jobId: string): Promise<ArrayBuffer> {
   const value = await invoke<ArrayBuffer | number[]>('read_buffer', { jobId });
@@ -17,10 +23,14 @@ export async function openProject(): Promise<{
   path: string;
   manifest?: Manifest;
   buffer?: ArrayBuffer;
+  notice?: string;
 } | null> {
-  const opened = await invoke<{ project: Project; path: string; manifest?: Manifest } | null>(
-    'open_project',
-  );
+  const opened = await invoke<{
+    project: Project;
+    path: string;
+    manifest?: Manifest;
+    notice?: string;
+  } | null>('open_project');
   if (!opened) return null;
   return {
     ...opened,

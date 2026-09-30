@@ -29,7 +29,10 @@ import {
   Square,
   Trash2,
   TriangleAlert,
-  Waves,
+  Cpu,
+  BrainCircuit,
+  GitCompareArrows,
+  Pause,
   X,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -42,8 +45,18 @@ import {
   runJob,
   saveProject,
   subscribeProgress,
+  subscribeMetrics,
+  getDevices,
 } from './bridge';
-import type { Constraint, Load, Progress, Project } from './types';
+import type {
+  Constraint,
+  Devices,
+  Load,
+  Operation,
+  Progress,
+  Project,
+  TrainingMetric,
+} from './types';
 import {
   displayValue,
   extractField,
@@ -54,15 +67,27 @@ import {
   type FieldId,
   type RegionId,
   type ResultData,
+  type FieldSource,
 } from './fields';
 import Viewport, { type Probe } from './Viewport';
 import { parseNumericDraft } from './numericDraft';
+import {
+  appendTrainingMetric,
+  changeStudyDimension,
+  changeStudySolver,
+  primaryOperation,
+  resultIsCurrent,
+  type RunExecution,
+} from './studyUI';
+import RunWorkspace, { type RunStatus, type RunTab } from './RunWorkspace';
+import phyraLogo from '../assets/phyra.svg';
 
 const NumericDraftContext = createContext<(id: string, invalidLabel: string | null) => void>(
   () => {},
 );
 
-type Section = 'geometry' | 'material' | 'mesh' | 'constraints' | 'loads' | 'results';
+type Section =
+  'study' | 'solver' | 'geometry' | 'material' | 'mesh' | 'constraints' | 'loads' | 'results';
 const uid = () => crypto.randomUUID();
 function assignedRegions(values: RegionId[], fallback: RegionId): Constraint['regions'] {
   return values.length ? [values[0], ...values.slice(1)] : [fallback];
@@ -70,11 +95,13 @@ function assignedRegions(values: RegionId[], fallback: RegionId): Constraint['re
 function inputError(project: Project): string | null {
   const g = project.geometry;
   const dimensions =
-    g.kind === 'cylinder'
-      ? [g.length, g.radius]
-      : g.kind === 'bracket'
-        ? [g.length, g.width, g.height, g.thickness]
-        : [g.length, g.width, g.height];
+    project.study.dimension === '2d'
+      ? [g.length, g.width, project.study.thickness]
+      : g.kind === 'cylinder'
+        ? [g.length, g.radius]
+        : g.kind === 'bracket'
+          ? [g.length, g.width, g.height, g.thickness]
+          : [g.length, g.width, g.height];
   if (dimensions.some((value) => !Number.isFinite(value) || value <= 0 || value > 1000))
     return 'Geometry dimensions must be finite, positive, and at most 1,000 m.';
   if (g.kind === 'bracket' && g.thickness >= Math.min(g.length, g.width))
@@ -85,6 +112,34 @@ function inputError(project: Project): string | null {
     return 'Poisson’s ratio must be greater than −1 and at most 0.45 for this formulation.';
   if (!(project.study.mesh.size > 0) || project.study.mesh.size > 1000)
     return 'Mesh size must be positive and at most 1,000 m.';
+  if (project.study.solver.kind === 'pinn' && project.study.dimension !== '2d')
+    return 'PINN is supported for 2D plane stress only.';
+  const settings = project.study.solver.pinn;
+  if (
+    ![
+      settings.layers,
+      settings.width,
+      settings.steps,
+      settings.interiorPoints,
+      settings.boundaryPoints,
+      settings.seed,
+    ].every(Number.isInteger) ||
+    settings.layers < 1 ||
+    settings.layers > 6 ||
+    settings.width < 4 ||
+    settings.width > 128 ||
+    settings.steps < 1 ||
+    settings.steps > 20000 ||
+    settings.interiorPoints < 8 ||
+    settings.interiorPoints > 4096 ||
+    settings.boundaryPoints < 4 ||
+    settings.boundaryPoints > 1024 ||
+    settings.seed < 0 ||
+    settings.seed > 2147483647
+  )
+    return 'PINN architecture, sample counts, training steps, and seed must be supported integers.';
+  if (!(settings.learningRate >= 1e-6 && settings.learningRate <= 0.05))
+    return 'Learning rate must be between 0.000001 and 0.05.';
   if (
     project.study.constraints.some(
       (item) => !item.regions.length || item.components.every((component) => component === null),
@@ -203,6 +258,8 @@ function Metric({ label, value, unit }: { label: string; value: number; unit?: s
   );
 }
 const sectionTitles: Record<Section, string> = {
+  study: 'Study',
+  solver: 'Solver',
   geometry: 'Geometry',
   material: 'Material',
   mesh: 'Mesh',
@@ -212,7 +269,7 @@ const sectionTitles: Record<Section, string> = {
 };
 
 export default function App() {
-  const [project, setProject] = useState<Project>(() => makeProject('cantilever'));
+  const [project, setProject] = useState<Project>(() => makeProject('plane-stress-tension'));
   const projectRef = useRef(project);
   projectRef.current = project;
   const [dirty, setDirty] = useState(false);
@@ -233,7 +290,7 @@ export default function App() {
   }, []);
   const [path, setPath] = useState<string | null>(null);
   const [data, setData] = useState<ResultData | null>(null);
-  const [section, setSection] = useState<Section>('geometry');
+  const [section, setSection] = useState<Section>('study');
   const [selected, setSelected] = useState<RegionId[]>([]);
   const [constraintId, setConstraintId] = useState<string | null>(null);
   const [loadId, setLoadId] = useState<string | null>(null);
@@ -241,8 +298,10 @@ export default function App() {
   const [edges, setEdges] = useState(true);
   const [deformation, setDeformation] = useState<'off' | 'actual' | 'auto' | 'custom'>('auto');
   const [customScale, setCustomScale] = useState(10);
+  const [animate, setAnimate] = useState(false);
+  const [fieldSource, setFieldSource] = useState<FieldSource>('primary');
   const [probe, setProbe] = useState<Probe | null>(null);
-  const [busy, setBusy] = useState<'mesh' | 'solve' | null>(null);
+  const [busy, setBusy] = useState<Operation | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
   const [fileBusy, setFileBusy] = useState<'open' | 'save' | 'export' | null>(null);
@@ -250,6 +309,18 @@ export default function App() {
   fileBusyRef.current = fileBusy;
   const [progress, setProgress] = useState<Progress | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [devices, setDevices] = useState<Devices | null>(null);
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const deviceBusyRef = useRef(false);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<TrainingMetric[]>([]);
+  const liveMetrics = useRef<TrainingMetric[]>([]);
+  const [runStatus, setRunStatus] = useState<RunStatus>('idle');
+  const [runExecution, setRunExecution] = useState<RunExecution | null>(null);
+  const [runElapsed, setRunElapsed] = useState(0);
+  const runStarted = useRef<number | null>(null);
+  const [runTab, setRunTab] = useState<RunTab>('run');
+  const [runExpanded, setRunExpanded] = useState(false);
   const active = useRef<{ token: number; cancelled: boolean; jobId?: string } | null>(null);
   const serial = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -257,28 +328,45 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(false);
   const confirmationRef = useRef(false);
   const confirmResolver = useRef<((choice: 'save' | 'discard' | 'cancel') => void) | null>(null);
-  const [leftWidth, setLeftWidth] = useState(224);
-  const [rightWidth, setRightWidth] = useState(304);
+  const [leftWidth, setLeftWidth] = useState(236);
+  const [rightWidth, setRightWidth] = useState(328);
   const [help, setHelp] = useState(false);
   const [verification, setVerification] = useState(false);
   const verificationStarted = useRef(false);
   const verificationSent = useRef(false);
+  const [verificationConfiguration, setVerificationConfiguration] = useState<
+    '3d' | '2d-compare' | null
+  >(null);
+  const verificationReports = useRef<Record<string, Record<string, unknown>>>({});
   const verificationDisplacement = useRef<Record<string, unknown> | null>(null);
   const desktop = '__TAURI_INTERNALS__' in window;
-  const locked = !!busy || !!fileBusy;
-  const currentData =
-    data &&
-    data.manifest.projectId === project.id &&
-    data.manifest.studyId === project.study.id &&
-    data.manifest.revision === project.revision
-      ? data
-      : null;
-  const solved = currentData?.manifest.operation === 'solve';
-  const field = useMemo(() => extractField(currentData, fieldId), [currentData, fieldId]);
+  const locked = !!busy || !!fileBusy || deviceBusy;
+  const currentData = resultIsCurrent(project, data) ? data : null;
+  const solved = !!currentData && currentData.manifest.operation !== 'mesh';
+  const is2D = project.study.dimension === '2d';
+  const isPinn = project.study.solver.kind === 'pinn';
+  const field = useMemo(
+    () => extractField(currentData, fieldId, fieldSource),
+    [currentData, fieldId, fieldSource],
+  );
+  const availableFields = fieldOptions.filter(
+    (option) =>
+      (!is2D ||
+        !['displacement-z', 'stress-zz', 'stress-yz', 'stress-xz', 'reactions-z'].includes(
+          option.id,
+        )) &&
+      (!option.id.startsWith('reactions') ||
+        (currentData?.manifest.arrays.reactions &&
+          fieldSource !== 'pinn' &&
+          fieldSource !== 'difference' &&
+          fieldSource !== 'relative')),
+  );
   const validation = invalidDraftLabels.length
     ? `${invalidDraftLabels[0]} has an incomplete or nonfinite numeric draft. Complete it, or press Escape to revert before continuing.`
     : inputError(project);
-  const regions = regionNames(project.geometry.kind);
+  const regions = regionNames(project.geometry.kind).filter(
+    (region) => !is2D || ['x0', 'x1', 'y0', 'y1'].includes(region.id),
+  );
   const factor = lengthFactor(project.displayUnits);
   const constraint = project.study.constraints.find((item) => item.id === constraintId);
   const load = project.study.loads.find((item) => item.id === loadId);
@@ -349,8 +437,16 @@ export default function App() {
     setSelected([]);
     setConstraintId(null);
     setLoadId(null);
-    setSection('geometry');
-    setFieldId(result?.manifest.operation === 'solve' ? 'displacement-mag' : 'geometry');
+    setSection('study');
+    setAnimate(false);
+    setFieldSource('primary');
+    setMetrics([]);
+    liveMetrics.current = [];
+    setRunStatus('idle');
+    setRunExecution(null);
+    setRunElapsed(0);
+    setRunTab('run');
+    setFieldId(result && result.manifest.operation !== 'mesh' ? 'displacement-mag' : 'geometry');
     setProbe(null);
     setProgress(null);
     setError(null);
@@ -377,7 +473,7 @@ export default function App() {
           : null,
       );
       setPath(opened.path ?? null);
-      setNotice('Project opened');
+      setNotice(opened.notice ?? 'Project opened');
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -399,13 +495,14 @@ export default function App() {
       setFileBusy(null);
     }
   };
-  const execute = async (operation: 'mesh' | 'solve') => {
+  const execute = async (operation: Operation) => {
     if (
       busyRef.current ||
       fileBusyRef.current ||
       confirmationRef.current ||
       invalidDraftsRef.current.size ||
-      validation
+      validation ||
+      deviceBusyRef.current
     )
       return;
     const snapshot = structuredClone(project);
@@ -415,6 +512,7 @@ export default function App() {
       jobId: undefined as string | undefined,
     };
     active.current = job;
+    setRunExecution({ project: snapshot, operation });
     setBusy(operation);
     busyRef.current = operation;
     setCancelling(false);
@@ -422,11 +520,24 @@ export default function App() {
     setError(null);
     setNotice(null);
     setProbe(null);
+    setAnimate(false);
+    setFieldSource(operation === 'compare' ? 'fem' : 'primary');
+    setMetrics([]);
+    liveMetrics.current = [];
+    setRunStatus('preparing');
+    runStarted.current = performance.now();
+    setRunElapsed(0);
+    if (operation === 'train' || operation === 'compare') {
+      setRunExpanded(true);
+      setRunTab('training');
+    }
     try {
       const manifest = await runJob(operation, snapshot);
       if (verification)
         void invoke('verification_trace', { message: 'frontend manifest received' });
       if (job.cancelled || active.current?.token !== job.token) return;
+      job.jobId = manifest.jobId;
+      setRunExecution((previous) => (previous ? { ...previous, jobId: manifest.jobId } : previous));
       const buffer = await readBuffer(manifest.jobId);
       if (verification)
         void invoke('verification_trace', {
@@ -443,23 +554,41 @@ export default function App() {
       )
         return;
       setData({ manifest, buffer });
+      setRunExecution({ project: snapshot, operation, jobId: manifest.jobId, manifest });
       if (verification) void invoke('verification_trace', { message: 'frontend result set' });
-      setFieldId(operation === 'solve' ? 'displacement-mag' : 'geometry');
-      if (operation === 'solve') setSection('results');
+      setFieldId(operation === 'mesh' ? 'geometry' : 'displacement-mag');
+      if (operation !== 'mesh') setSection('results');
+      setRunStatus('completed');
+      if (manifest.training) setMetrics(manifest.training.history);
+      if (operation === 'compare') setRunTab('comparison');
       setDirty(true);
-      setNotice(operation === 'solve' ? 'Analysis complete' : 'Volume mesh generated');
+      setNotice(
+        operation === 'train'
+          ? 'PINN training complete'
+          : operation === 'compare'
+            ? 'FEM + PINN comparison complete'
+            : operation === 'solve'
+              ? 'Analysis complete'
+              : 'Mesh generated',
+      );
     } catch (cause) {
       if (!job.cancelled) {
+        setRunStatus('failed');
         setError(String(cause));
         if (verification)
           void invoke('verification_complete', { report: { error: String(cause) } });
-      } else setNotice('Job cancelled; worker stopped');
+      } else {
+        setRunStatus('cancelled');
+        setNotice('Job cancelled; worker stopped');
+      }
     } finally {
       if (active.current?.token === job.token) {
         active.current = null;
         setBusy(null);
         busyRef.current = null;
         setCancelling(false);
+        if (runStarted.current !== null)
+          setRunElapsed((performance.now() - runStarted.current) / 1000);
       }
     }
   };
@@ -469,6 +598,7 @@ export default function App() {
     setCancelling(true);
     try {
       await cancelJob();
+      setRunStatus('cancelled');
       setNotice('Cancellation acknowledged; worker stopped');
     } catch (cause) {
       setError(`Cancellation failed: ${String(cause)}`);
@@ -478,21 +608,72 @@ export default function App() {
   useEffect(() => {
     if (!desktop || verificationStarted.current) return;
     verificationStarted.current = true;
-    void invoke<boolean>('verification_mode')
-      .then((enabled) => {
-        if (enabled) {
+    void invoke<'3d' | '2d-compare' | null>('verification_configuration')
+      .then((configuration) => {
+        if (configuration) {
+          const next = makeProject(
+            configuration === '2d-compare' ? 'plane-stress-tension' : 'cantilever',
+          );
+          if (configuration === '2d-compare') {
+            next.study.solver.kind = 'pinn';
+            next.study.solver.pinn.layers = 2;
+            next.study.solver.pinn.width = 16;
+            next.study.solver.pinn.steps = 2000;
+            next.study.solver.pinn.interiorPoints = 128;
+            next.study.solver.pinn.boundaryPoints = 32;
+            next.study.solver.pinn.device = 'cpu';
+          }
+          replace(next);
           setDeformation('actual');
+          setVerificationConfiguration(configuration);
           setVerification(true);
         }
       })
       .catch((cause) => setError(String(cause)));
   }, [desktop]);
   useEffect(() => {
-    if (verification && !active.current) void execute('solve');
+    if (verification && !active.current)
+      void execute(verificationConfiguration === '2d-compare' ? 'compare' : 'solve');
   }, [verification]);
   const verified = (report: Record<string, unknown>) => {
     if (!verification || verificationSent.current || !currentData) return;
     void invoke('verification_trace', { message: `frontend rendered ${fieldId}` });
+    if (verificationConfiguration === '2d-compare') {
+      const reports = verificationReports.current;
+      if (fieldSource === 'fem' && fieldId === 'displacement-mag') {
+        reports.renderer = report;
+        setFieldId('vonMises');
+        return;
+      }
+      if (fieldSource === 'fem' && fieldId === 'vonMises') {
+        reports.stressRenderer = { ...report, viewportPng: null };
+        setFieldSource('pinn');
+        setFieldId('displacement-mag');
+        return;
+      }
+      if (fieldSource === 'pinn') {
+        reports.pinnRenderer = { ...report, viewportPng: null };
+        setFieldSource('difference');
+        return;
+      }
+      if (fieldSource === 'difference') {
+        reports.differenceRenderer = { ...report, viewportPng: null };
+        verificationSent.current = true;
+        void invoke('verification_complete', {
+          report: {
+            project,
+            manifest: currentData.manifest,
+            ...reports,
+            metrics: {
+              count: liveMetrics.current.length,
+              first: liveMetrics.current[0],
+              last: liveMetrics.current.at(-1),
+            },
+          },
+        }).catch((cause) => setError(String(cause)));
+      }
+      return;
+    }
     if (!verificationDisplacement.current) {
       verificationDisplacement.current = report;
       setFieldId('vonMises');
@@ -517,7 +698,9 @@ export default function App() {
       const job = active.current;
       if (!job || job.cancelled || (job.jobId && job.jobId !== event.jobId)) return;
       job.jobId = event.jobId;
+      setRunExecution((previous) => (previous ? { ...previous, jobId: event.jobId } : previous));
       setProgress(event);
+      setRunStatus('running');
     })
       .then((unsubscribe) => {
         if (dead) unsubscribe();
@@ -529,6 +712,54 @@ export default function App() {
       dispose?.();
     };
   }, [desktop]);
+  useEffect(() => {
+    if (!desktop) return;
+    let dead = false;
+    let dispose: (() => void) | undefined;
+    subscribeMetrics((sample) => {
+      const job = active.current;
+      if (!job || job.cancelled || (job.jobId && sample.jobId !== job.jobId)) return;
+      job.jobId = sample.jobId;
+      setRunExecution((previous) => (previous ? { ...previous, jobId: sample.jobId } : previous));
+      setRunStatus('running');
+      liveMetrics.current = appendTrainingMetric(liveMetrics.current, sample, job.jobId);
+      setMetrics((history) => appendTrainingMetric(history, sample, job.jobId));
+    })
+      .then((unsubscribe) => {
+        if (dead) unsubscribe();
+        else dispose = unsubscribe;
+      })
+      .catch((cause) => setError(`Training metric connection failed: ${String(cause)}`));
+    return () => {
+      dead = true;
+      dispose?.();
+    };
+  }, [desktop]);
+  useEffect(() => {
+    if (!busy) return;
+    const interval = window.setInterval(() => {
+      if (runStarted.current !== null)
+        setRunElapsed((performance.now() - runStarted.current) / 1000);
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, [busy]);
+  const refreshDevices = async () => {
+    if (!desktop || busyRef.current || fileBusyRef.current || deviceBusyRef.current) return;
+    deviceBusyRef.current = true;
+    setDeviceBusy(true);
+    try {
+      setDeviceError(null);
+      setDevices(await getDevices(structuredClone(projectRef.current)));
+    } catch (cause) {
+      setDeviceError(String(cause));
+    } finally {
+      deviceBusyRef.current = false;
+      setDeviceBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (section === 'solver' && !devices && !verification && !deviceError) void refreshDevices();
+  }, [section, devices, desktop, verification, deviceError]);
   useEffect(() => {
     if (!notice) return;
     const timeout = window.setTimeout(() => setNotice(null), 5000);
@@ -682,7 +913,7 @@ export default function App() {
         id,
         name: `Support ${next.study.constraints.length + 1}`,
         regions: assignedRegions(selected, 'x0'),
-        components: [0, 0, 0],
+        components: is2D ? [0, 0, null] : [0, 0, 0],
       }),
     );
     setConstraintId(id);
@@ -700,7 +931,7 @@ export default function App() {
         name: `Load ${next.study.loads.length + 1}`,
         regions: assignedRegions(selected, 'x1'),
         kind: 'force',
-        vector: [0, 0, -100],
+        vector: is2D ? [0, -100, 0] : [0, 0, -100],
         pressure: 0,
       }),
     );
@@ -748,6 +979,23 @@ export default function App() {
     </>
   );
   const stat = currentData?.manifest.statistics;
+  const chooseDimension = (dimension: Project['study']['dimension']) => {
+    if (invalidDraftsRef.current.size) {
+      setError('Complete or revert the numeric input before changing dimension.');
+      return;
+    }
+    edit((next) => changeStudyDimension(next, dimension));
+    setSelected([]);
+    setConstraintId(null);
+    setLoadId(null);
+    setAnimate(false);
+  };
+  const chooseSource = (source: FieldSource) => {
+    setFieldSource(source);
+    setProbe(null);
+    if (source !== 'fem' && source !== 'primary' && fieldId.startsWith('reactions'))
+      setFieldId('displacement-mag');
+  };
 
   return (
     <NumericDraftContext.Provider value={reportDraftValidity}>
@@ -755,10 +1003,10 @@ export default function App() {
         <header className="app-header">
           <div className="brand">
             <div className="brand-symbol">
-              <Waves size={23} strokeWidth={2.4} />
+              <img src={phyraLogo} alt="Phyra" />
             </div>
             <strong>
-              phyra<span>WORKBENCH</span>
+              Phyra<span>ENGINEERING · PHYSICS ML</span>
             </strong>
           </div>
           <div className="file-actions">
@@ -800,9 +1048,12 @@ export default function App() {
             <span>{path ? path.split(/[\\/]/).pop() : 'Local project'}</span>
           </div>
           <div className="header-end">
-            <span className="local-tag">
-              <span />
-              LOCAL CPU
+            <span className="device-badge">
+              <Cpu size={14} />
+              {currentData?.manifest.training?.device ??
+                (isPinn
+                  ? `Device · ${project.study.solver.pinn.device === 'auto' ? 'CPU · float64 (Auto)' : project.study.solver.pinn.device.toUpperCase()}`
+                  : 'FEM · CPU')}
             </span>
             <button aria-label="Workflow help" title="Workflow help" onClick={() => setHelp(true)}>
               <CircleHelp size={18} />
@@ -820,7 +1071,8 @@ export default function App() {
                 onChange={(event) => void create(event.target.value as ExampleId)}
               >
                 <option value="">Examples</option>
-                <option value="cantilever">Cantilever beam</option>
+                <option value="plane-stress-tension">2D plane-stress tension</option>
+                <option value="cantilever">3D cantilever beam</option>
                 <option value="cylinder">Axial cylinder</option>
                 <option value="bracket">L bracket</option>
                 <option value="extension">Prescribed extension</option>
@@ -829,11 +1081,21 @@ export default function App() {
             <div className="study-title">
               <Activity size={17} />
               <div>
-                <strong>Linear static</strong>
-                <small>3D · isotropic elasticity</small>
+                <strong>Static structural</strong>
+                <small>{is2D ? '2D · Plane stress' : '3D · Solid mechanics'}</small>
               </div>
             </div>
             <nav className="model-tree">
+              <button
+                className={`tree-row ${section === 'study' ? 'active' : ''}`}
+                onClick={() => selectSection('study')}
+              >
+                <Activity size={16} />
+                <span>
+                  Study<small>{is2D ? '2D · Plane stress' : '3D · Solid mechanics'}</small>
+                </span>
+                <ChevronRight size={13} />
+              </button>
               <button
                 className={`tree-row ${section === 'geometry' ? 'active' : ''}`}
                 onClick={() => selectSection('geometry')}
@@ -842,11 +1104,13 @@ export default function App() {
                 <span>
                   Geometry
                   <small>
-                    {project.geometry.kind === 'box'
-                      ? 'Rectangular solid'
-                      : project.geometry.kind === 'cylinder'
-                        ? 'Cylinder'
-                        : 'L bracket'}
+                    {is2D
+                      ? 'Rectangular domain'
+                      : project.geometry.kind === 'box'
+                        ? 'Rectangular solid'
+                        : project.geometry.kind === 'cylinder'
+                          ? 'Cylinder'
+                          : 'L bracket'}
                   </small>
                 </span>
                 <ChevronRight size={13} />
@@ -867,9 +1131,11 @@ export default function App() {
               >
                 <Magnet size={16} />
                 <span>
-                  Volume mesh
+                  {isPinn ? 'Mesh & sampling' : is2D ? 'Area mesh' : 'Volume mesh'}
                   <small>
-                    {stat ? `${stat.cells.toLocaleString()} tetrahedra` : 'Not generated'}
+                    {stat
+                      ? `${stat.cells.toLocaleString()} ${is2D ? 'triangles' : 'tetrahedra'}`
+                      : 'Not generated'}
                   </small>
                 </span>
                 {stat && <span className="tree-dot" />}
@@ -920,6 +1186,16 @@ export default function App() {
               ))}
               <div className="tree-divider" />
               <button
+                className={`tree-row ${section === 'solver' ? 'active' : ''}`}
+                onClick={() => selectSection('solver')}
+              >
+                <BrainCircuit size={16} />
+                <span>
+                  Solver<small>{isPinn ? 'PINN · experimental' : 'Finite element method'}</small>
+                </span>
+                <ChevronRight size={13} />
+              </button>
+              <button
                 className={`tree-row ${section === 'results' ? 'active' : ''}`}
                 onClick={() => selectSection('results')}
               >
@@ -929,7 +1205,7 @@ export default function App() {
                   <small>
                     {solved
                       ? 'Current solution'
-                      : data?.manifest.operation === 'solve'
+                      : data && data.manifest.operation !== 'mesh'
                         ? 'Stale · inputs changed'
                         : 'No solution yet'}
                   </small>
@@ -938,7 +1214,7 @@ export default function App() {
               </button>
             </nav>
             <div className="model-footer">
-              <span className="scope-label">SUPPORTED SCOPE</span>
+              <span className="scope-label">SOLID MECHANICS</span>
               <p>
                 Small strain · linear elasticity
                 <br />
@@ -955,8 +1231,21 @@ export default function App() {
           <main className="work-area">
             <div className="work-heading">
               <div>
-                <span className="eyebrow">STRUCTURAL ANALYSIS</span>
-                <h1>{section === 'results' ? 'Inspect the solution' : 'Build your analysis'}</h1>
+                <span className="eyebrow">
+                  STATIC STRUCTURAL · {is2D ? '2D PLANE STRESS' : '3D SOLID'}
+                </span>
+                <h1>
+                  {section === 'results'
+                    ? 'Explore the physical fields'
+                    : isPinn
+                      ? 'Physics-informed simulation'
+                      : 'Classical structural simulation'}
+                </h1>
+                <p className="work-subtitle">
+                  {isPinn
+                    ? 'PINN · train from physics and boundary conditions'
+                    : 'FEM · solve the discretized equilibrium equations'}
+                </p>
               </div>
               <div className="run-actions">
                 <button
@@ -967,6 +1256,16 @@ export default function App() {
                   <Magnet size={15} />
                   Mesh
                 </button>
+                {is2D && !busy && (
+                  <button
+                    className="secondary"
+                    disabled={locked || !!validation || !desktop}
+                    onClick={() => void execute('compare')}
+                  >
+                    <GitCompareArrows size={15} />
+                    Compare
+                  </button>
+                )}
                 {busy ? (
                   <button
                     className="cancel-button"
@@ -980,10 +1279,10 @@ export default function App() {
                   <button
                     className="primary"
                     disabled={locked || !!validation || !desktop}
-                    onClick={() => void execute('solve')}
+                    onClick={() => void execute(primaryOperation(project))}
                   >
                     <Play size={14} fill="currentColor" />
-                    Solve
+                    {isPinn ? 'Train PINN' : 'Run FEM'}
                   </button>
                 )}
               </div>
@@ -1020,7 +1319,7 @@ export default function App() {
                 <span className={solved ? 'indicator solved' : 'indicator'} />
                 {solved ? 'Solution' : currentData ? 'Mesh' : 'Geometry'}
                 <span className="toolbar-divider" />
-                {project.geometry.kind.toUpperCase()}
+                {is2D ? 'RECTANGLE' : project.geometry.kind.toUpperCase()}
               </div>
               <label className="edge-toggle">
                 <input
@@ -1039,13 +1338,34 @@ export default function App() {
                   setProbe(null);
                 }}
               >
-                {fieldOptions.map((option) => (
+                {availableFields.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
                 ))}
               </select>
             </div>
+            {currentData?.manifest.operation === 'compare' && (
+              <div className="comparison-source">
+                {(
+                  [
+                    { id: 'fem', label: 'FEM' },
+                    { id: 'pinn', label: 'PINN' },
+                    { id: 'difference', label: 'Absolute Δ' },
+                    { id: 'relative', label: 'Relative Δ' },
+                  ] as const
+                ).map((source) => (
+                  <button
+                    key={source.id}
+                    className={fieldSource === source.id ? 'active' : ''}
+                    onClick={() => chooseSource(source.id)}
+                  >
+                    {source.label}
+                  </button>
+                ))}
+                <span>Matched nodes and cell centroids</span>
+              </div>
+            )}
             <div className="viewport-wrap">
               <Viewport
                 project={project}
@@ -1056,6 +1376,8 @@ export default function App() {
                 onProbe={setProbe}
                 onVerified={verification ? verified : undefined}
                 edges={edges}
+                source={fieldSource}
+                animate={animate}
                 deformation={deformation}
                 customScale={customScale}
               />
@@ -1063,9 +1385,8 @@ export default function App() {
                 <div className="contour-legend">
                   <strong>{field.label}</strong>
                   <span>
-                    {field.association === 'cell'
-                      ? 'Element values · full volume'
-                      : 'Nodal values · full volume'}
+                    {field.association === 'cell' ? 'Element values' : 'Nodal values'} ·{' '}
+                    {is2D ? 'full domain' : 'full volume'}
                   </span>
                   <div className="legend-gradient" />
                   <div className="legend-labels">
@@ -1132,7 +1453,7 @@ export default function App() {
                   </span>
                 </>
               ) : (
-                <span>Geometry ready · generate a volume mesh to inspect discretization</span>
+                <span>Geometry ready · generate a mesh to inspect discretization</span>
               )}
               <span className="status-right">
                 {fileBusy ? (
@@ -1165,6 +1486,22 @@ export default function App() {
                 )}
               </span>
             </div>
+            <RunWorkspace
+              project={project}
+              manifest={currentData?.manifest}
+              history={metrics}
+              status={runStatus}
+              execution={runExecution}
+              elapsed={runElapsed}
+              stage={busy ? progress?.stage : undefined}
+              tab={runTab}
+              onTab={(tab) => {
+                setRunTab(tab);
+                setRunExpanded(true);
+              }}
+              expanded={runExpanded}
+              onToggle={() => setRunExpanded((value) => !value)}
+            />
           </main>
           <div
             className="panel-splitter"
@@ -1179,9 +1516,9 @@ export default function App() {
             </div>
             <div className="properties-scroll">
               <fieldset disabled={locked} key={`${project.id}:${project.displayUnits}`}>
-                {section === 'geometry' && (
+                {section === 'study' && (
                   <>
-                    <Group title="Solid definition">
+                    <Group title="Static structural study">
                       <label className="field-label">
                         <span>Project name</span>
                         <input
@@ -1195,7 +1532,247 @@ export default function App() {
                         />
                       </label>
                       <label className="field-label">
-                        <span>Primitive</span>
+                        <span>Dimension</span>
+                      </label>
+                      <div className="segmented">
+                        <button
+                          className={is2D ? 'active' : ''}
+                          onClick={() => chooseDimension('2d')}
+                        >
+                          2D
+                        </button>
+                        <button
+                          className={!is2D ? 'active' : ''}
+                          onClick={() => chooseDimension('3d')}
+                        >
+                          3D
+                        </button>
+                      </div>
+                      <div className="info-card">
+                        <Activity size={18} />
+                        <div>
+                          <strong>{is2D ? 'Plane stress' : '3D solid elasticity'}</strong>
+                          <p>
+                            {is2D
+                              ? 'In-plane X/Y deformation with σzz = 0. Thickness defines the physical cross-section of the 2D domain.'
+                              : 'Three displacement components in a connected 3D solid, with homogeneous isotropic material.'}
+                          </p>
+                        </div>
+                      </div>
+                      {is2D && (
+                        <NumberInput
+                          label="Physical thickness"
+                          value={project.study.thickness * factor}
+                          unit={project.displayUnits}
+                          onChange={(value) =>
+                            edit((next) => {
+                              next.study.thickness = value / factor;
+                            })
+                          }
+                        />
+                      )}
+                      <p className="property-hint">
+                        Static, small-strain linear elasticity. Changing dimension clears
+                        incompatible boundary assignments.
+                      </p>
+                    </Group>
+                    <Group title="Solution method">
+                      <button className="secondary full" onClick={() => selectSection('solver')}>
+                        <BrainCircuit size={15} />
+                        {isPinn ? 'Configure experimental PINN' : 'Configure finite element method'}
+                      </button>
+                      <p className="property-hint">
+                        {is2D
+                          ? 'Use FEM and PINN on the same physical definition, then compare at shared evaluation locations.'
+                          : 'The 3D study uses finite elements. The experimental PINN method supports 2D plane stress.'}
+                      </p>
+                    </Group>
+                  </>
+                )}
+                {section === 'solver' && (
+                  <>
+                    <Group title="Solution method">
+                      <div className="segmented">
+                        <button
+                          className={!isPinn ? 'active' : ''}
+                          onClick={() => edit((next) => changeStudySolver(next, 'fem'))}
+                        >
+                          FEM
+                        </button>
+                        {is2D && (
+                          <button
+                            className={isPinn ? 'active' : ''}
+                            onClick={() => edit((next) => changeStudySolver(next, 'pinn'))}
+                          >
+                            PINN
+                          </button>
+                        )}
+                      </div>
+                      <p className="property-hint">
+                        {isPinn
+                          ? 'Learn a displacement field from elasticity equilibrium and boundary-condition residuals.'
+                          : `Sparse linear elasticity using ${is2D ? 'first-order triangles' : 'first-order tetrahedra'}.`}
+                      </p>
+                      {isPinn && (
+                        <div className="experimental-note">
+                          Experimental Physics ML. Training convergence is problem-dependent.
+                          Inspect losses and compare with the classical reference before
+                          interpreting a result.
+                        </div>
+                      )}
+                    </Group>
+                    {is2D && (
+                      <>
+                        <Group title="PINN training configuration">
+                          <div className="form-grid">
+                            {(
+                              [
+                                { key: 'layers', label: 'Hidden layers' },
+                                { key: 'width', label: 'Layer width' },
+                                { key: 'steps', label: 'Training steps' },
+                                { key: 'seed', label: 'Seed' },
+                              ] as const
+                            ).map((setting) => (
+                              <NumberInput
+                                key={setting.key}
+                                label={setting.label}
+                                value={project.study.solver.pinn[setting.key]}
+                                onChange={(value) =>
+                                  edit((next) => {
+                                    next.study.solver.pinn[setting.key] = value;
+                                  })
+                                }
+                              />
+                            ))}
+                          </div>
+                          <NumberInput
+                            label="Learning rate"
+                            value={project.study.solver.pinn.learningRate}
+                            onChange={(value) =>
+                              edit((next) => {
+                                next.study.solver.pinn.learningRate = value;
+                              })
+                            }
+                          />
+                          <div className="form-grid">
+                            <NumberInput
+                              label="Interior samples"
+                              value={project.study.solver.pinn.interiorPoints}
+                              onChange={(value) =>
+                                edit((next) => {
+                                  next.study.solver.pinn.interiorPoints = value;
+                                })
+                              }
+                            />
+                            <NumberInput
+                              label="Boundary samples"
+                              value={project.study.solver.pinn.boundaryPoints}
+                              onChange={(value) =>
+                                edit((next) => {
+                                  next.study.solver.pinn.boundaryPoints = value;
+                                })
+                              }
+                            />
+                          </div>
+                          <p className="property-hint">
+                            Tanh activation · Adam optimizer. These settings also apply to the PINN
+                            leg of Compare.
+                          </p>
+                        </Group>
+                        <Group title="Compute device">
+                          <label className="field-label">
+                            <span>Training device</span>
+                            <select
+                              value={project.study.solver.pinn.device}
+                              onChange={(event) =>
+                                edit((next) => {
+                                  next.study.solver.pinn.device = event.target
+                                    .value as Project['study']['solver']['pinn']['device'];
+                                })
+                              }
+                            >
+                              <option value="auto">Auto · CPU · float64</option>
+                              {devices?.devices
+                                .filter(
+                                  (device) =>
+                                    device.available && ['cpu', 'mps', 'cuda'].includes(device.id),
+                                )
+                                .map((device) => (
+                                  <option key={device.id} value={device.id}>
+                                    {device.label} · {device.precision}
+                                  </option>
+                                ))}
+                              {project.study.solver.pinn.device !== 'auto' &&
+                                !devices?.devices.some(
+                                  (device) =>
+                                    device.available &&
+                                    device.id === project.study.solver.pinn.device,
+                                ) && (
+                                  <option value={project.study.solver.pinn.device} hidden>
+                                    Saved preference ·{' '}
+                                    {project.study.solver.pinn.device.toUpperCase()} (availability
+                                    unconfirmed)
+                                  </option>
+                                )}
+                            </select>
+                          </label>
+                          <button
+                            className="secondary full"
+                            disabled={!desktop || locked}
+                            onClick={() => void refreshDevices()}
+                          >
+                            <Cpu size={14} />
+                            {deviceBusy ? 'Detecting devices…' : 'Refresh available devices'}
+                          </button>
+                          {deviceError && (
+                            <p className="draft-error">Device detection failed: {deviceError}</p>
+                          )}
+                          {devices ? (
+                            <p className="property-hint">
+                              {devices.devices
+                                .filter((device) => device.available)
+                                .map((device) => `${device.label}: ${device.precision}`)
+                                .join(' · ')}
+                              <br />
+                              The completed run records the device and precision actually used.
+                            </p>
+                          ) : (
+                            <p className="property-hint">
+                              Device availability is queried from the installed numerical runtime.
+                              Opening a project does not require a GPU.
+                            </p>
+                          )}
+                        </Group>
+                      </>
+                    )}
+                    <Group title="Execute">
+                      <button
+                        className="primary full"
+                        disabled={!desktop || !!validation}
+                        onClick={() => void execute(primaryOperation(project))}
+                      >
+                        {isPinn ? <BrainCircuit size={15} /> : <Play size={15} />}
+                        {isPinn ? 'Train PINN' : 'Run FEM'}
+                      </button>
+                      {is2D && (
+                        <button
+                          className="secondary full"
+                          style={{ marginTop: 9 }}
+                          disabled={!desktop || !!validation}
+                          onClick={() => void execute('compare')}
+                        >
+                          <GitCompareArrows size={15} />
+                          Compare FEM + PINN
+                        </button>
+                      )}
+                    </Group>
+                  </>
+                )}
+                {section === 'geometry' && (
+                  <>
+                    <Group title={is2D ? 'Rectangular domain' : 'Solid definition'}>
+                      <label className="field-label">
+                        <span>{is2D ? 'Domain' : 'Primitive'}</span>
                         <select
                           value={project.geometry.kind}
                           onChange={(event) => {
@@ -1216,21 +1793,29 @@ export default function App() {
                             setLoadId(null);
                           }}
                         >
-                          <option value="box">Rectangular solid</option>
-                          <option value="cylinder">Cylinder · X axis</option>
-                          <option value="bracket">L bracket · XY plane</option>
+                          <option value="box">
+                            {is2D ? 'Rectangular domain' : 'Rectangular solid'}
+                          </option>
+                          {!is2D && (
+                            <>
+                              <option value="cylinder">Cylinder · X axis</option>
+                              <option value="bracket">L bracket · XY plane</option>
+                            </>
+                          )}
                         </select>
                       </label>
                       {(
                         [
                           'length',
-                          ...(project.geometry.kind === 'cylinder'
-                            ? ['radius']
-                            : [
-                                'width',
-                                'height',
-                                ...(project.geometry.kind === 'bracket' ? ['thickness'] : []),
-                              ]),
+                          ...(is2D
+                            ? ['width']
+                            : project.geometry.kind === 'cylinder'
+                              ? ['radius']
+                              : [
+                                  'width',
+                                  'height',
+                                  ...(project.geometry.kind === 'bracket' ? ['thickness'] : []),
+                                ]),
                         ] as (keyof Omit<Project['geometry'], 'kind'>)[]
                       ).map((dimension) => (
                         <NumberInput
@@ -1283,9 +1868,11 @@ export default function App() {
                       </div>
                     </Group>
                     <p className="property-hint">
-                      {project.geometry.kind === 'cylinder'
-                        ? 'Cylinder spans X = 0 to length, centered on Y = Z = 0.'
-                        : 'Geometry starts at the global origin. Brackets extend in X and Y, with height in Z.'}{' '}
+                      {is2D
+                        ? 'Rectangle spans X = 0 to length and Y = 0 to width. Physical thickness belongs to the study.'
+                        : project.geometry.kind === 'cylinder'
+                          ? 'Cylinder spans X = 0 to length, centered on Y = Z = 0.'
+                          : 'Geometry starts at the global origin. Brackets extend in X and Y, with height in Z.'}{' '}
                       Changing primitive clears its boundary assignments.
                     </p>
                   </>
@@ -1330,7 +1917,7 @@ export default function App() {
                       <div>
                         <strong>Homogeneous linear elasticity</strong>
                         <p>
-                          One isotropic material for the entire solid. Generic example properties
+                          One isotropic material for the entire domain. Generic example properties
                           are editable demonstration inputs, not certified material data.
                         </p>
                       </div>
@@ -1343,7 +1930,7 @@ export default function App() {
                 )}
                 {section === 'mesh' && (
                   <>
-                    <Group title="Volume discretization">
+                    <Group title={is2D ? 'Area discretization' : 'Volume discretization'}>
                       <NumberInput
                         label="Target element size"
                         value={project.study.mesh.size * factor}
@@ -1355,15 +1942,23 @@ export default function App() {
                         }
                       />
                       <p className="property-hint">
-                        Gmsh generates connected 3D tetrahedra. This is a target edge scale; the
-                        mesher adapts to boundaries.
+                        {is2D
+                          ? 'Generate a real triangular area mesh for plane-stress FEM and shared field evaluation.'
+                          : 'Generate connected 3D tetrahedra with a target edge scale that adapts to boundaries.'}
                       </p>
                     </Group>
                     {stat && (
                       <Group title="Mesh statistics">
                         <Metric label="Nodes" value={stat.nodes} />
-                        <Metric label="Tetrahedral cells" value={stat.cells} />
-                        <Metric label="Surface triangles" value={stat.surfaceTriangles} />
+                        <Metric
+                          label={is2D ? 'Triangular cells' : 'Tetrahedral cells'}
+                          value={stat.cells}
+                        />
+                        {is2D ? (
+                          <Metric label="Boundary edges" value={stat.boundaryEdges ?? 0} />
+                        ) : (
+                          <Metric label="Surface triangles" value={stat.surfaceTriangles} />
+                        )}
                         <Metric label="Minimum quality" value={stat.minQuality} />
                         <p className="property-hint">Quality metric: {stat.qualityMetric}</p>
                       </Group>
@@ -1371,7 +1966,7 @@ export default function App() {
                     <div className="info-card">
                       <Magnet size={18} />
                       <div>
-                        <strong>First-order tetrahedra</strong>
+                        <strong>{is2D ? 'First-order triangles' : 'First-order tetrahedra'}</strong>
                         <p>
                           Stress is constant per element. Refine and compare meshes for bending; a
                           visually smooth contour does not establish convergence.
@@ -1430,11 +2025,15 @@ export default function App() {
                           <div className="segmented">
                             <button
                               className={
-                                constraint.components.every((value) => value === 0) ? 'active' : ''
+                                constraint.components
+                                  .slice(0, is2D ? 2 : 3)
+                                  .every((value) => value === 0)
+                                  ? 'active'
+                                  : ''
                               }
                               onClick={() =>
                                 editConstraint((item) => {
-                                  item.components = [0, 0, 0];
+                                  item.components = is2D ? [0, 0, null] : [0, 0, 0];
                                 })
                               }
                             >
@@ -1442,7 +2041,11 @@ export default function App() {
                             </button>
                             <button
                               className={
-                                constraint.components.some((value) => value !== 0) ? 'active' : ''
+                                constraint.components
+                                  .slice(0, is2D ? 2 : 3)
+                                  .some((value) => value !== 0)
+                                  ? 'active'
+                                  : ''
                               }
                               onClick={() =>
                                 editConstraint((item) => {
@@ -1454,36 +2057,38 @@ export default function App() {
                             </button>
                           </div>
                           <div className="component-editor">
-                            {(['X', 'Y', 'Z'] as const).map((axis, index) => (
-                              <div key={axis}>
-                                <label className="component-check">
-                                  <input
-                                    type="checkbox"
-                                    checked={constraint.components[index] !== null}
-                                    onChange={(event) =>
-                                      editConstraint((item) => {
-                                        item.components[index] = event.target.checked ? 0 : null;
-                                      })
-                                    }
-                                  />
-                                  <span>U{axis.toLowerCase()}</span>
-                                </label>
-                                {constraint.components[index] !== null ? (
-                                  <NumberInput
-                                    label={`Prescribed ${axis}`}
-                                    value={constraint.components[index]! * factor}
-                                    unit={project.displayUnits}
-                                    onChange={(value) =>
-                                      editConstraint((item) => {
-                                        item.components[index] = value / factor;
-                                      })
-                                    }
-                                  />
-                                ) : (
-                                  <span className="free-component">Free</span>
-                                )}
-                              </div>
-                            ))}
+                            {(is2D ? (['X', 'Y'] as const) : (['X', 'Y', 'Z'] as const)).map(
+                              (axis, index) => (
+                                <div key={axis}>
+                                  <label className="component-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={constraint.components[index] !== null}
+                                      onChange={(event) =>
+                                        editConstraint((item) => {
+                                          item.components[index] = event.target.checked ? 0 : null;
+                                        })
+                                      }
+                                    />
+                                    <span>U{axis.toLowerCase()}</span>
+                                  </label>
+                                  {constraint.components[index] !== null ? (
+                                    <NumberInput
+                                      label={`Prescribed ${axis}`}
+                                      value={constraint.components[index]! * factor}
+                                      unit={project.displayUnits}
+                                      onChange={(value) =>
+                                        editConstraint((item) => {
+                                          item.components[index] = value / factor;
+                                        })
+                                      }
+                                    />
+                                  ) : (
+                                    <span className="free-component">Free</span>
+                                  )}
+                                </div>
+                              ),
+                            )}
                           </div>
                         </>
                       )}
@@ -1526,7 +2131,7 @@ export default function App() {
                 {section === 'loads' && (
                   <>
                     <Group
-                      title="Surface loads"
+                      title={is2D ? 'Boundary edge loads' : 'Surface loads'}
                       action={
                         <button className="icon-button" aria-label="Add load" onClick={addLoad}>
                           <Plus size={16} />
@@ -1569,27 +2174,30 @@ export default function App() {
                               }
                             >
                               <option value="force">Distributed total force</option>
-                              <option value="pressure">Surface pressure</option>
+                              <option value="pressure">Boundary pressure</option>
                             </select>
                           </label>
                           {load.kind === 'force' ? (
                             <>
-                              {(['X', 'Y', 'Z'] as const).map((axis, index) => (
-                                <NumberInput
-                                  key={axis}
-                                  label={`Force ${axis}`}
-                                  value={load.vector[index]}
-                                  unit="N"
-                                  onChange={(value) =>
-                                    editLoad((item) => {
-                                      item.vector[index] = value;
-                                    })
-                                  }
-                                />
-                              ))}
+                              {(is2D ? (['X', 'Y'] as const) : (['X', 'Y', 'Z'] as const)).map(
+                                (axis, index) => (
+                                  <NumberInput
+                                    key={axis}
+                                    label={`Force ${axis}`}
+                                    value={load.vector[index]}
+                                    unit="N"
+                                    onChange={(value) =>
+                                      editLoad((item) => {
+                                        item.vector[index] = value;
+                                      })
+                                    }
+                                  />
+                                ),
+                              )}
                               <p className="property-hint">
-                                One total vector force across all assigned faces, distributed by
-                                surface area in the global frame.
+                                {is2D
+                                  ? 'One total vector force across assigned edges, distributed by edge length × physical thickness in the global frame.'
+                                  : 'One total vector force across all assigned faces, distributed by surface area in the global frame.'}
                               </p>
                             </>
                           ) : (
@@ -1650,22 +2258,22 @@ export default function App() {
                   <div className="empty-state result-empty">
                     <Activity size={30} />
                     <h3>
-                      {data?.manifest.operation === 'solve'
+                      {data && data.manifest.operation !== 'mesh'
                         ? 'Solution is stale'
                         : 'No solution yet'}
                     </h3>
                     <p>
-                      {data?.manifest.operation === 'solve'
+                      {data && data.manifest.operation !== 'mesh'
                         ? 'The inputs have changed. Solve again to inspect current physical fields.'
                         : 'Define your material, boundary supports, and loading, then solve the model.'}
                     </p>
                     <button
                       className="primary full"
                       disabled={locked || !!validation || !desktop}
-                      onClick={() => void execute('solve')}
+                      onClick={() => void execute(primaryOperation(project))}
                     >
                       <Play size={14} />
-                      Solve analysis
+                      {isPinn ? 'Train PINN' : 'Run FEM'}
                     </button>
                   </div>
                 ) : (
@@ -1680,7 +2288,7 @@ export default function App() {
                             setProbe(null);
                           }}
                         >
-                          {fieldOptions.map((option) => (
+                          {availableFields.map((option) => (
                             <option key={option.id} value={option.id}>
                               {option.label}
                             </option>
@@ -1710,9 +2318,23 @@ export default function App() {
                           onChange={(value) => setCustomScale(Math.max(0, value))}
                         />
                       )}
+                      <div className="animation-control">
+                        <button
+                          className="secondary full"
+                          aria-pressed={animate}
+                          onClick={() => {
+                            if (!animate && deformation === 'off') setDeformation('auto');
+                            setAnimate((value) => !value);
+                          }}
+                        >
+                          {animate ? <Pause size={14} /> : <Play size={14} />}
+                          {animate ? 'Pause static deformation' : 'Play static deformation'}
+                        </button>
+                      </div>
                       <p className="property-hint">
                         Amplification uses displacement and model size, independent of the contour
-                        field. Gray edges show the undeformed outline.
+                        field. Gray edges show the undeformed outline. Animation cycles the static
+                        field; it is not a dynamic simulation.
                       </p>
                     </Group>
                     {probe && (
@@ -1737,7 +2359,13 @@ export default function App() {
                       </Group>
                     )}
                     {currentData.manifest.summary && (
-                      <Group title="Physical summary">
+                      <Group
+                        title={
+                          currentData.manifest.operation === 'compare'
+                            ? 'FEM reference summary'
+                            : 'Physical summary'
+                        }
+                      >
                         <Metric
                           label="Maximum displacement"
                           value={currentData.manifest.summary.maxDisplacement * factor}
@@ -1764,7 +2392,11 @@ export default function App() {
                           unit="N·m"
                         />
                         <Metric
-                          label="Relative free-DOF residual"
+                          label={
+                            currentData.manifest.operation === 'train'
+                              ? 'PINN PDE residual · RMS'
+                              : 'Relative free-DOF residual'
+                          }
                           value={currentData.manifest.summary.relativeResidual}
                         />
                         <div className="vector-summary">
@@ -1783,9 +2415,13 @@ export default function App() {
                           unit="s"
                         />
                         <p className="property-hint">
-                          Extrema include the full volume. Reactions use the original equilibrium
-                          equations. Stresses follow XX, YY, ZZ, XY, YZ, XZ; shear values are tensor
-                          components.
+                          {is2D
+                            ? 'Extrema include the complete 2D domain.'
+                            : 'Extrema include the full volume.'}{' '}
+                          {currentData.manifest.operation === 'train'
+                            ? 'PINN reactions integrate learned support tractions. The PDE residual is the RMS of dimensionless stress divergence at interior collocation points.'
+                            : 'FEM reactions use the original equilibrium equations.'}{' '}
+                          Stresses use tensor shear components.
                         </p>
                       </Group>
                     )}

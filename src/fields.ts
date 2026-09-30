@@ -18,6 +18,7 @@ export type FieldId =
   | 'reactions-y'
   | 'reactions-z';
 export type ResultData = { manifest: Manifest; buffer: ArrayBuffer };
+export type FieldSource = 'primary' | 'fem' | 'pinn' | 'difference' | 'relative';
 export type Field = {
   values: Float64Array;
   association: 'node' | 'cell';
@@ -63,9 +64,11 @@ export function range(values: ArrayLike<number>): [number, number] {
   let minimum = Infinity;
   let maximum = -Infinity;
   for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) continue;
     minimum = Math.min(minimum, values[i]);
     maximum = Math.max(maximum, values[i]);
   }
+  if (minimum === Infinity) return [0, 0];
   return [minimum, maximum];
 }
 
@@ -83,26 +86,83 @@ export function vectorValues(
   return result;
 }
 
-export function extractField(data: ResultData | null, id: FieldId): Field | null {
-  if (!data || id === 'geometry' || data.manifest.operation !== 'solve') return null;
+export function solutionArray(
+  data: ResultData,
+  name: string,
+  source: FieldSource = 'primary',
+): Float64Array {
+  const key =
+    source === 'pinn' && data.manifest.operation === 'compare'
+      ? `pinn${name[0].toUpperCase()}${name.slice(1)}`
+      : name;
+  return numericArray(data, key) as Float64Array;
+}
+
+export function extractField(
+  data: ResultData | null,
+  id: FieldId,
+  source: FieldSource = 'primary',
+): Field | null {
+  if (!data || id === 'geometry' || data.manifest.operation === 'mesh') return null;
+  if ((source === 'difference' || source === 'relative') && data.manifest.operation === 'compare') {
+    const fem = extractField(data, id, 'fem')!;
+    const pinn = extractField(data, id, 'pinn')!;
+    const values = new Float64Array(fem.values.length);
+    const vector = id.endsWith('-mag')
+      ? id.startsWith('reactions-')
+        ? 'reactions'
+        : 'displacement'
+      : null;
+    const a = vector ? solutionArray(data, vector, 'fem') : null;
+    const b = vector ? solutionArray(data, vector, 'pinn') : null;
+    const floor = Math.max(Math.abs(fem.minimum), Math.abs(fem.maximum)) * 1e-12;
+    for (let i = 0; i < values.length; i++) {
+      const difference =
+        a && b
+          ? Math.hypot(
+              b[3 * i] - a[3 * i],
+              b[3 * i + 1] - a[3 * i + 1],
+              b[3 * i + 2] - a[3 * i + 2],
+            )
+          : Math.abs(pinn.values[i] - fem.values[i]);
+      const reference = Math.abs(fem.values[i]);
+      values[i] =
+        source === 'relative'
+          ? reference > floor
+            ? (100 * difference) / reference
+            : difference === 0
+              ? 0
+              : NaN
+          : difference;
+    }
+    const [minimum, maximum] = range(values);
+    return {
+      ...fem,
+      values,
+      minimum,
+      maximum,
+      units: source === 'relative' ? '%' : fem.units,
+      label: `${source === 'relative' ? 'Relative Δ (zero references omitted)' : 'Absolute Δ'} · ${fem.label}`,
+    };
+  }
   let values: Float64Array;
   let association: 'node' | 'cell' = 'node';
   let units = 'm';
   if (id === 'vonMises') {
-    values = numericArray(data, 'vonMises') as Float64Array;
+    values = solutionArray(data, 'vonMises', source);
     association = 'cell';
     units = 'Pa';
   } else if (id.startsWith('stress-')) {
-    const source = numericArray(data, 'stress');
+    const stresses = solutionArray(data, 'stress', source);
     const component = ['xx', 'yy', 'zz', 'xy', 'yz', 'xz'].indexOf(id.slice(7));
-    values = new Float64Array(source.length / 6);
-    for (let i = 0; i < values.length; i++) values[i] = source[i * 6 + component];
+    values = new Float64Array(stresses.length / 6);
+    for (let i = 0; i < values.length; i++) values[i] = stresses[i * 6 + component];
     association = 'cell';
     units = 'Pa';
   } else {
     const reaction = id.startsWith('reactions-');
     values = vectorValues(
-      numericArray(data, reaction ? 'reactions' : 'displacement'),
+      solutionArray(data, reaction ? 'reactions' : 'displacement', source),
       id.split('-')[1] as 'mag' | 'x' | 'y' | 'z',
     );
     units = reaction ? 'N' : 'm';
@@ -136,7 +196,12 @@ export function deformationScale(
   return maximum > 0 ? (0.12 * length) / maximum : 1;
 }
 
+export function deformationPhase(elapsedMilliseconds: number, cycleMilliseconds = 4000): number {
+  return (1 - Math.cos((2 * Math.PI * elapsedMilliseconds) / cycleMilliseconds)) / 2;
+}
+
 export function normalizedValue(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) return 0.5;
   return maximum > minimum
     ? Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)))
     : 0.5;
@@ -162,7 +227,17 @@ export function formatValue(value: number): string {
     : new Intl.NumberFormat('en', { maximumSignificantDigits: 5 }).format(value);
 }
 export type RegionId = Project['study']['loads'][number]['regions'][number];
-export function regionNames(kind: Project['geometry']['kind']): { id: RegionId; name: string }[] {
+export function regionNames(
+  kind: Project['geometry']['kind'],
+  dimension: '2d' | '3d' = '3d',
+): { id: RegionId; name: string }[] {
+  if (dimension === '2d')
+    return [
+      { id: 'x0', name: 'Left edge · X−' },
+      { id: 'x1', name: 'Right edge · X+' },
+      { id: 'y0', name: 'Bottom edge · Y−' },
+      { id: 'y1', name: 'Top edge · Y+' },
+    ];
   if (kind === 'cylinder')
     return [
       { id: 'x0', name: 'Start cap · X−' },

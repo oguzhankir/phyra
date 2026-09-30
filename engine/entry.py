@@ -4,6 +4,8 @@ import argparse
 import json
 import re
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from phyra_engine.errors import EngineError
@@ -47,14 +49,38 @@ def main() -> int:
         if type(request["protocolVersion"]) is not int or request["protocolVersion"] != 1:
             raise EngineError("unsupported-version", "Unsupported engine protocol version.")
         operation = request["operation"]
-        if operation not in ("mesh", "solve", "validate"):
-            raise EngineError(
-                "unsupported-operation", "Supported operations are mesh, solve and validate."
-            )
+        if operation not in ("mesh", "solve", "validate", "train", "compare", "devices"):
+            raise EngineError("unsupported-operation", "Unsupported engine operation.")
         project = validate_project(request["project"])
+        run_started = time.perf_counter()
+        started_at = datetime.now(timezone.utc).isoformat()
 
         def progress(stage: str, fraction: float | None) -> None:
             emit({"type": "progress", "jobId": job_id, "stage": stage, "progress": fraction})
+
+        if operation == "devices":
+            import torch
+
+            from phyra_engine.pinn import device_capabilities
+
+            emit(
+                {
+                    "type": "complete",
+                    "manifest": {
+                        "protocolVersion": 1,
+                        "status": "succeeded",
+                        "projectId": project["id"],
+                        "studyId": project["study"]["id"],
+                        "revision": project["revision"],
+                        "jobId": job_id,
+                        "operation": "devices",
+                        "devices": device_capabilities(),
+                        "defaultDevice": "cpu",
+                        "framework": f"PyTorch {torch.__version__}",
+                    },
+                }
+            )
+            return 0
 
         if operation == "validate":
             progress("validating-cache", None)
@@ -69,17 +95,90 @@ def main() -> int:
                 )
             manifest = json.loads(metadata_file.read_bytes(), parse_constant=reject_constant)
             validate_cached(project, manifest, binary_file.read_bytes())
+        elif project["study"].get("dimension") == "2d":
+            from phyra_engine import fem2d
+            from phyra_engine.protocol2d import write_output as write_2d
+
+            progress("generating-plane-stress-mesh", None)
+            geometry, study = project["geometry"], project["study"]
+            mesh2d = fem2d.generate_rectangle(
+                geometry["length"], geometry["width"], study["thickness"], study["mesh"]["size"]
+            )
+            classical = (
+                fem2d.solve_mesh(mesh2d, study, progress)
+                if operation in ("solve", "compare")
+                else None
+            )
+            trained = None
+            if operation in ("train", "compare"):
+                from phyra_engine import pinn
+
+                progress("initializing-pinn", 0)
+
+                def metric(value: dict) -> None:
+                    emit(
+                        {
+                            "type": "metrics",
+                            "jobId": job_id,
+                            "step": value["step"],
+                            "elapsed": value["elapsedSeconds"],
+                            "total": value["total"],
+                            "pde": value["pde"],
+                            "boundary": value["boundary"],
+                            "device": value["device"],
+                        }
+                    )
+
+                trained = pinn.train(mesh2d, study, study["solver"]["pinn"], metrics=metric)
+                training = trained["training"]
+                training["history"] = [
+                    {
+                        "jobId": job_id,
+                        "step": v["step"],
+                        "elapsed": v["elapsedSeconds"],
+                        "total": v["total"],
+                        "pde": v["pde"],
+                        "boundary": v["boundary"],
+                        "device": training["device"],
+                    }
+                    for v in training["history"]
+                ]
+            progress("writing-results", None)
+            manifest = write_2d(
+                args.output,
+                project,
+                job_id,
+                operation,
+                mesh2d,
+                trained if operation == "train" else classical,
+                trained if operation == "compare" else None,
+                started_at,
+                time.perf_counter() - run_started,
+            )
         else:
+            if operation in ("train", "compare"):
+                raise EngineError(
+                    "unsupported-study", "Experimental PINN requires a 2D plane-stress study."
+                )
             mesh = generate_mesh(project, progress)
             result = solve_mesh(mesh, project["study"], progress) if operation == "solve" else None
             progress("writing-results", None)
-            manifest = write_output(args.output, project, job_id, operation, mesh, result)
+            manifest = write_output(
+                args.output,
+                project,
+                job_id,
+                operation,
+                mesh,
+                result,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - run_started,
+            )
         emit({"type": "complete", "manifest": manifest})
         return 0
     except EngineError as error:
         emit({"type": "error", "jobId": job_id, "code": error.code, "message": str(error)})
         return 2
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as error:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError, ValueError, RecursionError) as error:
         emit({"type": "error", "jobId": job_id, "code": "invalid-request", "message": str(error)})
         return 2
     except Exception as error:

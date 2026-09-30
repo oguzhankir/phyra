@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "example-cylinder",
   "name": "Axial cylinder",
   "revision": 0,
@@ -40,6 +40,24 @@
         "vector": [1000, 0, 0],
         "pressure": 0
       }
-    ]
+    ],
+    "dimension": "3d",
+    "formulation": "solid",
+    "thickness": 0.02,
+    "solver": {
+      "kind": "fem",
+      "pinn": {
+        "layers": 3,
+        "width": 32,
+        "activation": "tanh",
+        "optimizer": "adam",
+        "learningRate": 0.001,
+        "steps": 1000,
+        "interiorPoints": 128,
+        "boundaryPoints": 32,
+        "seed": 42,
+        "device": "auto"
+      }
+    }
   }
 }

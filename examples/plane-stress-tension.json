@@ -1,19 +1,19 @@
 {
   "schemaVersion": 2,
-  "id": "example-cantilever",
-  "name": "Cantilever beam",
+  "id": "plane-stress-tension",
+  "name": "Plane stress \u00b7 tension",
   "revision": 0,
   "displayUnits": "mm",
   "geometry": {
     "kind": "box",
-    "length": 0.2,
-    "width": 0.04,
-    "height": 0.02,
+    "length": 0.1,
+    "width": 0.05,
+    "height": 0.002,
     "radius": 0.02,
     "thickness": 0.012
   },
   "study": {
-    "id": "study-cantilever",
+    "id": "plane-stress-study",
     "type": "linear-static",
     "material": {
       "name": "Generic elastic material",
@@ -21,29 +21,35 @@
       "poisson": 0.3
     },
     "mesh": {
-      "size": 0.012
+      "size": 0.01
     },
     "constraints": [
       {
-        "id": "support-root",
-        "name": "Fixed root",
+        "id": "ux",
+        "name": "X restraint",
         "regions": ["x0"],
-        "components": [0, 0, 0]
+        "components": [0, null, null]
+      },
+      {
+        "id": "uy",
+        "name": "Y restraint",
+        "regions": ["y0"],
+        "components": [null, 0, null]
       }
     ],
     "loads": [
       {
-        "id": "load-tip",
-        "name": "Tip force",
-        "kind": "force",
+        "id": "tension",
+        "name": "Axial force",
         "regions": ["x1"],
-        "vector": [0, 0, -100],
+        "kind": "force",
+        "vector": [100, 0, 0],
         "pressure": 0
       }
     ],
-    "dimension": "3d",
-    "formulation": "solid",
-    "thickness": 0.02,
+    "dimension": "2d",
+    "formulation": "plane-stress",
+    "thickness": 0.002,
     "solver": {
       "kind": "fem",
       "pinn": {

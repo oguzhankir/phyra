@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "example-extension",
   "name": "Prescribed extension",
   "revision": 0,
@@ -37,6 +37,24 @@
         "components": [0.0001, null, null]
       }
     ],
-    "loads": []
+    "loads": [],
+    "dimension": "3d",
+    "formulation": "solid",
+    "thickness": 0.02,
+    "solver": {
+      "kind": "fem",
+      "pinn": {
+        "layers": 3,
+        "width": 32,
+        "activation": "tanh",
+        "optimizer": "adam",
+        "learningRate": 0.001,
+        "steps": 1000,
+        "interiorPoints": 128,
+        "boundaryPoints": 32,
+        "seed": 42,
+        "device": "auto"
+      }
+    }
   }
 }
