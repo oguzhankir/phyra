@@ -5,13 +5,12 @@ import { inputError } from '../domain/project/validation';
 import {
   clearRecovery,
   getRecovery,
+  nextRecoverySequence,
   readRecovery,
   writeRecovery,
   type RecoveryRecord,
 } from '../platform/desktop/recovery';
 import { restoreRecoveryRecord } from './recoveryActions';
-let sequence = 0;
-const nextSequence = () => ++sequence;
 type Props = {
   desktop: boolean;
   verification: boolean;
@@ -86,6 +85,7 @@ export function useRecoverySession({
       !recoveryEligible(project, dirty, invalidDrafts)
     )
       return;
+    let disposed = false;
     const identity = JSON.stringify(project);
     const timeout = window.setTimeout(() => {
       if (
@@ -99,24 +99,29 @@ export function useRecoverySession({
       )
         return;
       const snapshot = recoverySnapshot(project);
-      const ownSequence = nextSequence();
+      const ownSequence = nextRecoverySequence();
       void enqueue(() => writeRecovery(snapshot, ownSequence))
         .then((result) => {
-          if (JSON.stringify(latest.current.project) !== identity || !result.accepted) return;
+          if (disposed || JSON.stringify(latest.current.project) !== identity || !result.accepted)
+            return;
           setSavedAt(result.savedAt);
           setCheckpointRevision(result.revision);
           setFailed(false);
         })
         .catch((cause) => {
+          if (disposed) return;
           setFailed(true);
           latest.current.onError(`Recovery checkpoint failed: ${String(cause)}`);
         });
     }, 1200);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timeout);
+    };
   }, [enabled, ready, prompt, pending, blocked, project, dirty, invalidDrafts, enqueue]);
   const clearOwn = useCallback(async () => {
     if (!enabled) return;
-    const ownSequence = nextSequence();
+    const ownSequence = nextRecoverySequence();
     await enqueue(() => clearRecovery(ownSequence));
     setSavedAt(null);
     setCheckpointRevision(null);
@@ -127,7 +132,8 @@ export function useRecoverySession({
     try {
       await restoreRecoveryRecord(record.id, {
         read: readRecovery,
-        checkpoint: (snapshot) => enqueue(() => writeRecovery(snapshot, nextSequence(), true)),
+        checkpoint: (snapshot) =>
+          enqueue(() => writeRecovery(snapshot, nextRecoverySequence(), true)),
         adopt: (next, checkpoint) => {
           latest.current.onRestore(next);
           setPrompt(false);
@@ -136,7 +142,7 @@ export function useRecoverySession({
           setFailed(false);
         },
         removePrior: async (id) => {
-          await enqueue(() => clearRecovery(nextSequence(), id));
+          await enqueue(() => clearRecovery(nextRecoverySequence(), id));
           setRecords((previous) => previous.filter((item) => item.id !== id));
         },
         onCleanupFailure: (cause) =>
@@ -154,7 +160,7 @@ export function useRecoverySession({
     if (pending || blocked) return;
     setPending(true);
     try {
-      await enqueue(() => clearRecovery(nextSequence(), record.id));
+      await enqueue(() => clearRecovery(nextRecoverySequence(), record.id));
       setRecords((previous) => {
         const next = previous.filter((item) => item.id !== record.id);
         if (!next.length) setPrompt(false);
