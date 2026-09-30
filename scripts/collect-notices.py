@@ -97,7 +97,7 @@ copy_file(python_license, Path("python") / "Python-LICENSE.txt")
 # by Python wheel metadata; retain their keg notices and precise versions.
 analysis_file = ROOT / "artifacts" / "pyinstaller" / "engine" / "Analysis-00.toc"
 if analysis_file.is_file():
-    analysis = ast.literal_eval(analysis_file.read_text())
+    analysis = ast.literal_eval(analysis_file.read_text(encoding="utf-8"))
     copied_kegs = set()
     for section in analysis:
         if not isinstance(section, list):
@@ -117,7 +117,9 @@ if analysis_file.is_file():
             if keg is None or keg in copied_kegs:
                 continue
             copied_kegs.add(keg)
-            receipt = json.loads((keg / "INSTALL_RECEIPT.json").read_text())
+            receipt = json.loads(
+                (keg / "INSTALL_RECEIPT.json").read_text(encoding="utf-8")
+            )
             name = keg.parent.name
             version = receipt["source"]["versions"]["stable"]
             inventory["native"].append({"name": name, "version": version})
@@ -130,7 +132,7 @@ if analysis_file.is_file():
                         notice, Path("native") / f"{name}-{version}" / notice.name
                     )
 
-lock = json.loads((ROOT / "package-lock.json").read_text())
+lock = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 for location, package in lock.get("packages", {}).items():
     if not location or not location.startswith("node_modules/"):
         continue
@@ -138,7 +140,7 @@ for location, package in lock.get("packages", {}).items():
     package_json = source_directory / "package.json"
     if not package_json.is_file():
         continue
-    metadata = json.loads(package_json.read_text())
+    metadata = json.loads(package_json.read_text(encoding="utf-8"))
     name = metadata.get("name", location.removeprefix("node_modules/"))
     inventory["frontend"].append(
         {
@@ -156,7 +158,9 @@ for location, package in lock.get("packages", {}).items():
 cargo_lock = ROOT / "src-tauri" / "Cargo.lock"
 if cargo_lock.is_file():
     registry = Path.home() / ".cargo" / "registry" / "src"
-    for package in tomllib.loads(cargo_lock.read_text()).get("package", []):
+    for package in tomllib.loads(cargo_lock.read_text(encoding="utf-8")).get(
+        "package", []
+    ):
         name, version = package["name"], package["version"]
         if not package.get("source", "").startswith("registry+"):
             continue
@@ -174,6 +178,6 @@ if cargo_lock.is_file():
                 copy_file(source, Path("rust") / f"{name}-{version}" / source.name)
 
 (DESTINATION / "resolved-dependencies.json").write_text(
-    json.dumps(inventory, indent=2) + "\n"
+    json.dumps(inventory, indent=2) + "\n", encoding="utf-8"
 )
 print(f"Collected resolved notices in {DESTINATION}")

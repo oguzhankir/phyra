@@ -30,7 +30,7 @@ def project_validator(version: int = 2) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[2]
     filename = "project-v1.schema.json" if version == 1 else "project.schema.json"
-    schema = json.loads((root / "contracts" / filename).read_text())
+    schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
 
