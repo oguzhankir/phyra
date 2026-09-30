@@ -1,0 +1,45 @@
+.recovery-dialog {
+  width: min(680px, calc(100vw - 60px));
+  max-height: 80vh;
+  overflow: auto;
+}
+.recovery-dialog header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.recovery-dialog header h2 {
+  flex: 1;
+}
+.recovery-dialog > p {
+  line-height: 1.6;
+}
+.recovery-records {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 9px;
+}
+.recovery-records article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.recovery-records article > div {
+  flex: 1;
+  min-width: 0;
+}
+.recovery-records strong {
+  display: block;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recovery-records small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}

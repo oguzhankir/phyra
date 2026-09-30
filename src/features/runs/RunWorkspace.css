@@ -1,0 +1,197 @@
+.run-workspace {
+  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.run-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 33px;
+  padding: 0 15px;
+  border-bottom: 1px solid var(--line);
+  gap: 14px;
+}
+.run-tabs {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+}
+.run-tabs button {
+  padding: 9px 2px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.run-tabs button.active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.run-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.run-state .completed {
+  color: var(--success);
+}
+.run-state .failed {
+  color: var(--danger);
+}
+.run-state .cancelled {
+  color: var(--warning);
+}
+.run-workspace-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(250px, 2fr);
+  gap: 12px;
+  min-height: 150px;
+  max-height: min(270px, 33vh);
+  padding: 11px 12px;
+  overflow-y: auto;
+}
+.run-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-content: start;
+}
+.run-fact > span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.run-fact > strong {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.run-fact small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.run-fact.wide {
+  grid-column: 1 / -1;
+}
+.run-progress {
+  width: 100%;
+  height: 4px;
+  accent-color: var(--accent);
+  margin-top: 13px;
+}
+.training-plot {
+  min-width: 0;
+}
+.training-plot svg {
+  width: 100%;
+  height: 137px;
+  overflow: visible;
+}
+.training-plot text {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  fill: var(--muted);
+}
+.plot-legend {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 7px;
+}
+.plot-legend span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.plot-legend i {
+  width: 11px;
+  height: 3px;
+  border-radius: 2px;
+}
+.plot-legend small {
+  font-size: 9px;
+  color: var(--muted);
+}
+.training-plot-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 147px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+.training-plot-empty p {
+  font-size: 12px;
+}
+.training-plot-empty small {
+  font-size: 10px;
+  margin-top: 8px;
+}
+.plot-crosshair {
+  font-size: 22px;
+  font-weight: 200;
+  margin-bottom: 8px;
+}
+.comparison-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+.comparison-metric span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.comparison-metric strong {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text);
+}
+.comparison-metric small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.run-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.75;
+  align-self: center;
+}
+.run-id {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--muted);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.animation-control {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin-top: 13px;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

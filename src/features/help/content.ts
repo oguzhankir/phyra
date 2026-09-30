@@ -33,7 +33,9 @@ export type HelpArticleId =
   | 'files'
   | 'units'
   | 'errors'
-  | 'scope';
+  | 'scope'
+  | 'learning-path'
+  | 'scientific-references';
 
 export interface HelpSection {
   title: string;
@@ -42,6 +44,14 @@ export interface HelpSection {
   bullets?: readonly string[];
   facts?: readonly { label: string; value: string }[];
   note?: { tone: 'info' | 'warning'; text: string };
+  references?: readonly {
+    title: string;
+    authors: string;
+    year?: number;
+    url: string;
+    scope: string;
+  }[];
+  screenshots?: readonly { src: string; alt: string; caption: string }[];
 }
 
 export interface HelpArticle {
@@ -75,11 +85,19 @@ export const helpArticles: readonly HelpArticle[] = [
           'Run Classical FEM. Inspect deformation, physical fields, reactions and balance before drawing conclusions.',
           'Save the project. Export physical fields when you need authoritative SI values outside the workbench.',
         ],
+        screenshots: [
+          {
+            src: '/help/solid-workbench.jpg',
+            alt: 'Current light workbench displaying a saved CPU cantilever FEM solution.',
+            caption:
+              'Current browser workspace with a recorded CPU FEM reference. Deformation is amplified; computing new fields requires the desktop app.',
+          },
+        ],
       },
       {
         title: 'Try Physics ML next',
         paragraphs: [
-          'Open Plane stress · tension, run its FEM reference, then select Physics ML · PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
+          'Open 2D plane-stress tension, run its FEM reference, then select PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
         ],
         note: {
           tone: 'warning',
@@ -90,11 +108,26 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Inspect a saved reference in the browser',
         paragraphs: [
           'Use Inspect 3D reference or Inspect 2D comparison to load recorded CPU results. Select result sources and fields, then probe values in the viewport.',
-          'These references contain saved fields, training history and run provenance. Loading one starts no numerical worker. Editing physical inputs makes its fields stale; use the desktop application to mesh, solve, train and use native project files.',
+          'Both references contain saved fields and run provenance; the 2D comparison also contains recorded training history. Loading one starts no numerical worker. Editing physical inputs makes its fields stale; use the desktop application to mesh, solve, train and use native project files.',
+        ],
+      },
+      {
+        title: 'Read the workspace',
+        paragraphs: [
+          'The model tree selects preparation tasks; the inspector edits their properties. Problems links diagnostics to the relevant input or guide. Run overview, training and comparison inspect the selected execution.',
+          'Light and dark themes change presentation, not physical values, units or the contour mapping.',
+        ],
+        screenshots: [
+          {
+            src: '/help/dark-workbench.jpg',
+            alt: 'Current dark workbench displaying saved CPU plane-stress fields and stored training history.',
+            caption:
+              'Dark presentation of a saved CPU comparison. The history is recorded; no training is running in this browser view.',
+          },
         ],
       },
     ],
-    related: ['study', 'supports', 'results'],
+    related: ['study', 'supports', 'results', 'learning-path'],
   },
   {
     id: 'geometry',
@@ -329,7 +362,7 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
     ],
-    related: ['fem-3d', 'fem-2d', 'errors'],
+    related: ['fem-3d', 'fem-2d', 'errors', 'scientific-references'],
   },
   {
     id: 'solver',
@@ -343,7 +376,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Choose an available method',
         steps: [
           'Check the study dimension and formulation. Classical FEM supports both current 3D solid and 2D plane-stress problems.',
-          'For rectangular 2D plane stress, select Physics ML · PINN to expose network, sampling, step and device settings.',
+          'For rectangular 2D plane stress, select PINN and review its network, sampling, step and device settings.',
           'Run the selected method, or use Compare FEM / PINN to solve both on the same physical problem.',
           'Inspect the run status, actual fields and warnings. A completed run is not a substitute for an accuracy check.',
         ],
@@ -456,6 +489,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Evaluate the result',
         paragraphs: [
           'Use Compare FEM / PINN to inspect same-location errors and measured force/moment imbalance. Additional steps or a larger network may help, but improvement must be checked against the actual fields. Each run trains from its seed; saved weights are not resumed.',
+          'Independent-point residuals evaluate the normalized PDE and boundary objectives after optimization at separately sampled points of the same physical problem. They diagnose residual behavior beyond the training samples; they are not field-error bounds or evidence of generalization to new problems. Older saved runs may not include them.',
         ],
         note: {
           tone: 'warning',
@@ -463,7 +497,7 @@ export const helpArticles: readonly HelpArticle[] = [
         },
       },
     ],
-    related: ['devices', 'comparison', 'runs'],
+    related: ['devices', 'comparison', 'learning-path', 'scientific-references'],
   },
   {
     id: 'devices',
@@ -534,6 +568,14 @@ export const helpArticles: readonly HelpArticle[] = [
           'Relative values are undefined when the reference norm is zero. Per-location relative contours omit zero-reference locations; an omitted value is not zero error.',
           'Inspect PINN reactions and force/moment imbalance separately from FEM equilibrium. A successful comparison can contain an inaccurate learned result.',
           'Training and inference times are separate from FEM time. One quick inference does not account for training cost.',
+        ],
+        screenshots: [
+          {
+            src: '/help/comparison-workbench.jpg',
+            alt: 'Current plane-stress comparison showing shared FEM fields and recorded FEM/PINN difference metrics.',
+            caption:
+              'Saved CPU plane-stress comparison with FEM selected. Switch sources to inspect PINN and differences; these are recorded measurements.',
+          },
         ],
       },
     ],
@@ -618,6 +660,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Inspect operation, status, input configuration, duration and actual device. During PINN training, the plot shows real measured total/PDE/boundary losses and step history for the active job.',
           'Mesh generation has no displacement solution. FEM has no neural training losses. A comparison contains both FEM and PINN measurements.',
           'Browser references show Recorded CPU run and Stored training history. These are measurements from the saved run, not live training activity.',
+          'When present, Independent-point residuals report normalized losses at separate post-training sample points. Not recorded means the saved run lacks this diagnostic; it does not mean zero residual.',
         ],
       },
       {
@@ -652,6 +695,9 @@ export const helpArticles: readonly HelpArticle[] = [
       'migration',
       'version',
       'checkpoint',
+      'recovery',
+      'autosave',
+      'crash',
     ],
     sections: [
       {
@@ -659,6 +705,14 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'Save or Save as creates a .phyra archive with the project definition and available compatible cached fields. Reopening validates metadata and binary arrays before displaying results.',
           'Version 1 projects migrate to version 2 with an explicit notice. Legacy cached results are discarded; solve the migrated study again.',
+        ],
+      },
+      {
+        title: 'Recover an unsaved project',
+        paragraphs: [
+          'The desktop preserves a valid, dirty project definition after a short editing pause. Recovery pauses while numeric drafts or the project definition are invalid; save manually if recovery is unavailable.',
+          'At a later launch, review available copies and choose Restore, Discard copy or Review later. Active desktop sessions remain separate. Restore opens an unsaved definition and clears its original file association; it does not overwrite that file.',
+          'Recovery contains no result buffers, trained weights or optimizer state. Recompute the restored study, then use Save as to choose its project file. A recovery copy is not a substitute for a saved .phyra archive or backup.',
         ],
       },
       {
@@ -770,6 +824,14 @@ export const helpArticles: readonly HelpArticle[] = [
               'Complete or revert the draft value. Use finite values and the displayed units; dimensions, thickness and modulus must be positive.',
           },
         ],
+        screenshots: [
+          {
+            src: '/help/problems-workbench.jpg',
+            alt: 'An incomplete length draft marked invalid, with a Problems entry linking back to the input.',
+            caption:
+              'The incomplete 1e draft is rejected before becoming a physical input. Complete it or press Escape to revert; retained fields belong to the last valid definition.',
+          },
+        ],
       },
       {
         title: 'Mesh and execution errors',
@@ -797,6 +859,11 @@ export const helpArticles: readonly HelpArticle[] = [
             label: 'Stale solution',
             value:
               'Rerun the current input. Old fields cannot validate changed geometry, conditions or method settings.',
+          },
+          {
+            label: 'Recovery paused / unavailable',
+            value:
+              'Complete or revert invalid inputs. If recovery remains unavailable, save current work manually; prior unreadable copies are preserved for investigation.',
           },
         ],
       },
@@ -836,9 +903,10 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Planned; not available in this release',
         bullets: [
-          'General CAD/sketching, assemblies, multiple materials and broader geometry/condition preparation.',
+          'General CAD/sketching, assemblies, multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
           'Thermal/fluid, plane strain, dynamics, nonlinear materials, contact and coupled physics.',
           'Reusable learned operators, inverse studies, validated uncertainty and resumable model checkpoints.',
+          'Optional external Physics ML framework adapters and distributed/HPC execution. Current local device capability does not establish framework or distributed support.',
           'Optional BYOK chat and controlled engineering-assistant workflows. This help panel is offline documentation, not AI.',
         ],
         note: {
@@ -847,7 +915,167 @@ export const helpArticles: readonly HelpArticle[] = [
         },
       },
     ],
-    related: ['study', 'fem-3d', 'pinn'],
+    related: ['study', 'fem-3d', 'pinn', 'scientific-references'],
+  },
+  {
+    id: 'learning-path',
+    title: 'Physics ML learning path',
+    summary: 'Understand one real elasticity problem, then evaluate its PINN against a reference.',
+    category: 'Get started',
+    kind: 'Guide',
+    keywords: ['learning', 'tutorial', 'physics ml', 'PINN', 'autograd', 'residual', 'validation'],
+    sections: [
+      {
+        title: '1 · Define the problem before the network',
+        paragraphs: [
+          'Open 2D plane-stress tension. Read geometry, physical thickness, Young’s modulus, Poisson’s ratio, supports and total force. These define an in-plane, homogeneous, small-strain equilibrium problem; selecting a learning method does not change that problem.',
+        ],
+        steps: [
+          'Run Classical FEM and inspect displacement, element stress, reactions and force/moment balance.',
+          'Choose a quantity to check, such as end displacement. Refine the mesh and compare that quantity; a single mesh is not a convergence study.',
+        ],
+      },
+      {
+        title: '2 · Understand what training minimizes',
+        paragraphs: [
+          'The current PINN represents displacement with a smooth neural network. Automatic differentiation computes strain, material stress and equilibrium residuals at sampled interior points. Boundary terms evaluate the prescribed physical conditions.',
+          'The displacement construction enforces supported prescribed components. Traction and remaining free-component conditions enter the boundary objective. Coordinates, displacement and stress scales normalize the problem; reported training losses are dimensionless, not field errors in metres or pascals.',
+          'This is per-problem strong-form training without FEM labels. The FEM solution is used for comparison, not supplied as training data.',
+        ],
+      },
+      {
+        title: '3 · Judge the physical result',
+        steps: [
+          'Run Compare FEM / PINN. Inspect the live loss history and actual device/precision.',
+          'Read Independent-point residuals when available. These test separate points within this problem, not new physical instances, and do not replace field-error or balance checks.',
+          'Switch FEM and PINN sources for displacement and von Mises stress, then view absolute and relative differences at their shared nodes/cell centroids.',
+          'Probe locations away from idealized corner singularities. Read reactions and force/moment balance for each method.',
+          'Vary the seed or justified sampling/training settings to examine sensitivity. Compare physical fields and balance rather than selecting a run solely for its lowest training loss.',
+          'Save the study and record its settings, seed, framework/device and measured fields. Reopening a result does not restore trained network weights.',
+        ],
+        screenshots: [
+          {
+            src: '/help/training-workbench.jpg',
+            alt: 'Stored total, PDE and boundary loss history from a completed CPU plane-stress training reference.',
+            caption:
+              'Recorded CPU training history in the current browser workbench. This saved reference predates independent-point diagnostics; absent diagnostics are not zero residual.',
+          },
+        ],
+        note: {
+          tone: 'warning',
+          text: 'Low training loss and agreement with one FEM mesh do not certify accuracy. Independent references, unseen evaluation points, multiple seeds and refinement answer different questions.',
+        },
+      },
+      {
+        title: '4 · Recognize different future methods',
+        bullets: [
+          'Deep Ritz minimizes a variational energy using admissible trial fields and quadrature. It is a future method, not the current residual PINN.',
+          'FNO and DeepONet learn reusable mappings across a defined problem family. Their dataset and held-out physical instances differ from fitting one problem.',
+          'Learned constitutive models approximate a material law inside an actual solver; they need load-path, tangent and physical-admissibility checks.',
+          'External frameworks, GPU acceleration and distributed execution are separate runtime capabilities. None makes a numerical method automatically accurate or supported.',
+        ],
+      },
+    ],
+    related: ['pinn', 'comparison', 'devices', 'scientific-references'],
+  },
+  {
+    id: 'scientific-references',
+    title: 'Scientific method references',
+    summary:
+      'Primary sources for the current mesher and PINN, with future method tracks identified.',
+    category: 'Reference',
+    kind: 'Reference',
+    keywords: [
+      'paper',
+      'citation',
+      'references',
+      'Gmsh',
+      'Raissi',
+      'Deep Ritz',
+      'FNO',
+      'DeepONet',
+      'PhysicsNeMo',
+    ],
+    sections: [
+      {
+        title: 'Upstream meshing',
+        references: [
+          {
+            title:
+              'Gmsh: a three-dimensional finite element mesh generator with built-in pre- and post-processing facilities',
+            authors: 'Christophe Geuzaine and Jean-François Remacle',
+            year: 2009,
+            url: 'https://doi.org/10.1002/nme.2579',
+            scope:
+              'Primary description of the upstream mesher. Phyra exposes a bounded primitive workflow; the paper does not establish broader geometry or solver support.',
+          },
+        ],
+      },
+      {
+        title: 'Implemented method',
+        paragraphs: [
+          'Phyra adapts residual-based neural approximation to rectangular plane-stress elasticity. The primary paper explains the general method; the current equations, boundary construction, independent tests and actual measured results define Phyra’s narrower implementation.',
+        ],
+        references: [
+          {
+            title:
+              'Physics-informed neural networks: a deep learning framework for forward and inverse PDE problems',
+            authors: 'M. Raissi, P. Perdikaris and G. E. Karniadakis',
+            year: 2019,
+            url: 'https://doi.org/10.1016/j.jcp.2018.10.045',
+            scope:
+              'Foundation for the implemented strong-form residual/autograd approach; Phyra does not reproduce all paper experiments.',
+          },
+          {
+            title: 'Automatic differentiation with torch.autograd',
+            authors: 'PyTorch contributors',
+            url: 'https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html',
+            scope:
+              'Framework documentation for the derivatives used by the current PINN. Operator/device support still requires actual tests.',
+          },
+        ],
+      },
+      {
+        title: 'Future methods and runtime research',
+        references: [
+          {
+            title: 'The Deep Ritz method',
+            authors: 'Weinan E and Bing Yu',
+            year: 2018,
+            url: 'https://arxiv.org/abs/1710.00211',
+            scope: 'Variational/energy method research; not implemented in this release.',
+          },
+          {
+            title: 'Fourier Neural Operator for Parametric Partial Differential Equations',
+            authors: 'Z. Li and coauthors',
+            year: 2021,
+            url: 'https://arxiv.org/abs/2010.08895',
+            scope:
+              'Reusable operator research requiring training data and held-out problem-family validation; not implemented.',
+          },
+          {
+            title: 'Learning nonlinear operators via DeepONet',
+            authors: 'L. Lu, P. Jin, G. Pang, Z. Zhang and G. E. Karniadakis',
+            year: 2021,
+            url: 'https://doi.org/10.1038/s42256-021-00302-5',
+            scope:
+              'Branch/trunk operator-learning research; not implemented in the current per-problem PINN.',
+          },
+          {
+            title: 'PhysicsNeMo framework installation and capabilities',
+            authors: 'NVIDIA PhysicsNeMo contributors',
+            url: 'https://docs.nvidia.com/physicsnemo/latest/getting-started/installation.html',
+            scope:
+              'Potential external execution/model adapter. No PhysicsNeMo integration or distributed execution is available in Phyra today.',
+          },
+        ],
+        note: {
+          tone: 'info',
+          text: 'External source pages require a network connection. Help text and the current numerical workflow remain local; opening a reference does not send a project or start computation.',
+        },
+      },
+    ],
+    related: ['learning-path', 'pinn', 'scope'],
   },
 ];
 

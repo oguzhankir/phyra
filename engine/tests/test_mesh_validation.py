@@ -7,9 +7,10 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
-from phyra_engine.fem import constraint_dofs, integrate_surface_loads, solve_mesh
-from phyra_engine.mesh import generate_mesh, tetra_volumes, validate_mesh
-from phyra_engine.validation import fingerprint, validate_project
+from phyra_engine.meshing.solid import generate_mesh, tetra_volumes, validate_mesh
+from phyra_engine.methods.classical.solid import solve_mesh
+from phyra_engine.studies.project import fingerprint, validate_project
+from phyra_engine.studies.solid import constraint_dofs, integrate_surface_loads
 
 
 @pytest.mark.parametrize("kind", ["box", "cylinder", "bracket"])

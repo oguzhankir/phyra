@@ -1,0 +1,404 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EngineCapabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "execution", "materialModels", "meshing", "methods", "comparisons"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "type": "integer"
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "jobsPerWorker", "cancellation"],
+      "properties": {
+        "backend": {
+          "const": "local-process"
+        },
+        "jobsPerWorker": {
+          "const": 1,
+          "type": "integer"
+        },
+        "cancellation": {
+          "const": "terminate-worker"
+        }
+      }
+    },
+    "materialModels": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": [
+        {
+          "const": "homogeneous-isotropic-linear-elastic"
+        }
+      ],
+      "additionalItems": false
+    },
+    "meshing": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "dimension", "cellType", "geometryKinds"],
+          "properties": {
+            "id": {
+              "const": "gmsh-occ-tetra4"
+            },
+            "dimension": {
+              "const": "3d"
+            },
+            "cellType": {
+              "const": "tetra4"
+            },
+            "geometryKinds": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+                {
+                  "const": "box"
+                },
+                {
+                  "const": "cylinder"
+                },
+                {
+                  "const": "bracket"
+                }
+              ],
+              "additionalItems": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "dimension", "cellType", "geometryKinds"],
+          "properties": {
+            "id": {
+              "const": "structured-rectangle-tri3"
+            },
+            "dimension": {
+              "const": "2d"
+            },
+            "cellType": {
+              "const": "triangle3"
+            },
+            "geometryKinds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": [
+                {
+                  "const": "box"
+                }
+              ],
+              "additionalItems": false
+            }
+          }
+        }
+      ],
+      "additionalItems": false
+    },
+    "methods": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "dimension",
+            "formulation",
+            "framework",
+            "operation",
+            "configuration",
+            "devices"
+          ],
+          "properties": {
+            "id": {
+              "const": "fem-solid-tetra4"
+            },
+            "kind": {
+              "const": "fem"
+            },
+            "dimension": {
+              "const": "3d"
+            },
+            "formulation": {
+              "const": "solid"
+            },
+            "framework": {
+              "const": "scipy"
+            },
+            "operation": {
+              "const": "solve"
+            },
+            "configuration": {
+              "const": null
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cpu"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "const": true
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                }
+              ],
+              "additionalItems": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "dimension",
+            "formulation",
+            "framework",
+            "operation",
+            "configuration",
+            "devices"
+          ],
+          "properties": {
+            "id": {
+              "const": "fem-plane-stress-tri3"
+            },
+            "kind": {
+              "const": "fem"
+            },
+            "dimension": {
+              "const": "2d"
+            },
+            "formulation": {
+              "const": "plane-stress"
+            },
+            "framework": {
+              "const": "scipy"
+            },
+            "operation": {
+              "const": "solve"
+            },
+            "configuration": {
+              "const": null
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cpu"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "const": true
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                }
+              ],
+              "additionalItems": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "dimension",
+            "formulation",
+            "framework",
+            "operation",
+            "configuration",
+            "devices"
+          ],
+          "properties": {
+            "id": {
+              "const": "pinn-plane-stress-displacement"
+            },
+            "kind": {
+              "const": "pinn"
+            },
+            "dimension": {
+              "const": "2d"
+            },
+            "formulation": {
+              "const": "plane-stress"
+            },
+            "framework": {
+              "const": "pytorch"
+            },
+            "operation": {
+              "const": "train"
+            },
+            "configuration": {
+              "const": "study.solver.pinn"
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cpu"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "mps"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float32"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cuda"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                }
+              ],
+              "additionalItems": false
+            }
+          }
+        }
+      ],
+      "additionalItems": false
+    },
+    "comparisons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "operation", "reference", "prediction", "mapping"],
+        "properties": {
+          "id": {
+            "const": "plane-stress-fem-pinn"
+          },
+          "operation": {
+            "const": "compare"
+          },
+          "reference": {
+            "const": "fem-plane-stress-tri3"
+          },
+          "prediction": {
+            "const": "pinn-plane-stress-displacement"
+          },
+          "mapping": {
+            "const": "identical nodes and cell centroids; unweighted relative L2"
+          }
+        }
+      }
+    }
+  }
+}

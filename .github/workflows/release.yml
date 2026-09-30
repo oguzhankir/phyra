@@ -1,0 +1,55 @@
+name: Prepare a verified release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/check-metadata.mjs
+      - name: Require reviewed public distribution readiness
+        env:
+          DISTRIBUTION_READY: ${{ vars.PHYRA_PUBLIC_DISTRIBUTION_READY }}
+        run: |
+          if [ "$DISTRIBUTION_READY" != "true" ]; then
+            echo "::error::Public distribution is gated. Complete target-specific redistribution/Corresponding Source, installation and trust review before the owner enables PHYRA_PUBLIC_DISTRIBUTION_READY."
+            exit 1
+          fi
+  verified-builds:
+    needs: readiness
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_assets: true
+  draft:
+    needs: verified-builds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create draft with verified installers and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          Development release prepared from this exact tag after scientific and packaged desktop workflow checks on macOS Apple Silicon and Windows x64.
+
+          Check the platform SHA256SUMS files before installing. Packaging and hosted workflow evidence do not replace consumer installation, minimum-OS or production signing review. See README.md and SECURITY.md at this tag for the supported scope and distribution limits.
+
+          This is a draft. The owner must review assets, evidence and complete Corresponding Source availability before publishing.
+          EOF
+          gh release create "$GITHUB_REF_NAME" release-assets/* --draft --verify-tag --title "Phyra $GITHUB_REF_NAME" --notes-file release-notes.md

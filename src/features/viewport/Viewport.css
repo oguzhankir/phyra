@@ -1,0 +1,158 @@
+.viewport-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 240px;
+}
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--canvas);
+}
+.viewport-canvas {
+  width: 100%;
+  height: 100%;
+}
+.viewport-canvas canvas {
+  display: block;
+  touch-action: none;
+}
+.viewport-actions {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  box-shadow: 0 2px 7px #00000008;
+}
+.viewport-actions button {
+  padding: 6px;
+  color: var(--muted);
+}
+.viewport-caption {
+  position: absolute;
+  top: 18px;
+  left: 15px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.deformation-badge {
+  position: absolute;
+  top: 39px;
+  left: 15px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+.viewport-help {
+  position: absolute;
+  bottom: 13px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.viewport-help i {
+  width: 2px;
+  height: 2px;
+  background: var(--muted);
+  border-radius: 50%;
+}
+.axis-key {
+  position: absolute;
+  bottom: 35px;
+  left: 18px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.axis-x {
+  color: var(--axis-x);
+}
+.axis-y {
+  color: var(--axis-y);
+}
+.axis-z {
+  color: var(--axis-z);
+}
+.axis-key small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.viewport-error {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 40%;
+  padding: 18px;
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.contour-legend {
+  position: absolute;
+  right: 15px;
+  bottom: 38px;
+  width: 225px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  pointer-events: none;
+}
+.contour-legend strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+}
+.contour-legend > span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.legend-gradient {
+  height: 7px;
+  border-radius: 2px;
+  margin: 12px 0 8px;
+}
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.legend-labels b {
+  font-weight: 400;
+  color: var(--muted);
+}
+.contour-legend > small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}

@@ -10,8 +10,8 @@ import {
   Plus,
   Settings2,
 } from 'lucide-react';
-import type { Project } from '../../types';
-import type { ExampleId } from '../../examples';
+import type { Project } from '../../domain/contracts/types';
+import type { ExampleId } from '../examples/projects';
 import type { Section } from './navigation';
 
 type Props = {

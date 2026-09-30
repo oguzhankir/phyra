@@ -71,4 +71,15 @@ describe('offline workbench help', () => {
     expect(markup).toContain('aria-current="page"');
     expect(markup).not.toContain('href="http');
   });
+  it('indexes primary authors and renders fixed references with their scope', () => {
+    expect(searchHelp('Perdikaris').map((article) => article.id)).toContain(
+      'scientific-references',
+    );
+    expect(searchHelp('PyTorch').map((article) => article.id)).toContain('scientific-references');
+    const article = helpArticles.find((article) => article.id === 'scientific-references')!;
+    expect(article.sections.flatMap((section) => section.references ?? []).length).toBeGreaterThan(
+      0,
+    );
+    expect(articleText(article)).toContain('Perdikaris');
+  });
 });

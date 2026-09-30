@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { formatValue } from '../../fields';
+import { formatValue } from '../../domain/units';
 
 export type LossSample = {
   step: number;

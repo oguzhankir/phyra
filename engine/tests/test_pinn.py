@@ -13,17 +13,12 @@ import torch
 from torch import nn
 
 from phyra_engine.errors import EngineError
-from phyra_engine.fem2d import constitutive_matrix, generate_rectangle
-from phyra_engine.pinn import (
-    DisplacementNetwork,
-    Normalization,
-    device_capabilities,
-    equilibrium_residual,
-    select_device,
-    stress_and_strain,
-    train,
-    validate_configuration,
-)
+from phyra_engine.execution.devices import device_capabilities, select_device
+from phyra_engine.materials.isotropic import plane_stress_matrix as constitutive_matrix
+from phyra_engine.meshing.plane_stress import generate_rectangle
+from phyra_engine.methods.physicsml.elasticity import equilibrium_residual, stress_and_strain
+from phyra_engine.methods.physicsml.networks import DisplacementNetwork, Normalization
+from phyra_engine.methods.physicsml.plane_stress import train, validate_configuration
 
 
 def configuration(**overrides):

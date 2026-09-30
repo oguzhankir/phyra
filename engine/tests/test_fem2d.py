@@ -13,20 +13,21 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
-from phyra_engine.fem2d import (
-    Mesh2D,
-    assemble,
+from phyra_engine.meshing.plane_stress import (
     cell_areas,
-    constraint_dofs,
     edge_geometry,
-    element_matrices,
     generate_rectangle,
-    integrate_edge_loads,
     quality,
-    solve_mesh,
-    solve_system,
     validate_mesh,
 )
+from phyra_engine.meshing.types import Mesh2D
+from phyra_engine.methods.classical.plane_stress import (
+    assemble,
+    element_matrices,
+    solve_mesh,
+    solve_system,
+)
+from phyra_engine.studies.plane_stress import constraint_dofs, integrate_edge_loads
 
 
 def rectangle(length=0.4, width=0.1, thickness=0.02, nx=4, ny=2):

@@ -1,10 +1,10 @@
 import { Check, ChevronDown, ChevronUp, Circle, Cpu, TriangleAlert } from 'lucide-react';
-import type { Manifest, Project, TrainingMetric } from '../../types';
-import { displayValue, formatValue } from '../../fields';
+import type { Manifest, Project, TrainingMetric } from '../../domain/contracts/types';
+import { displayValue, formatValue } from '../../domain/units';
 import TrainingPlot from './TrainingPlot';
-import { presentRun, type RunExecution, type RunStatus } from '../../studyUI';
+import { presentRun, type RunExecution, type RunStatus } from '../../domain/execution/presentation';
 
-export type { RunStatus } from '../../studyUI';
+export type { RunStatus } from '../../domain/execution/presentation';
 export type RunTab = 'run' | 'training' | 'comparison';
 type Props = {
   project: Project;
@@ -165,6 +165,32 @@ export default function RunWorkspace({
                 </div>
               </div>
               <TrainingPlot history={history} />
+              {training && (
+                <section className="heldout-residuals">
+                  <h3>Independent-point residuals</h3>
+                  {training.validation ? (
+                    <>
+                      <div>
+                        <span>PDE</span>
+                        <b>{formatValue(training.validation.pde)}</b>
+                        <span>Boundary</span>
+                        <b>{formatValue(training.validation.boundary)}</b>
+                        <span>Displacement / traction</span>
+                        <b>
+                          {formatValue(training.validation.displacement)} /{' '}
+                          {formatValue(training.validation.traction)}
+                        </b>
+                      </div>
+                      <p>
+                        Normalized losses at separately sampled points of this problem after
+                        optimization. These are not field-accuracy bounds.
+                      </p>
+                    </>
+                  ) : (
+                    <p>Not recorded in this saved run.</p>
+                  )}
+                </section>
+              )}
             </>
           ) : tab === 'comparison' ? (
             <>

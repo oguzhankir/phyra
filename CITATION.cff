@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: 'If you use Phyra in your research, please cite this software.'
+title: Phyra
+type: software
+authors:
+  - family-names: Kır
+    given-names: Oğuzhan
+repository-code: https://github.com/oguzhankir/phyra
+license: GPL-3.0-or-later
