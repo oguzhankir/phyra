@@ -343,9 +343,31 @@ fn write_client_checkpoint(
     project: &Value,
     sequence: u64,
 ) -> Result<Value, String> {
+    commit_client_checkpoint(directory, state, client, project, sequence, None)
+}
+
+fn commit_client_checkpoint(
+    directory: &Path,
+    state: &RecoveryState,
+    client: &str,
+    project: &Value,
+    sequence: u64,
+    restored_project: Option<&ProjectState>,
+) -> Result<Value, String> {
     let mut session = state.session.lock().map_err(|e| e.to_string())?;
     require_client(&session, client)?;
-    write_session_checkpoint(directory, &mut session, project, sequence)
+    let receipt = write_session_checkpoint(directory, &mut session, project, sequence)?;
+    if receipt["accepted"] == true {
+        if let Some(project_state) = restored_project {
+            // Keep generation ownership through association adoption; a reload
+            // cannot interleave and let an old restore clear a new file path.
+            *project_state
+                .current_path
+                .lock()
+                .map_err(|e| e.to_string())? = None;
+        }
+    }
+    Ok(receipt)
 }
 
 fn clear_client_checkpoint(
@@ -496,19 +518,15 @@ pub(crate) async fn write_recovery(
         } else {
             None
         };
-        let receipt = write_client_checkpoint(
+        let project_state = app.state::<ProjectState>();
+        let receipt = commit_client_checkpoint(
             &directory(&app)?,
             &app.state::<RecoveryState>(),
             &client_id,
             &project,
             sequence,
+            restored.then_some(&project_state),
         )?;
-        if restored && receipt["accepted"] == true {
-            *app.state::<ProjectState>()
-                .current_path
-                .lock()
-                .map_err(|e| e.to_string())? = None;
-        }
         drop(active_guard);
         Ok(receipt)
     })
@@ -867,5 +885,60 @@ mod tests {
                 ["accepted"],
             true
         );
+    }
+
+    #[test]
+    fn restored_association_changes_only_with_an_accepted_current_generation_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let client = uuid::Uuid::new_v4().to_string();
+        activate_client(&state, &client).unwrap();
+        let definition = project(1);
+        let project_state = ProjectState::default();
+        let association = Some((
+            definition["id"].as_str().unwrap().into(),
+            temp.path().join("original.phyra"),
+        ));
+        *project_state.current_path.lock().unwrap() = association.clone();
+        write_client_checkpoint(temp.path(), &state, &client, &definition, 2).unwrap();
+        assert_eq!(*project_state.current_path.lock().unwrap(), association);
+        assert_eq!(
+            commit_client_checkpoint(
+                temp.path(),
+                &state,
+                &client,
+                &definition,
+                1,
+                Some(&project_state)
+            )
+            .unwrap()["accepted"],
+            false
+        );
+        assert_eq!(*project_state.current_path.lock().unwrap(), association);
+        assert_eq!(
+            commit_client_checkpoint(
+                temp.path(),
+                &state,
+                &client,
+                &definition,
+                3,
+                Some(&project_state)
+            )
+            .unwrap()["accepted"],
+            true
+        );
+        assert!(project_state.current_path.lock().unwrap().is_none());
+        *project_state.current_path.lock().unwrap() = association.clone();
+        activate_client(&state, &uuid::Uuid::new_v4().to_string()).unwrap();
+        assert!(commit_client_checkpoint(
+            temp.path(),
+            &state,
+            &client,
+            &definition,
+            4,
+            Some(&project_state)
+        )
+        .is_err());
+        assert_eq!(*project_state.current_path.lock().unwrap(), association);
     }
 }
