@@ -35,6 +35,23 @@ npm run test:desktop
 
 `test:desktop` launches the package outside the checkout with developer Python paths removed. It checks real 3D FEM and 2D FEM/PINN fields, rendering, picking/probing, metrics, comparison, persistence, repeated runs and training cancellation. It queries actual method/device capabilities and exercises native definition-only recovery in isolated temporary storage, including active-session protection and interface reload ownership. Evidence is ignored under `artifacts/`. Target one workflow with `npm run test:desktop -- --3d-only` or `--physicsml-only`; optionally supply an absolute executable path. Native dialogs, minimum macOS 14 and consumer clean-machine installation/uninstall remain manual checks; hosted execution does not establish those results.
 
+## Preparing a release
+
+Plan product outcomes in the [roadmap](roadmap.md); assign a version only when the next release scope is selected. To synchronize the app, Tauri, Rust, Python engine and both lockfiles, run:
+
+```sh
+npm run release:version -- 0.2.0
+```
+
+This edits version metadata only. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.2.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
+
+```sh
+git tag -a v0.2.0 -m "Phyra v0.2.0"
+git push origin v0.2.0
+```
+
+Pushing that tag starts `.github/workflows/release.yml`. It runs the full scientific and packaged desktop checks on macOS Apple Silicon and Windows x64, stages installers, license/notice files and SHA-256 checksums, then creates a **draft** GitHub Release. The public-distribution readiness gate must be enabled by the repository owner after the target-specific installation, trust and GPL Corresponding Source review is complete. Review the draft and publish it to make the installers available from [GitHub Releases](https://github.com/oguzhankir/phyra/releases/latest). A published release updates that `latest` download page; Phyra does not yet update an already-installed app automatically.
+
 The macOS inspector rejects a native runtime requiring later than macOS 14 or linking developer libraries. Prefer the official Python 3.12 distribution; recreate a Homebrew environment if it fails this check. MPS capability must be tested outside restrictive execution sandboxes. Windows setup defaults to CPU Torch to avoid an unnecessary GPU runtime; an explicitly installed compatible CUDA build is detected by the engine but has not been verified here.
 
 Linux remains unsupported: its resolved GTK stack contains an open [GLib safety advisory](https://rustsec.org/advisories/RUSTSEC-2024-0429.html) and needs an upstream-compatible fix before platform validation. GLib is absent from the macOS and Windows Rust dependency graphs; keep the alert open until a compatible upstream fix is available.

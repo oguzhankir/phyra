@@ -1,6 +1,6 @@
 {
   "name": "phyra",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
@@ -15,6 +15,7 @@
     "build": "npm run generate && tsc --noEmit && vite build",
     "check": "npm run generate && npm run check:metadata && npm run check:frontend && node scripts/check-engine.mjs && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "check:metadata": "node scripts/check-metadata.mjs",
+    "release:version": "node scripts/set-version.mjs",
     "test": "vitest run && node scripts/test-engine.mjs",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:numerics-slow": "node scripts/test-engine.mjs -m slow -s",
