@@ -93,6 +93,8 @@ async function start(): Promise<void> {
         </React.StrictMode>
       </StartupBoundary>,
     );
+    if (verification)
+      await invoke('verification_trace', { message: 'frontend root render requested' });
   } catch (error) {
     root.render(<StartupFailure message={errorMessage(error)} />);
     void reportFailure(error);

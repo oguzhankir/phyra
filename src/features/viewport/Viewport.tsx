@@ -254,6 +254,7 @@ export default function Viewport(props: Props) {
 
   useEffect(() => {
     const element = container.current!;
+    traceVerification('viewport renderer initialization started');
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
@@ -270,6 +271,7 @@ export default function Viewport(props: Props) {
       return;
     }
     initializationError.current = null;
+    traceVerification('viewport renderer initialized');
     // StrictMode can recreate the renderer while retaining component refs.
     lastProject.current = '';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
