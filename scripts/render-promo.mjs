@@ -119,7 +119,8 @@ async function titleCard(name, duration, heading, detail, footer, logoScale) {
 
 async function screenScene(scene, index) {
   const image = path.resolve(root, scene.image);
-  if (!image.startsWith(`${root}${path.sep}`)) throw new Error('Scene image must stay in the repository');
+  if (!image.startsWith(`${root}${path.sep}`))
+    throw new Error('Scene image must stay in the repository');
   await access(image);
   const heading = await textFile(`${scene.name}-heading`, scene.heading);
   const detail = await textFile(`${scene.name}-detail`, scene.detail);
@@ -169,7 +170,8 @@ async function screenScene(scene, index) {
 
 async function recordingScene(scene, index) {
   const source = path.resolve(root, scene.source);
-  if (!source.startsWith(`${root}${path.sep}`)) throw new Error('Recording source must stay in the repository');
+  if (!source.startsWith(`${root}${path.sep}`))
+    throw new Error('Recording source must stay in the repository');
   await access(source);
   const heading = await textFile(`${scene.name}-heading`, scene.heading);
   const detail = await textFile(`${scene.name}-detail`, scene.detail);
@@ -238,7 +240,9 @@ async function informationCard(scene, index) {
     );
     previous = next;
   }
-  filters.push(`[${previous}]${drawText(footer, 21, '(w-text_w)/2', '944', '0x9caab4')},fade=t=in:d=0.35,fade=t=out:st=${scene.duration - 0.35}:d=0.35[v]`);
+  filters.push(
+    `[${previous}]${drawText(footer, 21, '(w-text_w)/2', '944', '0x9caab4')},fade=t=in:d=0.35,fade=t=out:st=${scene.duration - 0.35}:d=0.35[v]`,
+  );
   run([
     '-f',
     'lavfi',
@@ -298,14 +302,19 @@ clips.push(
 );
 
 const transition = 0.6;
-const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0) - transition * (clips.length - 1);
-const graph = clips.map((_, index) => `[${index}:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v${index}]`);
+const totalDuration =
+  clips.reduce((sum, clip) => sum + clip.duration, 0) - transition * (clips.length - 1);
+const graph = clips.map(
+  (_, index) => `[${index}:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v${index}]`,
+);
 let previous = 'v0';
 let offset = clips[0].duration - transition;
 for (let index = 1; index < clips.length; index += 1) {
   const current = `v${index}`;
   const next = `mix${index}`;
-  graph.push(`[${previous}][${current}]xfade=transition=fade:duration=${transition}:offset=${offset.toFixed(2)}[${next}]`);
+  graph.push(
+    `[${previous}][${current}]xfade=transition=fade:duration=${transition}:offset=${offset.toFixed(2)}[${next}]`,
+  );
   previous = next;
   offset += clips[index].duration - transition;
 }
