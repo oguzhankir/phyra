@@ -122,6 +122,7 @@ export function useWorkbench() {
   const desktop = '__TAURI_INTERNALS__' in window;
   const recoveryBusyRef = useRef(false);
   const clearRecoveryRef = useRef<() => Promise<void>>(async () => {});
+  const verificationExecutionStarted = useRef(false);
   const fileBusyLabel =
     fileBusy === 'open'
       ? 'Opening project'
@@ -448,7 +449,7 @@ export function useWorkbench() {
       setCancelling(false);
     }
   };
-  const { verification, verified } = useVerificationWorkflow({
+  const { verification, verificationConfiguration, verified } = useVerificationWorkflow({
     desktop,
     project,
     currentData,
@@ -456,7 +457,6 @@ export function useWorkbench() {
     fieldSource,
     fieldId,
     replace,
-    execute,
     setDeformation,
     setFieldId,
     setFieldSource,
@@ -554,6 +554,25 @@ export function useWorkbench() {
   });
   recoveryBusyRef.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
+  useEffect(() => {
+    if (
+      !verification ||
+      !verificationConfiguration ||
+      recoveryBusyRef.current ||
+      verificationExecutionStarted.current
+    )
+      return;
+    verificationExecutionStarted.current = true;
+    void invoke('verification_trace', { message: 'frontend verification operation started' });
+    void execute(verificationConfiguration === '2d-compare' ? 'compare' : 'solve');
+  }, [
+    verification,
+    verificationConfiguration,
+    recovery.ready,
+    recovery.pending,
+    recovery.prompt,
+    execute,
+  ]);
   const locked = !!busy || !!fileBusy || deviceBusy || recoveryBusyRef.current;
   useModalFocus(
     confirmation || help || recovery.prompt,

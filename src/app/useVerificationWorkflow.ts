@@ -7,7 +7,7 @@ import {
   type RefObject,
 } from 'react';
 import { invokeVerification as invoke } from '../platform/desktop/verification';
-import type { Project, Operation, TrainingMetric } from '../domain/contracts/types';
+import type { Project, TrainingMetric } from '../domain/contracts/types';
 import type { ResultData, FieldId, FieldSource } from '../domain/results/fields';
 import { makeProject } from '../features/examples/projects';
 type Props = {
@@ -18,7 +18,6 @@ type Props = {
   fieldSource: FieldSource;
   fieldId: FieldId;
   replace: (project: Project, data?: ResultData | null) => void;
-  execute: (operation: Operation) => Promise<void>;
   setDeformation: Dispatch<SetStateAction<'off' | 'actual' | 'auto' | 'custom'>>;
   setFieldId: Dispatch<SetStateAction<FieldId>>;
   setFieldSource: Dispatch<SetStateAction<FieldSource>>;
@@ -32,7 +31,6 @@ export function useVerificationWorkflow({
   fieldSource,
   fieldId,
   replace,
-  execute,
   setDeformation,
   setFieldId,
   setFieldSource,
@@ -81,12 +79,6 @@ export function useVerificationWorkflow({
         setError(String(cause));
       });
   }, [desktop]);
-  useEffect(() => {
-    if (verification) {
-      void invoke('verification_trace', { message: 'frontend verification operation started' });
-      void execute(verificationConfiguration === '2d-compare' ? 'compare' : 'solve');
-    }
-  }, [verification]);
   const verified = (report: Record<string, unknown>) => {
     if (!verification || verificationSent.current || !currentData) return;
     void invoke('verification_trace', { message: `frontend rendered ${fieldId}` });
@@ -142,5 +134,5 @@ export function useVerificationWorkflow({
       },
     }).catch((cause) => setError(String(cause)));
   };
-  return { verification, verified };
+  return { verification, verificationConfiguration, verified };
 }
