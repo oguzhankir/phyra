@@ -71,7 +71,14 @@ def element_matrices(
         strain[:, 4, column + 2] = y
         strain[:, 5, column] = z
         strain[:, 5, column + 2] = x
-    stiffness = np.einsum("cai,ab,cbj,c->cij", strain, material, strain, volumes, optimize=True)
+    # Evaluate V Bᵀ D B in a fixed order, scaling by volume last. Planner-dependent
+    # scaling and BLAS products can amplify cancellation for rigid motions;
+    # these explicit contractions preserve the same mathematics.
+    constitutive_strain = np.einsum("ab,cbj->caj", material, strain, optimize=False)
+    stiffness = (
+        np.einsum("cai,caj->cij", strain, constitutive_strain, optimize=False)
+        * volumes[:, None, None]
+    )
     return strain, volumes, stiffness
 
 
