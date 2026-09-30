@@ -47,9 +47,13 @@ export function useVerificationWorkflow({
   useEffect(() => {
     if (!desktop || verificationStarted.current) return;
     verificationStarted.current = true;
+    void invoke('verification_trace', { message: 'frontend verification hook mounted' });
     void invoke('verification_configuration')
       .then((configuration) => {
         if (configuration) {
+          void invoke('verification_trace', {
+            message: `frontend verification configuration: ${configuration}`,
+          });
           const next = makeProject(
             configuration === '2d-compare' ? 'plane-stress-tension' : 'cantilever',
           );
@@ -68,7 +72,12 @@ export function useVerificationWorkflow({
           setVerification(true);
         }
       })
-      .catch((cause) => setError(String(cause)));
+      .catch((cause) => {
+        void invoke('verification_trace', {
+          message: `frontend verification config failed: ${String(cause)}`,
+        });
+        setError(String(cause));
+      });
   }, [desktop]);
   const verified = (report: Record<string, unknown>) => {
     if (!verification || verificationSent.current || !currentData) return;

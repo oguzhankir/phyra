@@ -174,7 +174,11 @@ async function verify(mode) {
       `${mode} workflow ${timedOut ? `timed out after ${timeoutMs / 1000} seconds` : `exited ${code}`} without a report: ${output} ${diagnostic}`,
     );
   const report = JSON.parse(await readFile(location, 'utf8'));
-  if (report.error) throw new Error(`${mode} workflow failed: ${report.error}`);
+  await writeFile(`artifacts/${prefix}-verification.json`, JSON.stringify(report, null, 2));
+  if (report.error)
+    throw new Error(
+      `${mode} workflow failed: ${report.error}; native trace: ${JSON.stringify(report.nativeTrace)}`,
+    );
   if (code !== 0) throw new Error(`${mode} workflow exited ${code}: ${output} ${diagnostic}`);
   if (
     !report.manifest ||
