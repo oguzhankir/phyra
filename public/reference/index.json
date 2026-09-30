@@ -1,0 +1,22 @@
+{
+  "3d": {
+    "sha256": {
+      "project": "5014b41cfa2608fa71dead1efdde857118e372077aaf8a75b22a184981673389",
+      "manifest": "000e3313bb2663902edf4cbadf63098d7ea7c76c8f4e5cf72dc93217210e2bfc",
+      "buffer": "6f02986e5f6a2d73495fca508fa3ccd5f068b3bde196e456bd8fcd52428a96dc"
+    },
+    "project": "/reference/three-dimensional.project.json",
+    "manifest": "/reference/three-dimensional.manifest.json",
+    "buffer": "/reference/three-dimensional.bin"
+  },
+  "2d-compare": {
+    "sha256": {
+      "project": "7d9e908eee1a33bb6aa5eb6b824f671c00106d08dea96329696b9cfee043820d",
+      "manifest": "cec67baecc206bb7b35751465627b87e76b5593d5a92547e6d6ea21eb30238e5",
+      "buffer": "91864c73733d08e963cd48ccf617ab3040f05aa6fbc07d38f58c48c44710d59f"
+    },
+    "project": "/reference/plane-stress-comparison.project.json",
+    "manifest": "/reference/plane-stress-comparison.manifest.json",
+    "buffer": "/reference/plane-stress-comparison.bin"
+  }
+}

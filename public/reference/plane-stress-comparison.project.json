@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 2,
+  "id": "plane-stress-tension",
+  "name": "Plane stress · tension",
+  "revision": 0,
+  "displayUnits": "mm",
+  "geometry": {
+    "kind": "box",
+    "length": 0.1,
+    "width": 0.05,
+    "height": 0.002,
+    "radius": 0.02,
+    "thickness": 0.012
+  },
+  "study": {
+    "id": "plane-stress-study",
+    "type": "linear-static",
+    "material": {
+      "name": "Generic elastic material",
+      "young": 70000000000,
+      "poisson": 0.3
+    },
+    "mesh": {
+      "size": 0.01
+    },
+    "constraints": [
+      {
+        "id": "ux",
+        "name": "X restraint",
+        "regions": [
+          "x0"
+        ],
+        "components": [
+          0,
+          null,
+          null
+        ]
+      },
+      {
+        "id": "uy",
+        "name": "Y restraint",
+        "regions": [
+          "y0"
+        ],
+        "components": [
+          null,
+          0,
+          null
+        ]
+      }
+    ],
+    "loads": [
+      {
+        "id": "tension",
+        "name": "Axial force",
+        "regions": [
+          "x1"
+        ],
+        "kind": "force",
+        "vector": [
+          100,
+          0,
+          0
+        ],
+        "pressure": 0
+      }
+    ],
+    "dimension": "2d",
+    "formulation": "plane-stress",
+    "thickness": 0.002,
+    "solver": {
+      "kind": "pinn",
+      "pinn": {
+        "layers": 2,
+        "width": 16,
+        "activation": "tanh",
+        "optimizer": "adam",
+        "learningRate": 0.001,
+        "steps": 2000,
+        "interiorPoints": 128,
+        "boundaryPoints": 32,
+        "seed": 42,
+        "device": "cpu"
+      }
+    }
+  }
+}

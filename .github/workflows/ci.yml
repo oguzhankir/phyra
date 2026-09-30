@@ -41,8 +41,8 @@ jobs:
         if: always()
         with:
           name: phyra-${{ matrix.os }}
+          # Public installer artifacts require a complete target/source redistribution route.
           path: |
-            src-tauri/target/release/bundle/
             artifacts/desktop-runtime.log
             artifacts/desktop-verification.json
             artifacts/desktop-physicsml-runtime.log

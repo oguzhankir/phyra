@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="128" viewBox="0 0 560 128" role="img" aria-label="Phyra — Engineering analysis with Physics ML">
+  <rect width="560" height="128" fill="#fafaf8"/>
+  <rect x="1" y="1" width="126" height="126" rx="28" fill="#252726"/>
+  <path d="M64 26v76" fill="none" stroke="#fafaf7" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 39c-22 0-36 11-36 25s14 25 36 25 36-11 36-25-14-25-36-25Z" fill="none" stroke="#fafaf7" stroke-width="7"/>
+  <circle cx="64" cy="64" r="5.5" fill="#cfa362"/>
+  <text x="159" y="77" fill="#252726" font-family="Helvetica, Arial, sans-serif" font-size="66" font-weight="600" letter-spacing="-3">Phyra</text>
+  <text x="162" y="104" fill="#606560" font-family="Helvetica, Arial, sans-serif" font-size="14" letter-spacing="1.2">ENGINEERING ANALYSIS · PHYSICS ML</text>
+</svg>

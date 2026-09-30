@@ -72,6 +72,21 @@ describe('matched Physics ML field presentation', () => {
     expect(deformationPhase(1000)).toBeCloseTo(0.5);
     expect(Array.from(values)).toEqual([0, 0, 0, 3, 4, 0, 1, 0, 0, 6, 8, 0]);
   });
+  it('omits undefined zero-reference ratios, including 0/0, while preserving defined zero error', () => {
+    const equal = new Float64Array([0, 0, 0, 3, 4, 0, 0, 0, 0, 3, 4, 0]);
+    const result = { ...data, buffer: equal.buffer };
+    const relative = extractField(result, 'displacement-mag', 'relative')!;
+    expect(Number.isNaN(relative.values[0])).toBe(true);
+    expect(relative.values[1]).toBe(0);
+    expect(relative.finiteCount).toBe(1);
+    const zero = extractField(
+      { ...data, buffer: new Float64Array(12).buffer },
+      'displacement-mag',
+      'relative',
+    )!;
+    expect(zero.values.every(Number.isNaN)).toBe(true);
+    expect(zero.finiteCount).toBe(0);
+  });
   it('exposes only true 2D edges for planar assignment', () => {
     expect(regionNames('box', '2d').map((region) => region.id)).toEqual(['x0', 'x1', 'y0', 'y1']);
   });

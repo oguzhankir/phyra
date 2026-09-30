@@ -26,6 +26,7 @@ export type Field = {
   units: string;
   minimum: number;
   maximum: number;
+  finiteCount?: number;
 };
 export const fieldOptions: { id: FieldId; label: string }[] = [
   { id: 'geometry', label: 'Geometry / boundary regions' },
@@ -130,9 +131,7 @@ export function extractField(
         source === 'relative'
           ? reference > floor
             ? (100 * difference) / reference
-            : difference === 0
-              ? 0
-              : NaN
+            : NaN
           : difference;
     }
     const [minimum, maximum] = range(values);
@@ -141,6 +140,7 @@ export function extractField(
       values,
       minimum,
       maximum,
+      finiteCount: values.reduce((count, value) => count + (Number.isFinite(value) ? 1 : 0), 0),
       units: source === 'relative' ? '%' : fem.units,
       label: `${source === 'relative' ? 'Relative Δ (zero references omitted)' : 'Absolute Δ'} · ${fem.label}`,
     };

@@ -1,31 +1,16 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   ArrowDownToLine,
   ArrowUpRight,
-  Box,
   Check,
-  ChevronRight,
   CircleHelp,
-  FilePlus2,
-  FolderOpen,
   Layers3,
   LockKeyhole,
   Magnet,
   Play,
   Plus,
   Save,
-  Settings2,
   Square,
   Trash2,
   TriangleAlert,
@@ -69,8 +54,21 @@ import {
   type ResultData,
   type FieldSource,
 } from './fields';
-import Viewport, { type Probe } from './Viewport';
-import { parseNumericDraft } from './numericDraft';
+import Viewport, { type Probe } from './features/viewport/Viewport';
+import {
+  NumericDraftContext,
+  NumberInput,
+  Group,
+  Metric,
+} from './features/workbench/PropertyControls';
+import { sectionTitles, sectionDescriptions, type Section } from './features/workbench/navigation';
+import { useTheme } from './features/workbench/theme';
+import WorkbenchHeader from './features/workbench/WorkbenchHeader';
+import ModelTree from './features/workbench/ModelTree';
+import HelpPanel from './features/help/HelpPanel';
+import type { HelpContext } from './features/help/content';
+import { loadReference, referenceLabels, type ReferenceId } from './features/examples/references';
+import { contourGradient } from './features/viewport/contours';
 import {
   appendTrainingMetric,
   changeStudyDimension,
@@ -79,15 +77,8 @@ import {
   resultIsCurrent,
   type RunExecution,
 } from './studyUI';
-import RunWorkspace, { type RunStatus, type RunTab } from './RunWorkspace';
-import phyraLogo from '../assets/phyra.svg';
+import RunWorkspace, { type RunStatus, type RunTab } from './features/runs/RunWorkspace';
 
-const NumericDraftContext = createContext<(id: string, invalidLabel: string | null) => void>(
-  () => {},
-);
-
-type Section =
-  'study' | 'solver' | 'geometry' | 'material' | 'mesh' | 'constraints' | 'loads' | 'results';
 const uid = () => crypto.randomUUID();
 function assignedRegions(values: RegionId[], fallback: RegionId): Constraint['regions'] {
   return values.length ? [values[0], ...values.slice(1)] : [fallback];
@@ -157,116 +148,6 @@ function inputError(project: Project): string | null {
     return 'Project, material, support, and load names cannot be empty.';
   return null;
 }
-function NumberInput({
-  label,
-  value,
-  onChange,
-  unit,
-  disabled = false,
-  physical = true,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  unit?: string;
-  disabled?: boolean;
-  physical?: boolean;
-}) {
-  const id = useId();
-  const reportValidity = useContext(NumericDraftContext);
-  const [text, setText] = useState(String(value));
-  const textRef = useRef(text);
-  textRef.current = text;
-  const invalid = parseNumericDraft(text) === null;
-  useEffect(() => {
-    const parsed = parseNumericDraft(textRef.current);
-    if (
-      parsed === null ||
-      Math.abs(parsed - value) > Number.EPSILON * Math.max(1, Math.abs(value)) * 4
-    ) {
-      setText(String(value));
-      if (physical) reportValidity(id, null);
-    }
-  }, [value, id, physical, reportValidity]);
-  useEffect(
-    () => () => {
-      if (physical) reportValidity(id, null);
-    },
-    [id, physical, reportValidity],
-  );
-  return (
-    <label className="field-label">
-      <span>{label}</span>
-      <div className={`input-with-unit ${invalid ? 'invalid-input' : ''}`}>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={text}
-          aria-invalid={invalid}
-          disabled={disabled}
-          onChange={(event) => {
-            const draft = event.target.value;
-            textRef.current = draft;
-            setText(draft);
-            const parsed = parseNumericDraft(draft);
-            if (physical) reportValidity(id, parsed === null ? label : null);
-            if (parsed !== null) onChange(parsed);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setText(String(value));
-              if (physical) reportValidity(id, null);
-            }
-          }}
-        />
-        {unit && <span>{unit}</span>}
-      </div>
-      {invalid && (
-        <small className="draft-error">Complete the number, or press Escape to revert.</small>
-      )}
-    </label>
-  );
-}
-function Group({
-  title,
-  children,
-  action,
-}: {
-  title: string;
-  children: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <section className="property-group">
-      <div className="group-heading">
-        <h3>{title}</h3>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-function Metric({ label, value, unit }: { label: string; value: number; unit?: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>
-        {formatValue(value)} <small>{unit}</small>
-      </strong>
-    </div>
-  );
-}
-const sectionTitles: Record<Section, string> = {
-  study: 'Study',
-  solver: 'Solver',
-  geometry: 'Geometry',
-  material: 'Material',
-  mesh: 'Mesh',
-  constraints: 'Supports',
-  loads: 'Loads',
-  results: 'Results',
-};
 
 export default function App() {
   const [project, setProject] = useState<Project>(() => makeProject('plane-stress-tension'));
@@ -289,6 +170,7 @@ export default function App() {
     setInvalidDraftLabels(Array.from(drafts.values()));
   }, []);
   const [path, setPath] = useState<string | null>(null);
+  const [referenceId, setReferenceId] = useState<ReferenceId | null>(null);
   const [data, setData] = useState<ResultData | null>(null);
   const [section, setSection] = useState<Section>('study');
   const [selected, setSelected] = useState<RegionId[]>([]);
@@ -304,7 +186,7 @@ export default function App() {
   const [busy, setBusy] = useState<Operation | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
-  const [fileBusy, setFileBusy] = useState<'open' | 'save' | 'export' | null>(null);
+  const [fileBusy, setFileBusy] = useState<'open' | 'save' | 'export' | 'reference' | null>(null);
   const fileBusyRef = useRef(fileBusy);
   fileBusyRef.current = fileBusy;
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -331,6 +213,12 @@ export default function App() {
   const [leftWidth, setLeftWidth] = useState(236);
   const [rightWidth, setRightWidth] = useState(328);
   const [help, setHelp] = useState(false);
+  const [helpContext, setHelpContext] = useState<HelpContext>('overview');
+  const { theme, preference, setPreference } = useTheme();
+  const showHelp = (context: HelpContext = section) => {
+    setHelpContext(context);
+    setHelp(true);
+  };
   const [verification, setVerification] = useState(false);
   const verificationStarted = useRef(false);
   const verificationSent = useRef(false);
@@ -341,6 +229,14 @@ export default function App() {
   const verificationDisplacement = useRef<Record<string, unknown> | null>(null);
   const desktop = '__TAURI_INTERNALS__' in window;
   const locked = !!busy || !!fileBusy || deviceBusy;
+  const fileBusyLabel =
+    fileBusy === 'open'
+      ? 'Opening project'
+      : fileBusy === 'save'
+        ? 'Saving project'
+        : fileBusy === 'reference'
+          ? 'Loading saved CPU reference'
+          : 'Exporting fields';
   const currentData = resultIsCurrent(project, data) ? data : null;
   const solved = !!currentData && currentData.manifest.operation !== 'mesh';
   const is2D = project.study.dimension === '2d';
@@ -385,7 +281,7 @@ export default function App() {
   }, []);
   const save = useCallback(
     async (saveAs = false): Promise<boolean> => {
-      if (busyRef.current || fileBusyRef.current) return false;
+      if (!desktop || busyRef.current || fileBusyRef.current) return false;
       if (invalidDraftsRef.current.size) {
         setError('Complete or revert the invalid numeric input before saving.');
         return false;
@@ -414,12 +310,13 @@ export default function App() {
         setFileBusy(null);
       }
     },
-    [data],
+    [data, desktop],
   );
   const canReplace = useCallback(async (): Promise<boolean> => {
     if (busyRef.current || fileBusyRef.current || confirmationRef.current) return false;
     if (!dirtyRef.current) return true;
     confirmationRef.current = true;
+    setHelp(false);
     const choice = await new Promise<'save' | 'discard' | 'cancel'>((resolve) => {
       confirmResolver.current = resolve;
       setConfirmation(true);
@@ -451,6 +348,7 @@ export default function App() {
     setProgress(null);
     setError(null);
     setPath(null);
+    setReferenceId(null);
   };
   const create = useCallback(
     async (example?: ExampleId) => {
@@ -459,7 +357,7 @@ export default function App() {
     [canReplace],
   );
   const open = useCallback(async () => {
-    if (!(await canReplace())) return;
+    if (!desktop || !(await canReplace())) return;
     if (busyRef.current || fileBusyRef.current) return;
     fileBusyRef.current = 'open';
     setFileBusy('open');
@@ -480,9 +378,31 @@ export default function App() {
       fileBusyRef.current = null;
       setFileBusy(null);
     }
-  }, [canReplace]);
+  }, [canReplace, desktop]);
+  const inspectReference = async (id: ReferenceId) => {
+    if (desktop || deviceBusyRef.current || !(await canReplace())) return;
+    if (busyRef.current || fileBusyRef.current) return;
+    fileBusyRef.current = 'reference';
+    setFileBusy('reference');
+    setError(null);
+    try {
+      const saved = await loadReference(id);
+      replace(saved.project, saved.data);
+      setReferenceId(id);
+      setSection('results');
+      setFieldSource(id === '2d-compare' ? 'fem' : 'primary');
+      setRunTab(id === '2d-compare' ? 'comparison' : 'run');
+      setRunExpanded(true);
+      setNotice('Saved CPU reference loaded');
+    } catch (cause) {
+      setError(`Reference result could not be opened: ${String(cause)}`);
+    } finally {
+      fileBusyRef.current = null;
+      setFileBusy(null);
+    }
+  };
   const exportFields = async () => {
-    if (!currentData || busyRef.current || fileBusyRef.current) return;
+    if (!desktop || !currentData || busyRef.current || fileBusyRef.current) return;
     fileBusyRef.current = 'export';
     setFileBusy('export');
     try {
@@ -497,6 +417,7 @@ export default function App() {
   };
   const execute = async (operation: Operation) => {
     if (
+      !desktop ||
       busyRef.current ||
       fileBusyRef.current ||
       confirmationRef.current ||
@@ -769,10 +690,13 @@ export default function App() {
     if (!confirmation && !help) return;
     const previous = document.activeElement;
     const modal = document.querySelector<HTMLElement>('.modal');
-    const buttons = Array.from(
-      modal?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [],
-    );
-    buttons[0]?.focus();
+    const focusable = () =>
+      Array.from(
+        modal?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0);
+    (modal?.querySelector<HTMLInputElement>('input') ?? focusable()[0])?.focus();
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -782,8 +706,9 @@ export default function App() {
           confirmResolver.current = null;
         } else setHelp(false);
       }
+      const buttons = focusable();
       if (event.key === 'Tab' && buttons.length) {
-        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const index = buttons.indexOf(document.activeElement as HTMLElement);
         const next = event.shiftKey
           ? index <= 0
             ? buttons.length - 1
@@ -801,11 +726,19 @@ export default function App() {
   }, [confirmation, help]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (event.key === 'F1') {
+        event.preventDefault();
+        if (!confirmation) {
+          setHelpContext(section);
+          setHelp(true);
+        }
+        return;
+      }
       if (!event.metaKey && !event.ctrlKey) return;
       const character = event.key.toLowerCase();
       if (!['s', 'o', 'n'].includes(character)) return;
       event.preventDefault();
-      if (busyRef.current || fileBusyRef.current || confirmationRef.current) return;
+      if (busyRef.current || fileBusyRef.current || confirmationRef.current || help) return;
       if (character === 's') void save(event.shiftKey);
       if (character === 'o') void open();
       if (character === 'n') void create();
@@ -822,7 +755,7 @@ export default function App() {
       window.removeEventListener('keydown', key);
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [save, open, create]);
+  }, [save, open, create, help, confirmation, section]);
   useEffect(() => {
     if (!desktop) return;
     let unsubscribe: (() => void) | undefined;
@@ -1000,227 +933,48 @@ export default function App() {
   return (
     <NumericDraftContext.Provider value={reportDraftValidity}>
       <div className="app-shell">
-        <header className="app-header">
-          <div className="brand">
-            <div className="brand-symbol">
-              <img src={phyraLogo} alt="Phyra" />
-            </div>
-            <strong>
-              Phyra<span>ENGINEERING · PHYSICS ML</span>
-            </strong>
-          </div>
-          <div className="file-actions">
-            <button
-              title="New project · Ctrl/⌘ N"
-              aria-label="New project"
-              disabled={locked}
-              onClick={() => void create()}
-            >
-              <FilePlus2 size={17} />
-            </button>
-            <button
-              title="Open project · Ctrl/⌘ O"
-              aria-label="Open project"
-              disabled={locked || !desktop}
-              onClick={() => void open()}
-            >
-              <FolderOpen size={17} />
-            </button>
-            <button
-              title="Save · Ctrl/⌘ S"
-              aria-label="Save project"
-              disabled={locked || !!validation || !desktop}
-              onClick={() => void save()}
-            >
-              <Save size={17} />
-            </button>
-            <button
-              className="save-as"
-              disabled={locked || !!validation || !desktop}
-              onClick={() => void save(true)}
-            >
-              Save as
-            </button>
-          </div>
-          <div className="project-title">
-            {project.name}
-            {dirty && <span className="dirty-dot" title="Unsaved changes" />}
-            <span>{path ? path.split(/[\\/]/).pop() : 'Local project'}</span>
-          </div>
-          <div className="header-end">
-            <span className="device-badge">
-              <Cpu size={14} />
-              {currentData?.manifest.training?.device ??
-                (isPinn
-                  ? `Device · ${project.study.solver.pinn.device === 'auto' ? 'CPU · float64 (Auto)' : project.study.solver.pinn.device.toUpperCase()}`
-                  : 'FEM · CPU')}
-            </span>
-            <button aria-label="Workflow help" title="Workflow help" onClick={() => setHelp(true)}>
-              <CircleHelp size={18} />
-            </button>
-          </div>
-        </header>
+        <WorkbenchHeader
+          name={project.name}
+          path={path}
+          dirty={dirty}
+          locked={locked}
+          canUseFiles={desktop}
+          canSave={!locked && !validation && desktop}
+          canExport={!locked && solved && desktop}
+          device={
+            currentData?.manifest.training?.device ??
+            (isPinn
+              ? project.study.solver.pinn.device === 'auto'
+                ? 'CPU · float64 (Auto)'
+                : project.study.solver.pinn.device.toUpperCase()
+              : 'FEM · CPU')
+          }
+          theme={theme}
+          preference={preference}
+          onTheme={setPreference}
+          onNew={() => void create()}
+          onOpen={() => void open()}
+          onSave={(saveAs) => void save(saveAs)}
+          onExport={() => void exportFields()}
+          onHelp={() => showHelp()}
+          onFilesHelp={() => showHelp('files')}
+        />
         <div className="workspace">
           <aside className="model-panel" style={{ width: leftWidth }}>
-            <div className="panel-heading">
-              <span>PROJECT</span>
-              <select
-                aria-label="Load example"
-                disabled={locked}
-                value=""
-                onChange={(event) => void create(event.target.value as ExampleId)}
-              >
-                <option value="">Examples</option>
-                <option value="plane-stress-tension">2D plane-stress tension</option>
-                <option value="cantilever">3D cantilever beam</option>
-                <option value="cylinder">Axial cylinder</option>
-                <option value="bracket">L bracket</option>
-                <option value="extension">Prescribed extension</option>
-              </select>
-            </div>
-            <div className="study-title">
-              <Activity size={17} />
-              <div>
-                <strong>Static structural</strong>
-                <small>{is2D ? '2D · Plane stress' : '3D · Solid mechanics'}</small>
-              </div>
-            </div>
-            <nav className="model-tree">
-              <button
-                className={`tree-row ${section === 'study' ? 'active' : ''}`}
-                onClick={() => selectSection('study')}
-              >
-                <Activity size={16} />
-                <span>
-                  Study<small>{is2D ? '2D · Plane stress' : '3D · Solid mechanics'}</small>
-                </span>
-                <ChevronRight size={13} />
-              </button>
-              <button
-                className={`tree-row ${section === 'geometry' ? 'active' : ''}`}
-                onClick={() => selectSection('geometry')}
-              >
-                <Box size={16} />
-                <span>
-                  Geometry
-                  <small>
-                    {is2D
-                      ? 'Rectangular domain'
-                      : project.geometry.kind === 'box'
-                        ? 'Rectangular solid'
-                        : project.geometry.kind === 'cylinder'
-                          ? 'Cylinder'
-                          : 'L bracket'}
-                  </small>
-                </span>
-                <ChevronRight size={13} />
-              </button>
-              <button
-                className={`tree-row ${section === 'material' ? 'active' : ''}`}
-                onClick={() => selectSection('material')}
-              >
-                <Layers3 size={16} />
-                <span>
-                  Material<small>{project.study.material.name}</small>
-                </span>
-                <ChevronRight size={13} />
-              </button>
-              <button
-                className={`tree-row ${section === 'mesh' ? 'active' : ''}`}
-                onClick={() => selectSection('mesh')}
-              >
-                <Magnet size={16} />
-                <span>
-                  {isPinn ? 'Mesh & sampling' : is2D ? 'Area mesh' : 'Volume mesh'}
-                  <small>
-                    {stat
-                      ? `${stat.cells.toLocaleString()} ${is2D ? 'triangles' : 'tetrahedra'}`
-                      : 'Not generated'}
-                  </small>
-                </span>
-                {stat && <span className="tree-dot" />}
-              </button>
-              <div className="tree-group-label">
-                <button onClick={() => selectSection('constraints')}>
-                  SUPPORTS <span>{project.study.constraints.length}</span>
-                </button>
-                <button aria-label="Add support" disabled={locked} onClick={addConstraint}>
-                  <Plus size={14} />
-                </button>
-              </div>
-              {project.study.constraints.map((item) => (
-                <button
-                  key={item.id}
-                  className={`tree-row child ${section === 'constraints' && constraintId === item.id ? 'active' : ''}`}
-                  onClick={() => selectSection('constraints', item.id)}
-                >
-                  <LockKeyhole size={14} />
-                  <span>
-                    {item.name}
-                    <small>{item.regions.join(', ')}</small>
-                  </span>
-                </button>
-              ))}
-              <div className="tree-group-label">
-                <button onClick={() => selectSection('loads')}>
-                  LOADS <span>{project.study.loads.length}</span>
-                </button>
-                <button aria-label="Add load" disabled={locked} onClick={addLoad}>
-                  <Plus size={14} />
-                </button>
-              </div>
-              {project.study.loads.map((item) => (
-                <button
-                  key={item.id}
-                  className={`tree-row child ${section === 'loads' && loadId === item.id ? 'active' : ''}`}
-                  onClick={() => selectSection('loads', item.id)}
-                >
-                  <ArrowUpRight size={14} />
-                  <span>
-                    {item.name}
-                    <small>
-                      {item.kind === 'force' ? 'Total surface force' : 'Normal pressure'}
-                    </small>
-                  </span>
-                </button>
-              ))}
-              <div className="tree-divider" />
-              <button
-                className={`tree-row ${section === 'solver' ? 'active' : ''}`}
-                onClick={() => selectSection('solver')}
-              >
-                <BrainCircuit size={16} />
-                <span>
-                  Solver<small>{isPinn ? 'PINN · experimental' : 'Finite element method'}</small>
-                </span>
-                <ChevronRight size={13} />
-              </button>
-              <button
-                className={`tree-row ${section === 'results' ? 'active' : ''}`}
-                onClick={() => selectSection('results')}
-              >
-                <Activity size={16} />
-                <span>
-                  Results
-                  <small>
-                    {solved
-                      ? 'Current solution'
-                      : data && data.manifest.operation !== 'mesh'
-                        ? 'Stale · inputs changed'
-                        : 'No solution yet'}
-                  </small>
-                </span>
-                {solved && <Check size={14} className="success" />}
-              </button>
-            </nav>
-            <div className="model-footer">
-              <span className="scope-label">SOLID MECHANICS</span>
-              <p>
-                Small strain · linear elasticity
-                <br />
-                Connected, homogeneous solid
-              </p>
-            </div>
+            <ModelTree
+              project={project}
+              section={section}
+              constraintId={constraintId}
+              loadId={loadId}
+              locked={locked}
+              cells={stat?.cells}
+              solved={solved}
+              stale={!!data && !currentData}
+              onSection={selectSection}
+              onExample={(example) => void create(example)}
+              onAddSupport={addConstraint}
+              onAddLoad={addLoad}
+            />
           </aside>
           <div
             className="panel-splitter"
@@ -1234,18 +988,8 @@ export default function App() {
                 <span className="eyebrow">
                   STATIC STRUCTURAL · {is2D ? '2D PLANE STRESS' : '3D SOLID'}
                 </span>
-                <h1>
-                  {section === 'results'
-                    ? 'Explore the physical fields'
-                    : isPinn
-                      ? 'Physics-informed simulation'
-                      : 'Classical structural simulation'}
-                </h1>
-                <p className="work-subtitle">
-                  {isPinn
-                    ? 'PINN · train from physics and boundary conditions'
-                    : 'FEM · solve the discretized equilibrium equations'}
-                </p>
+                <h1>{sectionTitles[section]}</h1>
+                <p className="work-subtitle">{sectionDescriptions[section]}</p>
               </div>
               <div className="run-actions">
                 <button
@@ -1289,8 +1033,28 @@ export default function App() {
             </div>
             {!desktop && (
               <div className="browser-banner">
-                Browser preview · open the desktop application to mesh, solve, and use native
-                project files.
+                <span>
+                  {referenceId ? (
+                    <>
+                      Saved CPU reference · {referenceLabels[referenceId]}. Recorded result
+                      {referenceId === '2d-compare' ? ' and training history' : ''}; open the
+                      desktop app to compute. Editing inputs makes fields stale.
+                    </>
+                  ) : (
+                    <>
+                      Browser preview · inspect saved CPU references, or open the desktop app to
+                      compute and use native project files.
+                    </>
+                  )}
+                </span>
+                <div className="reference-actions">
+                  <button disabled={locked} onClick={() => void inspectReference('3d')}>
+                    Inspect 3D reference
+                  </button>
+                  <button disabled={locked} onClick={() => void inspectReference('2d-compare')}>
+                    Inspect 2D comparison
+                  </button>
+                </div>
               </div>
             )}
             {validation && (
@@ -1368,6 +1132,7 @@ export default function App() {
             )}
             <div className="viewport-wrap">
               <Viewport
+                theme={theme}
                 project={project}
                 data={currentData}
                 field={field}
@@ -1388,21 +1153,30 @@ export default function App() {
                     {field.association === 'cell' ? 'Element values' : 'Nodal values'} ·{' '}
                     {is2D ? 'full domain' : 'full volume'}
                   </span>
-                  <div className="legend-gradient" />
-                  <div className="legend-labels">
-                    <span>
-                      {formatValue(
-                        displayValue(field.minimum, field.units, project.displayUnits).value,
-                      )}
-                    </span>
-                    <b>{displayValue(0, field.units, project.displayUnits).units}</b>
-                    <span>
-                      {formatValue(
-                        displayValue(field.maximum, field.units, project.displayUnits).value,
-                      )}
-                    </span>
-                  </div>
-                  {field.minimum === field.maximum && <small>Constant field</small>}
+                  {field.finiteCount === 0 ? (
+                    <small>No defined relative values · zero references omitted</small>
+                  ) : (
+                    <>
+                      <div
+                        className="legend-gradient"
+                        style={{ background: contourGradient(field.minimum, field.maximum) }}
+                      />
+                      <div className="legend-labels">
+                        <span>
+                          {formatValue(
+                            displayValue(field.minimum, field.units, project.displayUnits).value,
+                          )}
+                        </span>
+                        <b>{displayValue(0, field.units, project.displayUnits).units}</b>
+                        <span>
+                          {formatValue(
+                            displayValue(field.maximum, field.units, project.displayUnits).value,
+                          )}
+                        </span>
+                      </div>
+                      {field.minimum === field.maximum && <small>Constant field</small>}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1459,11 +1233,7 @@ export default function App() {
                 {fileBusy ? (
                   <>
                     <span className="spinner" />
-                    {fileBusy === 'open'
-                      ? 'Opening project'
-                      : fileBusy === 'save'
-                        ? 'Saving project'
-                        : 'Exporting fields'}
+                    {fileBusyLabel}
                   </>
                 ) : busy ? (
                   <>
@@ -1489,6 +1259,7 @@ export default function App() {
             <RunWorkspace
               project={project}
               manifest={currentData?.manifest}
+              recordedReference={!!referenceId}
               history={metrics}
               status={runStatus}
               execution={runExecution}
@@ -1512,7 +1283,14 @@ export default function App() {
           <aside className="properties-panel" style={{ width: rightWidth }}>
             <div className="panel-heading">
               <span>{sectionTitles[section].toUpperCase()}</span>
-              <Settings2 size={15} />
+              <button
+                className="property-help"
+                aria-label={`Help with ${sectionTitles[section].toLowerCase()}`}
+                title="Help with this editor"
+                onClick={() => showHelp()}
+              >
+                <CircleHelp size={16} />
+              </button>
             </div>
             <div className="properties-scroll">
               <fieldset disabled={locked} key={`${project.id}:${project.displayUnits}`}>
@@ -2485,7 +2263,7 @@ export default function App() {
                   <button
                     key={choice}
                     className={choice === 'save' ? 'primary' : 'secondary'}
-                    disabled={choice === 'save' && !!validation}
+                    disabled={choice === 'save' && (!!validation || !desktop)}
                     onClick={() => {
                       setConfirmation(false);
                       confirmResolver.current?.(choice);
@@ -2503,49 +2281,15 @@ export default function App() {
             </div>
           </div>
         )}
-        {help && (
-          <div className="modal-backdrop">
+        {help && !confirmation && (
+          <div className="modal-backdrop help-backdrop">
             <div
-              className="modal help-modal"
+              className="modal help-dialog"
               role="dialog"
               aria-modal="true"
-              aria-labelledby="help-title"
+              aria-label="Phyra help"
             >
-              <button
-                className="modal-close"
-                aria-label="Close help"
-                onClick={() => setHelp(false)}
-              >
-                <X size={18} />
-              </button>
-              <span className="eyebrow">LOCAL ENGINEERING WORKFLOW</span>
-              <h2 id="help-title">From geometry to results</h2>
-              <ol>
-                <li>Edit a box, cylinder, or L bracket. Set the material and mesh size.</li>
-                <li>
-                  Click boundaries in the viewport. Add supports and distributed force or pressure
-                  loads.
-                </li>
-                <li>
-                  Mesh to inspect the discretization, then solve. Under-constrained models are
-                  reported.
-                </li>
-                <li>
-                  Explore displacements, element stresses, and reactions. Compare mesh refinements
-                  for convergence.
-                </li>
-                <li>
-                  Save the project and cached fields, reopen it, or export the physical arrays.
-                </li>
-              </ol>
-              <p className="property-hint">
-                Ctrl/⌘ N · New &nbsp; Ctrl/⌘ O · Open &nbsp; Ctrl/⌘ S · Save
-                <br />
-                Ctrl/⌘ Shift S · Save as &nbsp; F · Fit model
-              </p>
-              <button className="primary full" onClick={() => setHelp(false)}>
-                Continue
-              </button>
+              <HelpPanel open={help} context={helpContext} onClose={() => setHelp(false)} />
             </div>
           </div>
         )}

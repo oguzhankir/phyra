@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Phyra field mark">
-  <rect width="128" height="128" rx="28" fill="#162029"/>
-  <path d="M33 39 64 23l31 16v48l-31 18-31-18Z" fill="none" stroke="#3c5b63" stroke-width="3"/>
-  <path d="M33 63h62M64 23v82M33 39l62 48M95 39 33 87" fill="none" stroke="#3c5b63" stroke-width="2"/>
-  <path d="M64 32v64M46 45c-9 5-14 12-14 20 0 14 14 25 32 25s32-11 32-25c0-8-5-15-14-20" fill="none" stroke="#98dfca" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="64" cy="64" r="6" fill="#eef3ed"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Phyra — physics field mark">
+  <rect x="1" y="1" width="126" height="126" rx="28" fill="#252726"/>
+  <path d="M64 26v76" fill="none" stroke="#fafaf7" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 39c-22 0-36 11-36 25s14 25 36 25 36-11 36-25-14-25-36-25Z" fill="none" stroke="#fafaf7" stroke-width="7"/>
+  <circle cx="64" cy="64" r="5.5" fill="#cfa362"/>
 </svg>

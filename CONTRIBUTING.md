@@ -39,6 +39,10 @@ Project files are safe JSON and typed little-endian buffers; no pickle, executab
 
 ## Repository discipline
 
-Keep human documentation in README, AGENTS, CONTRIBUTING and LICENSE. Legal texts, mathematical comments, test fixtures and small community templates have concrete purposes; avoid reports, plans, duplicate instructions or placeholder modules. Use English in authored source/text and preserve GPL-3.0-or-later notices. Do not present example properties as certified material data.
+Keep human documentation in README, AGENTS, CONTRIBUTING, LICENSE and the single roadmap. Offline contextual help lives in `src/features/help/`; workbench controls, viewport and run views live in their corresponding `src/features/` folders. Shared scientific fields, project contracts and native job lifecycle must retain clear ownership. Add folders for actual capabilities, not speculative future modules. Legal texts, mathematical comments, test fixtures and small community templates have concrete purposes; avoid reports and duplicate instructions. Use English in authored source/text and preserve GPL-3.0-or-later notices. Do not present example properties as certified material data.
+
+The small `public/reference/` fixtures are actual CPU worker results for browser inspection, with exact asset digests and normal field provenance. Regenerate them after setup with `node scripts/generate-reference.mjs`; it validates the caches, physical balances and analytical references before replacing them. Seeds define the numerical runs; execution IDs, timestamps and measured timings remain real.
+
+README media uses real application captures. `node scripts/render-promo.mjs` composes local captures and their `artifacts/promo/scenes.json` manifest into the checked-in MP4/preview; it needs an installed FFmpeg and system font, neither of which is an application dependency. Keep raw captures under ignored `artifacts/` and do not substitute synthetic numerical fields or screenshots.
 
 Keep changes focused and sign off commits using your configured identity (`git commit -s`); DCO is separate from cryptographic signing. Preserve unknown local work. Publishing, pushing, uploading binaries and paid compute require owner authorization. No private security reporting route is configured; do not put secrets in public issues.

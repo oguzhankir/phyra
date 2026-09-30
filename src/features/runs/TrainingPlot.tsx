@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { formatValue } from './fields';
+import { formatValue } from '../../fields';
 
 export type LossSample = {
   step: number;
@@ -29,9 +29,9 @@ export function lossDomain(history: LossSample[]): {
   return { minimum, maximum, floor: 10 ** minimum };
 }
 const series = [
-  { key: 'total', label: 'Total', color: '#98dfca' },
-  { key: 'pde', label: 'PDE residual', color: '#92b5e7' },
-  { key: 'boundary', label: 'Boundary', color: '#e6b586' },
+  { key: 'total', label: 'Total', color: 'var(--plot-total)' },
+  { key: 'pde', label: 'PDE residual', color: 'var(--plot-pde)' },
+  { key: 'boundary', label: 'Boundary', color: 'var(--plot-boundary)' },
 ] as const;
 
 export default function TrainingPlot({ history }: { history: LossSample[] }) {
@@ -80,7 +80,7 @@ export default function TrainingPlot({ history }: { history: LossSample[] }) {
                 y1={yy}
                 x2={left + width}
                 y2={yy}
-                stroke="#35444c"
+                stroke="var(--line)"
                 strokeDasharray="2 5"
               />
               <text x={left - 9} y={yy + 3} textAnchor="end">

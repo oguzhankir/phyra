@@ -3,20 +3,20 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Maximize, RotateCcw, ScanLine } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import type { Project } from './types';
+import type { Project } from '../../types';
 import {
   deformationScale,
   deformationPhase,
   formatValue,
   numericArray,
   solutionArray,
-  normalizedValue,
   regionNames,
   type Field,
   type RegionId,
   type ResultData,
   type FieldSource,
-} from './fields';
+} from '../../fields';
+import { contourColor } from './contours';
 
 export type Probe = {
   association: 'node' | 'cell';
@@ -39,6 +39,7 @@ type Props = {
   customScale: number;
   source?: FieldSource;
   animate?: boolean;
+  theme?: 'light' | 'dark';
 };
 type SurfaceData = {
   positions: Float64Array;
@@ -70,23 +71,6 @@ type Runtime = {
   animationStart: number | null;
   moving: { attribute: THREE.BufferAttribute; nodes: Uint32Array }[];
 };
-const palette = [
-  new THREE.Color('#287fc3'),
-  new THREE.Color('#36ced4'),
-  new THREE.Color('#b1d889'),
-  new THREE.Color('#f4cd60'),
-  new THREE.Color('#f5774f'),
-];
-function contourColor(
-  value: number,
-  minimum: number,
-  maximum: number,
-  target: THREE.Color,
-): THREE.Color {
-  const t = normalizedValue(value, minimum, maximum) * (palette.length - 1);
-  const index = Math.min(palette.length - 2, Math.floor(t));
-  return target.copy(palette[index]).lerp(palette[index + 1], t - index);
-}
 function primitiveSurface(project: Project): SurfaceData {
   const { kind, length: l, width: w, height: h, radius: r, thickness: t } = project.geometry;
   const regionIds = regionNames(kind, project.study.dimension).map((region) => region.id);
@@ -296,7 +280,7 @@ export default function Viewport(props: Props) {
     // StrictMode can recreate the renderer while retaining component refs.
     lastProject.current = '';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x15191f, 1);
+    renderer.setClearColor(0xfafaf8, 1);
     element.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.00001, 10000);
@@ -304,8 +288,8 @@ export default function Viewport(props: Props) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.13;
-    scene.add(new THREE.AmbientLight(0xffffff, 1.7));
-    const light = new THREE.DirectionalLight(0xddeeff, 2.6);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    const light = new THREE.DirectionalLight(0xffffff, 2.3);
     light.position.set(2, -3, 5);
     scene.add(light);
     const model = new THREE.Group();
@@ -517,6 +501,8 @@ export default function Viewport(props: Props) {
       return;
     }
     setError(null);
+    const dark = props.theme === 'dark';
+    state.renderer.setClearColor(dark ? 0x202122 : 0xfafaf8, 1);
     clearGroup(state.model);
     state.moving = [];
     state.animationStart = null;
@@ -554,12 +540,14 @@ export default function Viewport(props: Props) {
       if (!props.field)
         color.set(
           selectedRegions.has(region)
-            ? '#60d4e2'
+            ? '#ce912c'
             : supportedRegions.has(region)
-              ? '#519a91'
+              ? '#688675'
               : loadedRegions.has(region)
-                ? '#b68c61'
-                : '#73929d',
+                ? '#c49455'
+                : dark
+                  ? '#a6aaa8'
+                  : '#b2b8b4',
         );
       for (let vertex = 0; vertex < 3; vertex++) {
         const node = data.triangles[triangle * 3 + vertex];
@@ -592,15 +580,23 @@ export default function Viewport(props: Props) {
     });
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
-    const material = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      side: THREE.DoubleSide,
-      metalness: 0.14,
-      roughness: 0.7,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    });
+    const material = props.field
+      ? new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+        })
+      : new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          side: THREE.DoubleSide,
+          metalness: 0.14,
+          roughness: 0.7,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+        });
     const surface = new THREE.Mesh(geometry, material);
     state.surface = surface;
     state.model.add(surface);
@@ -632,8 +628,8 @@ export default function Viewport(props: Props) {
         new THREE.LineSegments(
           edges,
           new THREE.LineBasicMaterial({
-            color: 0x06121d,
-            opacity: props.data ? 0.36 : 0.65,
+            color: dark ? 0x101112 : 0x303633,
+            opacity: props.data ? 0.3 : 0.6,
             transparent: true,
           }),
         ),
@@ -662,12 +658,18 @@ export default function Viewport(props: Props) {
             line,
             new THREE.LineBasicMaterial({
               color: selectedRegions.has(region)
-                ? '#ffffff'
+                ? '#d79b35'
                 : supportedRegions.has(region)
-                  ? '#70d6b5'
+                  ? dark
+                    ? '#a1bea9'
+                    : '#426e54'
                   : loadedRegions.has(region)
-                    ? '#f5ac66'
-                    : '#8296a7',
+                    ? dark
+                      ? '#dbb46e'
+                      : '#9c6823'
+                    : dark
+                      ? '#c0c4c1'
+                      : '#626965',
               depthTest: false,
             }),
           ),
@@ -680,7 +682,11 @@ export default function Viewport(props: Props) {
       state.model.add(
         new THREE.LineSegments(
           new THREE.EdgesGeometry(ghost, 30),
-          new THREE.LineBasicMaterial({ color: 0xc8d5de, opacity: 0.24, transparent: true }),
+          new THREE.LineBasicMaterial({
+            color: dark ? 0xd6d8d3 : 0x4b544f,
+            opacity: 0.32,
+            transparent: true,
+          }),
         ),
       );
       ghost.dispose();
@@ -741,7 +747,7 @@ export default function Viewport(props: Props) {
       if (props.project.study.constraints.some((item) => item.regions.includes(region))) {
         const marker = new THREE.Mesh(
           new THREE.BoxGeometry(length * 0.022, length * 0.022, length * 0.022),
-          new THREE.MeshBasicMaterial({ color: 0x70d6b5 }),
+          new THREE.MeshBasicMaterial({ color: dark ? 0xa1bea9 : 0x426e54 }),
         );
         marker.position.copy(center).addScaledVector(normal, length * 0.014);
         state.model.add(marker);
@@ -758,7 +764,7 @@ export default function Viewport(props: Props) {
           direction,
           center.clone().addScaledVector(direction, -length * 0.18),
           length * 0.18,
-          0xf5ac66,
+          dark ? 0xdbb46e : 0x9c6823,
           length * 0.045,
           length * 0.027,
         );
@@ -772,7 +778,12 @@ export default function Viewport(props: Props) {
         (material) => material.dispose(),
       );
     }
-    const grid = new THREE.GridHelper(length * 4, 24, 0x2b4553, 0x203540);
+    const grid = new THREE.GridHelper(
+      length * 4,
+      24,
+      dark ? 0x393c3b : 0xd6dad6,
+      dark ? 0x2b2e2d : 0xe9ebe7,
+    );
     grid.rotation.x = Math.PI / 2;
     grid.position.set(
       bounds.getCenter(new THREE.Vector3()).x,
@@ -873,6 +884,7 @@ export default function Viewport(props: Props) {
     props.customScale,
     props.source,
     props.animate,
+    props.theme,
     !!props.onVerified,
   ]);
 

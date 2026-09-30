@@ -1,10 +1,10 @@
 import { Check, ChevronDown, ChevronUp, Circle, Cpu, TriangleAlert } from 'lucide-react';
-import type { Manifest, Project, TrainingMetric } from './types';
-import { displayValue, formatValue } from './fields';
+import type { Manifest, Project, TrainingMetric } from '../../types';
+import { displayValue, formatValue } from '../../fields';
 import TrainingPlot from './TrainingPlot';
-import { presentRun, type RunExecution, type RunStatus } from './studyUI';
+import { presentRun, type RunExecution, type RunStatus } from '../../studyUI';
 
-export type { RunStatus } from './studyUI';
+export type { RunStatus } from '../../studyUI';
 export type RunTab = 'run' | 'training' | 'comparison';
 type Props = {
   project: Project;
@@ -18,6 +18,7 @@ type Props = {
   onTab: (tab: RunTab) => void;
   expanded: boolean;
   onToggle: () => void;
+  recordedReference?: boolean;
 };
 export default function RunWorkspace({
   project: currentProject,
@@ -31,6 +32,7 @@ export default function RunWorkspace({
   onTab,
   expanded,
   onToggle,
+  recordedReference = false,
 }: Props) {
   const presentation = presentRun(
     currentProject,
@@ -68,7 +70,8 @@ export default function RunWorkspace({
                 className={tab === 'training' ? 'active' : ''}
                 onClick={() => onTab('training')}
               >
-                Training metrics{history.length > 0 && <span className="tree-dot" />}
+                {recordedReference ? 'Stored training history' : 'Training metrics'}
+                {history.length > 0 && <span className="tree-dot" />}
               </button>
               <button
                 className={tab === 'comparison' ? 'active' : ''}
@@ -90,9 +93,11 @@ export default function RunWorkspace({
             <Circle size={9} />
           )}
           <span className={visibleStatus}>
-            {visibleStatus === 'idle'
-              ? 'No active run'
-              : visibleStatus[0].toUpperCase() + visibleStatus.slice(1)}
+            {recordedReference && visibleStatus === 'completed'
+              ? 'Recorded CPU run'
+              : visibleStatus === 'idle'
+                ? 'No active run'
+                : visibleStatus[0].toUpperCase() + visibleStatus.slice(1)}
           </span>
           <button
             aria-label={expanded ? 'Collapse run workspace' : 'Expand run workspace'}

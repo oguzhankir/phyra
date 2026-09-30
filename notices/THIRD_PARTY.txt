@@ -16,8 +16,8 @@ including Phyra, the exact Gmsh native source and embedded copyleft components,
 and the scripts/toolchain information needed to rebuild it. Hosting the same
 source alongside a binary is one route under GPLv3 section 6(d); a generic
 upstream link alone is not a source offer. No source-offer service or public
-release is configured here. Review the generated native and Rust dependency
-inventory for the target package before public redistribution.
+binary release is configured here. Review the generated native and Rust
+dependency inventory for the target package before public redistribution.
 
 Primary upstream sources:
 https://gmsh.info/
