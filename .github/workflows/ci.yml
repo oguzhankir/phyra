@@ -50,4 +50,4 @@ jobs:
             artifacts/packaged-viewport.png
             artifacts/packaged-physicsml-viewport.png
             artifacts/engine-platform.json
-          if-no-files-found: error
+          if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}
