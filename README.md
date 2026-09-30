@@ -24,7 +24,7 @@ The video shows the actual workbench with recorded CPU reference studies and the
 
 ## Run locally
 
-Install Node **22.12+**, Python **3.12** and Rust **1.94** with rustfmt/clippy. macOS needs Xcode command-line tools; Windows needs Visual Studio C++ Build Tools, Windows SDK and WebView2. Primary targets are macOS Apple Silicon, minimum macOS 14, and Windows x64.
+Install Node **22.12+**, Python **3.12** and Rust **1.94** with rustfmt/clippy. macOS needs Xcode command-line tools; Windows needs Visual Studio C++ Build Tools, Windows SDK and WebView2. Supported launch targets are macOS Apple Silicon, minimum macOS 14, and Windows x64.
 
 ```sh
 npm ci
@@ -51,9 +51,9 @@ General CAD import, assemblies, multiple materials, contact, nonlinear/transient
 
 ## Validation and direction
 
-Independent analytical/manufactured references live in [engine tests](engine/tests); typed field/study and interface tests live beside [frontend features](src/features); [native tests](src-tauri/src/main.rs) cover safe files and worker lifecycle. Packaged macOS workflows exercise actual rendering, probing, FEM/PINN comparison, persistence and cancellation outside the checkout.
+Independent analytical/manufactured references live in [engine tests](engine/tests); typed field/study and interface tests live beside [frontend features](src/features); [native tests](src-tauri/src/main.rs) cover safe files and worker lifecycle. [Hosted verification at runtime commit `3388a92`](https://github.com/oguzhankir/phyra/actions/runs/36729139336) built and packaged on macOS 15 Apple Silicon and Windows Server 2022 x64, then exercised actual rendering, probing, FEM/PINN comparison, persistence and cancellation outside the checkout.
 
-Windows configuration and CI are included, but successful Windows execution is not yet established. Clean-machine and minimum-macOS execution remain open; macOS development packages are ad hoc sealed rather than Developer ID signed/notarized. This launch publishes source and demonstration media; public installers require the redistribution work below.
+Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. This launch publishes source and demonstration media; public installers require the redistribution work below.
 
 Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](roadmap.md) and [contribution guide](CONTRIBUTING.md).
 
