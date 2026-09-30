@@ -10,6 +10,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 from conftest import brick_mesh
+from scipy.sparse import coo_matrix
 
 from phyra_engine.errors import EngineError
 from phyra_engine.fem import (
@@ -39,19 +40,116 @@ def assert_balance(mesh, force, reactions, scale):
     np.testing.assert_allclose(moments, 0, atol=scale * length * 2e-9)
 
 
+def _gamma(operations):
+    """Float64 dot-product bound γₙ = nε/(1−nε), without a fitted force tolerance."""
+    product = np.asarray(operations) * np.finfo(np.float64).eps
+    return product / (1 - product)
+
+
+def _rigid_modes(mesh):
+    length = np.max(np.ptp(mesh.positions, axis=0))
+    for axis in np.eye(3):
+        yield np.tile(length * axis, (len(mesh.positions), 1))
+        yield np.cross(axis, mesh.positions)
+
+
+def _assert_rigid_roundoff(mesh, young, poisson, stiffness, displacement):
+    """Bound representation error; no stiffness correction or physical tolerance change.
+
+    With A = Σ V|B|ᵀ|D||B|, two six-term products and volume scaling cost
+    6+6+1 operations. Assembly adds at most q incident elements per entry;
+    a CSR row product adds m terms. Thus γ_(13+q+m) A|r| bounds formation,
+    assembly and multiplication. A uses positive terms before cancellation.
+    Represented Br contributes separately: |Br| ≤ |fl(Br)| + γ₁₂|B||r|.
+    The strain assertion prevents that term from excusing a defective B.
+    """
+    strain, volumes, _ = element_matrices(mesh.positions, mesh.cells, young, poisson)
+    material = constitutive_matrix(young, poisson)
+    dofs = (mesh.cells[:, :, None] * 3 + np.arange(3)).reshape(-1, 12)
+    local_r = displacement[mesh.cells].reshape(-1, 12)
+    absolute_b, absolute_d = np.abs(strain), np.abs(material)
+    measured_strain = np.einsum("cai,ci->ca", strain, local_r, optimize=False)
+    strain_scale = np.einsum("cai,ci->ca", absolute_b, np.abs(local_r), optimize=False)
+    strain_bound = _gamma(12) * strain_scale / (1 - _gamma(14))
+    assert np.all(np.abs(measured_strain) <= np.nextafter(strain_bound, np.inf)), (
+        "Rigid mode has strain exceeding its float64 representation bound."
+    )
+
+    db = np.einsum("ab,cbj->caj", absolute_d, absolute_b, optimize=False)
+    local_a = np.einsum("cai,caj->cij", absolute_b, db, optimize=False)
+    local_a *= volumes[:, None, None]
+    rows = np.broadcast_to(dofs[:, :, None], local_a.shape).ravel()
+    columns = np.broadcast_to(dofs[:, None, :], local_a.shape).ravel()
+    envelope = coo_matrix((local_a.ravel(), (rows, columns)), shape=stiffness.shape).tocsr()
+    q = np.repeat(np.bincount(mesh.cells.ravel(), minlength=len(mesh.positions)), 3)
+    m = np.diff(stiffness.indptr)
+    r = displacement.ravel()
+    envelope_force = envelope @ np.abs(r)
+    represented_strain = np.abs(measured_strain) + _gamma(12) * strain_scale
+    represented_stress = np.einsum("ab,cb->ca", absolute_d, represented_strain, optimize=False)
+    local_force = np.einsum("cai,ca->ci", absolute_b, represented_stress, optimize=False)
+    local_force *= volumes[:, None]
+    kinematic_force = np.zeros_like(r)
+    np.add.at(kinematic_force, dofs.ravel(), local_force.ravel())
+    # Upward inflation also accounts for evaluating the positive bounds:
+    # A|r| costs 13+q+nnz(A row); the kinematic term costs 12+2+6+12+1+q;
+    # combining them costs two operations. The next float encloses final rounding.
+    envelope_terms = int(np.diff(envelope.indptr).max())
+    bound_operations = max(13 + int(q.max()) + envelope_terms, 33 + int(q.max())) + 2
+    inflation = 1 / (1 - _gamma(bound_operations))
+    force_bound = (kinematic_force + _gamma(13 + q + m) * envelope_force) * inflation
+    force_bound = np.nextafter(force_bound, np.inf)
+    force = stiffness @ r
+    assert np.all(np.abs(force) <= force_bound), (
+        "Rigid force exceeds the derived float64 formation/assembly/product bound."
+    )
+    # Normalize energy by its positive formation envelope, not by zero physical
+    # energy. The last γ_ndof term accounts for the energy dot product itself.
+    energy_scale = np.abs(r) @ envelope_force
+    normalized_energy = abs(r @ force) / energy_scale
+    energy_bound = (
+        np.abs(r) @ force_bound + _gamma(len(r)) * (np.abs(r) @ np.abs(force))
+    ) / energy_scale
+    energy_inflation = 1 / (1 - _gamma(len(r) + 3))
+    assert normalized_energy <= np.nextafter(energy_bound * energy_inflation, np.inf)
+
+
 def test_element_symmetry_and_rigid_energy(cube):
     _, volumes, element = element_matrices(cube.positions, cube.cells, 210e9, 0.3)
     np.testing.assert_allclose(volumes.sum(), 1, rtol=1e-14)
     np.testing.assert_allclose(element, element.transpose(0, 2, 1), atol=5e-5, rtol=1e-14)
     stiffness = assemble(cube, 210e9, 0.3)
     np.testing.assert_allclose((stiffness - stiffness.T).data, 0, atol=1e-4)
-    for component in range(3):
-        displacement = np.zeros_like(cube.positions)
-        displacement[:, component] = 1
-        np.testing.assert_allclose(stiffness @ displacement.ravel(), 0, atol=1e-4)
-    # A rigid rotation has skew-symmetric displacement gradient and zero strain.
-    displacement = np.cross(np.array([0.3, -0.2, 0.7]), cube.positions)
-    np.testing.assert_allclose(stiffness @ displacement.ravel(), 0, atol=1e-4)
+    for displacement in _rigid_modes(cube):
+        _assert_rigid_roundoff(cube, 210e9, 0.3, stiffness, displacement)
+    _assert_rigid_roundoff(
+        cube, 210e9, 0.3, stiffness, np.cross(np.array([0.3, -0.2, 0.7]), cube.positions)
+    )
+
+
+@pytest.mark.parametrize("material_scale", [1e-6, 1, 1e3])
+@pytest.mark.parametrize("length_scale", [1e-3, 1, 1e3])
+def test_rigid_roundoff_guard_is_invariant_under_material_and_length_scaling(
+    cube, material_scale, length_scale
+):
+    mesh = replace(cube, positions=cube.positions * length_scale)
+    young = 210e9 * material_scale
+    stiffness = assemble(mesh, young, 0.3)
+    for displacement in _rigid_modes(mesh):
+        _assert_rigid_roundoff(mesh, young, 0.3, stiffness, displacement)
+
+
+@pytest.mark.parametrize("material_scale", [1e-6, 1, 1e3])
+def test_rigid_roundoff_guard_rejects_a_positive_ground_spring(cube, material_scale):
+    young = 210e9 * material_scale
+    stiffness = assemble(cube, young, 0.3)
+    broken = stiffness.copy()
+    broken[0, 0] += young * 1e-10
+    # At the lowest E this spring produces just 2.1e-5 N: the previous fixed
+    # 1e-4 N assertion would miss it, while the precision-derived bound rejects it.
+    displacement = next(_rigid_modes(cube))
+    with pytest.raises(AssertionError, match="Rigid force"):
+        _assert_rigid_roundoff(cube, young, 0.3, broken, displacement)
 
 
 def test_affine_patch_with_nonzero_prescribed_displacement(cube):
