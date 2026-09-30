@@ -12,12 +12,20 @@ for (const name of ['cantilever', 'cylinder', 'bracket', 'extension', 'plane-str
     throw new Error(`Invalid bundled example ${name}: ${JSON.stringify(validate.errors)}`);
   }
 }
-await mkdir('src', { recursive: true });
+await mkdir('src/domain/contracts', { recursive: true });
 await writeFile(
-  'src/project.generated.ts',
+  'src/domain/contracts/project.generated.ts',
   await compileFromFile('contracts/project.schema.json', {
     bannerComment: '/* Generated from contracts/project.schema.json. Run npm run generate. */',
     additionalProperties: false,
     maxItems: 3,
+  }),
+);
+await writeFile(
+  'src/domain/contracts/capabilities.generated.ts',
+  await compileFromFile('contracts/engine-capabilities.schema.json', {
+    bannerComment:
+      '/* Generated from contracts/engine-capabilities.schema.json. Run npm run generate. */',
+    additionalProperties: false,
   }),
 );

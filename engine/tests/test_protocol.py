@@ -12,9 +12,10 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
-from phyra_engine.fem import solve_mesh
-from phyra_engine.mesh import generate_mesh
-from phyra_engine.protocol import validate_cached, write_output
+from phyra_engine.meshing.solid import generate_mesh
+from phyra_engine.methods.classical.solid import solve_mesh
+from phyra_engine.results import validate_cached
+from phyra_engine.results.solid import write_output
 
 
 @pytest.fixture

@@ -12,10 +12,12 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
-from phyra_engine.fem2d import generate_rectangle, solve_mesh
-from phyra_engine.protocol import validate_cached
-from phyra_engine.protocol2d import comparison_metric, write_output
-from phyra_engine.validation import migrate_project, validate_project
+from phyra_engine.meshing.plane_stress import generate_rectangle
+from phyra_engine.methods.classical.plane_stress import solve_mesh
+from phyra_engine.results import validate_cached
+from phyra_engine.results.comparison import comparison_metric
+from phyra_engine.results.plane_stress import write_output
+from phyra_engine.studies.project import migrate_project, validate_project
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -260,6 +262,73 @@ def test_comparison_retains_measured_neural_equilibrium_and_actual_duration(meas
         >= sum(manifest["training"]["timings"].values()) + manifest["summary"]["elapsedSeconds"]
     )
     assert manifest["comparison"]["device"] == manifest["training"]["device"] == "cpu"
+
+
+def test_held_out_diagnostics_are_versioned_and_old_training_caches_remain_valid(
+    measured_comparison,
+):
+    project, manifest, blob = measured_comparison
+    held_out = manifest["training"]["validation"]
+    config = project["study"]["solver"]["pinn"]
+    assert held_out["schemaVersion"] == 1
+    assert held_out["sampling"] == "independent-uniform"
+    assert held_out["seed"] == config["seed"] ^ 0x5EED5EED
+    assert held_out["interiorPoints"] == config["interiorPoints"]
+    assert held_out["boundaryPointsPerRegion"] == config["boundaryPoints"]
+    legacy = deepcopy(manifest)
+    del legacy["training"]["validation"]
+    assert validate_cached(project, legacy, blob) == legacy
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "type",
+        "version",
+        "boolean-version",
+        "seed",
+        "float-seed",
+        "count",
+        "boolean-count",
+        "sampling",
+        "nonfinite",
+        "negative",
+        "sum",
+        "unknown",
+    ],
+)
+def test_cached_held_out_measurements_reject_malformed_or_forged_provenance(
+    measured_comparison, defect
+):
+    project, manifest, blob = measured_comparison
+    wrong = deepcopy(manifest)
+    measured = wrong["training"]["validation"]
+    if defect == "type":
+        wrong["training"]["validation"] = []
+    elif defect == "version":
+        measured["schemaVersion"] = 2
+    elif defect == "boolean-version":
+        measured["schemaVersion"] = True
+    elif defect == "seed":
+        measured["seed"] += 1
+    elif defect == "float-seed":
+        measured["seed"] = float(measured["seed"])
+    elif defect == "count":
+        measured["interiorPoints"] += 1
+    elif defect == "boolean-count":
+        measured["boundaryPointsPerRegion"] = True
+    elif defect == "sampling":
+        measured["sampling"] = "training-points"
+    elif defect == "nonfinite":
+        measured["pde"] = float("nan")
+    elif defect == "negative":
+        measured["traction"] = -1
+    elif defect == "sum":
+        measured["total"] += 1
+    else:
+        measured["certifiedAccuracy"] = True
+    with pytest.raises(EngineError):
+        validate_cached(project, wrong, blob)
 
 
 @pytest.mark.parametrize(

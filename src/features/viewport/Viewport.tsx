@@ -1,31 +1,24 @@
+import { planeFitDistance } from './camera';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Maximize, RotateCcw, ScanLine } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
-import type { Project } from '../../types';
+import { invokeVerification as invoke } from '../../platform/desktop/verification';
+import type { Project } from '../../domain/contracts/types';
 import {
   deformationScale,
   deformationPhase,
-  formatValue,
   numericArray,
   solutionArray,
-  regionNames,
   type Field,
-  type RegionId,
   type ResultData,
   type FieldSource,
-} from '../../fields';
+} from '../../domain/results/fields';
+import { formatValue } from '../../domain/units';
+import { regionNames, type RegionId } from '../../domain/project/regions';
 import { contourColor } from './contours';
 
-export type Probe = {
-  association: 'node' | 'cell';
-  id: number;
-  value: number;
-  units: string;
-  position: [number, number, number];
-  region: string;
-};
+import type { Probe } from '../../domain/results/probe';
 type Props = {
   project: Project;
   data: ResultData | null;
@@ -314,7 +307,8 @@ export default function Viewport(props: Props) {
       fit: () => {
         const bounds = state.bounds;
         const center = bounds.getCenter(new THREE.Vector3());
-        const size = Math.max(bounds.getSize(new THREE.Vector3()).length(), 0.000001);
+        const span = bounds.getSize(new THREE.Vector3());
+        const size = Math.max(span.length(), 0.000001);
         controls.target.copy(center);
         const plane = current.current.project.study.dimension === '2d';
         controls.enableRotate = !plane;
@@ -325,7 +319,9 @@ export default function Viewport(props: Props) {
           .add(
             (plane ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1.3, -1.8, 1.3))
               .normalize()
-              .multiplyScalar(size * 1.7),
+              .multiplyScalar(
+                plane ? planeFitDistance(span.x, span.y, camera.aspect, camera.fov) : size * 1.7,
+              ),
           );
         camera.near = size / 10000;
         camera.far = size * 100;

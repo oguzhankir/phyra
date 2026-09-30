@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from phyra_engine.mesh import Mesh  # noqa: E402
+from phyra_engine.meshing.types import Mesh
 
 
 def brick_mesh(lengths=(1.0, 1.0, 1.0), divisions=(2, 2, 2)):

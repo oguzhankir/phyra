@@ -1,3 +1,4 @@
+import { version } from '../../../package.json';
 import { useEffect, useRef } from 'react';
 import {
   Check,
@@ -66,6 +67,9 @@ export default function WorkbenchHeader(props: Props) {
       <div className="brand" aria-label="Phyra engineering workbench">
         <img src={phyraLogo} alt="" />
         <strong>Phyra</strong>
+        <span className="brand-version" title="Application version">
+          {version}
+        </span>
       </div>
       <div className="app-menus" ref={menus}>
         <details

@@ -18,6 +18,10 @@ export function articleText(article: HelpArticle): string {
       ...(section.bullets ?? []),
       ...(section.facts ?? []).map((fact) => `${fact.label} ${fact.value}`),
       section.note?.text ?? '',
+      ...(section.references ?? []).map(
+        (reference) => `${reference.title} ${reference.authors} ${reference.scope}`,
+      ),
+      ...(section.screenshots ?? []).map((image) => `${image.alt} ${image.caption}`),
     ])
     .join(' ');
 }

@@ -2,7 +2,13 @@ name: Check and package
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
+    inputs:
+      release_assets:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +43,14 @@ jobs:
       - run: npm run test:desktop
       - run: npm run test:native
       - run: npm run check:native
+      - run: node scripts/stage-release.mjs
+        if: inputs.release_assets
+      - uses: actions/upload-artifact@v4
+        if: inputs.release_assets && success()
+        with:
+          name: release-${{ matrix.os }}
+          path: artifacts/release/*
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

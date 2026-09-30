@@ -1,5 +1,7 @@
-import { numericArray, regionNames, type ResultData } from '../../fields';
-import type { ArrayDescriptor, Manifest, Project } from '../../types';
+import { assertTrainingMetadata } from '../../domain/contracts/metadata';
+import { numericArray, type ResultData } from '../../domain/results/fields';
+import { regionNames } from '../../domain/project/regions';
+import type { ArrayDescriptor, Manifest, Project } from '../../domain/contracts/types';
 
 export type ReferenceId = '3d' | '2d-compare';
 export const referenceLabels: Record<ReferenceId, string> = {
@@ -304,6 +306,7 @@ export function validateReference(
       'missing owned CPU comparison and stored training history.',
     );
   }
+  assertTrainingMetadata(manifest);
   return { project, data };
 }
 

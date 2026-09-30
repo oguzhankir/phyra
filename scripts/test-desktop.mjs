@@ -186,6 +186,15 @@ async function verify(mode) {
     !report.cancellation
   )
     throw new Error('Native persistence or owned-worker verification failed');
+  if (
+    !report.recovery?.projectMatches ||
+    !report.recovery?.activeSessionProtected ||
+    !report.recovery?.closedSessionOffered ||
+    !report.recovery?.lateWriteRejected ||
+    report.recovery?.resultsIncluded !== false ||
+    report.engineCapabilities?.schemaVersion !== 1
+  )
+    throw new Error('Native recovery or implemented-method capability verification failed');
   assertRenderer(report.renderer, report.manifest, 'node');
   assertRenderer(report.stressRenderer, report.manifest, 'cell');
   assertMaximum(

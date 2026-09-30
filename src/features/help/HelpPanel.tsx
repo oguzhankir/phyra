@@ -17,6 +17,8 @@ export interface HelpPanelProps {
 }
 
 export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProps) {
+  const [copiedSource, setCopiedSource] = useState<string | null>(null);
+  const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const [query, setQuery] = useState('');
   const [activeId, setActiveId] = useState<HelpArticleId>(() => getContextArticle(context).id);
   const [showArticle, setShowArticle] = useState(true);
@@ -188,6 +190,49 @@ export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProp
                   ))}
                 </dl>
               )}
+              {section.references && (
+                <div className="help-references">
+                  {section.references.map((reference) => (
+                    <article key={reference.url}>
+                      <strong>{reference.title}</strong>
+                      <small>
+                        {reference.authors}
+                        {reference.year ? ` · ${reference.year}` : ''}
+                      </small>
+                      <p>{reference.scope}</p>
+                      {desktop ? (
+                        <button
+                          className="text-button"
+                          onClick={() =>
+                            void navigator.clipboard
+                              .writeText(reference.url)
+                              .then(() => setCopiedSource(reference.url))
+                              .catch(() => setCopiedSource('unavailable'))
+                          }
+                        >
+                          {copiedSource === reference.url
+                            ? 'Source link copied'
+                            : 'Copy source link'}
+                        </button>
+                      ) : (
+                        <a href={reference.url} target="_blank" rel="noopener noreferrer">
+                          Read primary source <ArrowRight size={12} />
+                        </a>
+                      )}
+                      <code>{reference.url}</code>
+                    </article>
+                  ))}
+                  {copiedSource === 'unavailable' && (
+                    <p role="status">Copying is unavailable. Select the displayed source URL.</p>
+                  )}
+                </div>
+              )}
+              {section.screenshots?.map((image) => (
+                <figure className="help-screenshot" key={image.src}>
+                  <img src={image.src} alt={image.alt} loading="lazy" />
+                  <figcaption>{image.caption}</figcaption>
+                </figure>
+              ))}
               {section.note && (
                 <aside className={`help-note help-note-${section.note.tone}`}>
                   <strong>

@@ -1,0 +1,100 @@
+.problems-panel {
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.problems-heading {
+  width: 100%;
+  min-height: 29px;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-radius: 0;
+  font-size: 11px;
+}
+.problems-heading > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.problems-heading b {
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--hover);
+  font-size: 10px;
+}
+.problems-heading small {
+  color: var(--warning);
+  font-size: 10px;
+}
+.problems-heading .problem-error {
+  color: var(--danger);
+}
+.problems-body {
+  max-height: min(200px, 25vh);
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.problem-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.problem-item:last-child {
+  border-bottom: 0;
+}
+.problem-symbol {
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--info);
+}
+.problem-error .problem-symbol {
+  color: var(--danger);
+}
+.problem-warning .problem-symbol {
+  color: var(--warning);
+}
+.problem-item > div {
+  flex: 1;
+  min-width: 0;
+}
+.problem-item strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.problem-item p,
+.problems-empty {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.problem-item .text-button {
+  font-size: 10px;
+  padding: 4px 0;
+}
+.problem-details {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.problem-details summary {
+  cursor: pointer;
+}
+.problem-details pre {
+  max-height: 110px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  background: var(--surface-subtle);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.problems-empty {
+  padding: 10px 12px;
+  margin: 0;
+}

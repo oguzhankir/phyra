@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../../contracts/project.schema.json';
-import { extractField, numericArray } from '../../fields';
-import { presentRun, resultIsCurrent } from '../../studyUI';
+import { extractField, numericArray } from '../../domain/results/fields';
+import { presentRun, resultIsCurrent } from '../../domain/execution/presentation';
 import {
   validateReference,
   validateReferenceIndex,

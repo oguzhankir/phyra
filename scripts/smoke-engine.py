@@ -310,6 +310,56 @@ def check_training(
             number(training["timings"][key]) and training["timings"][key] >= 0,
             "Invalid training/inference timing.",
         )
+    validation = training["validation"]
+    require(
+        set(validation)
+        == {
+            "schemaVersion",
+            "sampling",
+            "seed",
+            "interiorPoints",
+            "boundaryPointsPerRegion",
+            "total",
+            "pde",
+            "boundary",
+            "displacement",
+            "traction",
+        }
+        and type(validation["schemaVersion"]) is int
+        and validation["schemaVersion"] == 1
+        and validation["sampling"] == "independent-uniform",
+        "Bundled held-out residual contract changed.",
+    )
+    for key, expected in (
+        ("seed", configuration["seed"] ^ 0x5EED5EED),
+        ("interiorPoints", configuration["interiorPoints"]),
+        ("boundaryPointsPerRegion", configuration["boundaryPoints"]),
+    ):
+        require(
+            type(validation[key]) is int and validation[key] == expected,
+            "Held-out sampling lost its independent seed or configured point counts.",
+        )
+    require(
+        all(
+            number(validation[key]) and validation[key] >= 0
+            for key in ("total", "pde", "boundary", "displacement", "traction")
+        ),
+        "Bundled held-out residual contains nonfinite or negative losses.",
+    )
+    epsilon = 2**-23 if device == "mps" else 2**-52
+    for key, components in (
+        ("total", ("pde", "boundary")),
+        ("boundary", ("displacement", "traction")),
+    ):
+        require(
+            math.isclose(
+                validation[key],
+                sum(validation[component] for component in components),
+                rel_tol=8 * epsilon,
+                abs_tol=0,
+            ),
+            "Bundled held-out loss components do not sum at the actual precision.",
+        )
     return history[0]["total"], history[-1]["total"]
 
 
@@ -507,6 +557,53 @@ def main() -> None:
             next(entry for entry in capabilities if entry["id"] == "cpu")["available"],
             "Bundled CPU unavailable.",
         )
+        methods = devices["capabilities"]
+        require(
+            methods["schemaVersion"] == 1
+            and methods["execution"]
+            == {
+                "backend": "local-process",
+                "jobsPerWorker": 1,
+                "cancellation": "terminate-worker",
+            }
+            and methods["materialModels"] == ["homogeneous-isotropic-linear-elastic"],
+            "Bundled runtime misrepresented its execution or material scope.",
+        )
+        registered = {method["id"]: method for method in methods["methods"]}
+        require(
+            len(methods["methods"]) == 3
+            and set(registered)
+            == {
+                "fem-solid-tetra4",
+                "fem-plane-stress-tri3",
+                "pinn-plane-stress-displacement",
+            },
+            "Bundled method registry differs from its implemented routes.",
+        )
+        for method_id in ("fem-solid-tetra4", "fem-plane-stress-tri3"):
+            method = registered[method_id]
+            require(
+                method["kind"] == "fem"
+                and method["framework"] == "scipy"
+                and method["operation"] == "solve"
+                and method["configuration"] is None
+                and len(method["devices"]) == 1
+                and method["devices"][0]["id"] == "cpu"
+                and method["devices"][0]["precision"] == "float64"
+                and method["devices"][0]["available"] is True,
+                "Classical FEM falsely declared an accelerated or unavailable device.",
+            )
+        pinn = registered["pinn-plane-stress-displacement"]
+        require(
+            pinn["kind"] == "pinn"
+            and pinn["dimension"] == "2d"
+            and pinn["formulation"] == "plane-stress"
+            and pinn["framework"] == "pytorch"
+            and pinn["operation"] == "train"
+            and pinn["configuration"] == "study.solver.pinn"
+            and pinn["devices"] == capabilities,
+            "PINN method devices disagree with the actual derivative probe.",
+        )
         require(
             not (devices_path / "buffer.bin").exists(),
             "Device probe unexpectedly wrote result arrays.",
@@ -570,6 +667,7 @@ def main() -> None:
         )
         print(
             f"Bundled CPU 2D comparison/cache passed: loss {initial:.6g} → {final:.6g}, "
+            f"held-out residual={manifest['training']['validation']['total']:.6g}, "
             f"analytical L2 |u|={errors['pinnDisplacement']:.3%}, stress={errors['pinnStress']:.3%}, "
             f"training={manifest['training']['timings']['trainingSeconds']:.3f}s."
         )
@@ -591,7 +689,9 @@ def main() -> None:
             )
             print(
                 f"Bundled MPS float32 training/cache passed: 10 steps, finite fields, "
-                f"loss {initial:.6g} → {final:.6g}; short-run accuracy was not asserted."
+                f"loss {initial:.6g} → {final:.6g}, "
+                f"held-out residual={manifest['training']['validation']['total']:.6g}; "
+                "short-run accuracy was not asserted."
             )
         else:
             print(
