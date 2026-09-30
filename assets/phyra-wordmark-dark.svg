@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="128" viewBox="0 0 560 128">
+  <rect x="4" y="4" width="120" height="120" rx="27" fill="#282b30"/>
+  <g fill="none" stroke="#f7f8fa" stroke-linecap="round"><ellipse cx="64" cy="64" rx="34" ry="24" stroke-width="6.5"/><path d="M64 25v78" stroke-width="7.5"/></g>
+  <text x="158" y="86" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="-3" fill="#f7f8fa">Phyra</text>
+</svg>
