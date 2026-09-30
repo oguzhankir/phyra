@@ -19,6 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, macos-15, macos-26, windows-2022, windows-2025]
+        include:
+          - os: macos-15
+            release_assets: true
+          - os: windows-2025
+            release_assets: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,9 +49,9 @@ jobs:
       - run: npm run test:native
       - run: npm run check:native
       - run: node scripts/stage-release.mjs
-        if: inputs.release_assets
+        if: inputs.release_assets && matrix.release_assets == true
       - uses: actions/upload-artifact@v4
-        if: inputs.release_assets && success()
+        if: inputs.release_assets && matrix.release_assets == true && success()
         with:
           name: release-${{ matrix.os }}
           path: artifacts/release/*
