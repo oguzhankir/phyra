@@ -8,6 +8,7 @@ import platform
 import pyexpat
 import shutil
 import ssl
+import sys
 import sysconfig
 from pathlib import Path
 
@@ -82,7 +83,9 @@ for name in names:
 python_license = Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"
 if not python_license.is_file():
     # Standard python.org Windows installations place the notice by python.exe.
-    python_license = Path(sysconfig.get_config_var("base")) / "LICENSE.txt"
+    # A virtual environment's config "base" points to the venv, not the selected
+    # underlying interpreter. Keep its original distribution notice unchanged.
+    python_license = Path(sys.base_prefix) / "LICENSE.txt"
 if not python_license.is_file():
     raise RuntimeError(
         "The selected Python distribution is missing its license notice."
