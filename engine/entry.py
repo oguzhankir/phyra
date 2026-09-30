@@ -24,6 +24,9 @@ def reject_constant(value: str) -> None:
 
 
 def main() -> int:
+    # Frozen interpreters can ignore Python's environment encoding flags.
+    sys.stdout.reconfigure(encoding="utf-8", errors="strict")
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
