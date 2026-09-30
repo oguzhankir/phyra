@@ -187,10 +187,12 @@ export function useRecoverySession({
               : 'Recovery pending';
   return {
     records,
-    prompt,
+    prompt: enabled && prompt,
     setPrompt,
-    pending,
-    ready,
+    pending: enabled && pending,
+    // Disabled recovery has no asynchronous inventory gate. In particular,
+    // verification may become enabled before the prior inventory settles.
+    ready: !enabled || ready,
     status,
     savedAt,
     clearOwn,

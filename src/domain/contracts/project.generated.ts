@@ -15,7 +15,7 @@ export type Regions = [
 export type Vector = [number, number, number];
 
 export interface Project {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   name: string;
   revision: number;
@@ -55,6 +55,10 @@ export interface Project {
       pinn: PinnConfiguration;
     };
   };
+  /**
+   * @maxItems 100
+   */
+  namedSelections: NamedSelection[];
 }
 export interface Constraint {
   id: string;
@@ -85,4 +89,11 @@ export interface PinnConfiguration {
   boundaryPoints: number;
   seed: number;
   device: "auto" | "cpu" | "mps" | "cuda";
+}
+export interface NamedSelection {
+  id: string;
+  name: string;
+  geometryKind: "box" | "cylinder" | "bracket";
+  dimension: "2d" | "3d";
+  regions: Regions;
 }

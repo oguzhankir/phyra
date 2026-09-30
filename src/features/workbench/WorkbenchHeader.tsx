@@ -9,6 +9,8 @@ import {
   Moon,
   Save,
   Sun,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import phyraLogo from '../../../assets/phyra.svg';
 import type { Theme, ThemePreference } from './theme';
@@ -31,6 +33,12 @@ type Props = {
   onExport: () => void;
   onHelp: () => void;
   onFilesHelp: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string;
+  redoLabel: string;
+  onUndo: () => void;
+  onRedo: () => void;
 };
 
 export default function WorkbenchHeader(props: Props) {
@@ -112,6 +120,30 @@ export default function WorkbenchHeader(props: Props) {
             <button onClick={() => action(props.onFilesHelp)}>
               <CircleHelp size={15} />
               Project file help
+            </button>
+          </div>
+        </details>
+        <details
+          onToggle={(event) => {
+            if (event.currentTarget.open)
+              menus.current?.querySelectorAll('details').forEach((menu) => {
+                if (menu !== event.currentTarget) menu.open = false;
+              });
+          }}
+        >
+          <summary>
+            Edit <ChevronDown size={11} />
+          </summary>
+          <div className="menu-popover">
+            <button disabled={!props.canUndo} onClick={() => action(props.onUndo)}>
+              <Undo2 size={15} />
+              Undo {props.undoLabel}
+              <kbd>⌘/Ctrl Z</kbd>
+            </button>
+            <button disabled={!props.canRedo} onClick={() => action(props.onRedo)}>
+              <Redo2 size={15} />
+              Redo {props.redoLabel}
+              <kbd>⇧ ⌘/Ctrl Z</kbd>
             </button>
           </div>
         </details>

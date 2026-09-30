@@ -1,6 +1,7 @@
 import { CircleHelp, LockKeyhole } from 'lucide-react';
 import { sectionTitles } from '../workbench/navigation';
 import GeometryEditor from './GeometryEditor';
+import NamedSelectionEditor from './NamedSelectionEditor';
 import LoadEditor from './LoadEditor';
 import MaterialEditor from './MaterialEditor';
 import MeshEditor from './MeshEditor';
@@ -30,6 +31,7 @@ export default function PropertyInspector({ workbench }: { workbench: ProjectIns
           {section === 'study' && <StudyEditor workbench={workbench} />}
           {section === 'solver' && <SolverEditor workbench={workbench} />}
           {section === 'geometry' && <GeometryEditor workbench={workbench} />}
+          {section === 'selections' && <NamedSelectionEditor workbench={workbench} />}
           {section === 'material' && <MaterialEditor workbench={workbench} />}
           {section === 'mesh' && <MeshEditor workbench={workbench} />}
           {section === 'constraints' && <SupportEditor workbench={workbench} />}

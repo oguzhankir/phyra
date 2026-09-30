@@ -1,6 +1,7 @@
 import { assertTrainingMetadata } from '../../domain/contracts/metadata';
 import { numericArray, type ResultData } from '../../domain/results/fields';
 import { regionNames } from '../../domain/project/regions';
+import { selectionNameKey } from '../../domain/project/namedSelections';
 import type { ArrayDescriptor, Manifest, Project } from '../../domain/contracts/types';
 
 export type ReferenceId = '3d' | '2d-compare';
@@ -127,7 +128,7 @@ export function validateReference(
   const project = projectValue as unknown as Project;
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 2 && project.study.dimension === dimension,
+    project.schemaVersion === 3 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(
@@ -142,6 +143,45 @@ export function validateReference(
     'invalid project ownership.',
   );
   ensure(['box', 'cylinder', 'bracket'].includes(project.geometry.kind), 'unsupported geometry.');
+  ensure(
+    Array.isArray(project.namedSelections) && project.namedSelections.length <= 100,
+    'missing or oversized boundary-set library.',
+  );
+  const selectionIds = new Set<string>();
+  const selectionNames = new Set<string>();
+  for (const selection of project.namedSelections) {
+    ensure(
+      record(selection) &&
+        typeof selection.id === 'string' &&
+        selectionNameKey(selection.id).length > 0 &&
+        selection.id.length <= 100 &&
+        typeof selection.name === 'string' &&
+        selectionNameKey(selection.name).length > 0 &&
+        selection.name.length <= 200 &&
+        ['box', 'cylinder', 'bracket'].includes(selection.geometryKind) &&
+        ['2d', '3d'].includes(selection.dimension) &&
+        (selection.dimension !== '2d' || selection.geometryKind === 'box') &&
+        Array.isArray(selection.regions) &&
+        selection.regions.length > 0 &&
+        selection.regions.length <= 20,
+      'invalid boundary-set metadata or topology stamp.',
+    );
+    const name = selectionNameKey(selection.name);
+    ensure(
+      !selectionIds.has(selection.id) && !selectionNames.has(name),
+      'duplicate boundary-set identity.',
+    );
+    selectionIds.add(selection.id);
+    selectionNames.add(name);
+    const stampedRegions = regionNames(selection.geometryKind, selection.dimension).map(
+      ({ id: region }) => region,
+    );
+    ensure(
+      new Set(selection.regions).size === selection.regions.length &&
+        selection.regions.every((region) => stampedRegions.includes(region)),
+      'invalid stamped boundary-set regions.',
+    );
+  }
   ensure(
     ['length', 'width', 'height', 'radius', 'thickness'].every((key) => {
       const value = project.geometry[key as keyof Project['geometry']];

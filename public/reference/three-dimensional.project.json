@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "example-cantilever",
   "name": "Cantilever beam",
   "revision": 0,
@@ -71,5 +71,25 @@
         "device": "auto"
       }
     }
-  }
+  },
+  "namedSelections": [
+    {
+      "id": "selection-support-root",
+      "name": "Fixed root boundaries",
+      "geometryKind": "box",
+      "dimension": "3d",
+      "regions": [
+        "x0"
+      ]
+    },
+    {
+      "id": "selection-load-tip",
+      "name": "Tip force boundaries",
+      "geometryKind": "box",
+      "dimension": "3d",
+      "regions": [
+        "x1"
+      ]
+    }
+  ]
 }

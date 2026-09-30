@@ -28,10 +28,12 @@ pub(crate) async fn open_project(app: tauri::AppHandle) -> Result<Option<Value>,
             let opened = read_archive_details(&path, &directory)?;
             let project = opened.project;
             let migration_notice = if opened.migrated {
-                Some(if opened.dropped_cache {
-                    "Version 1 project upgraded to version 2. Legacy cached results were discarded; run the study again."
+                Some(if opened.source_version == 2 {
+                    "Version 2 project upgraded to version 3 with an empty boundary-set library. Existing cached results were checked before opening."
+                } else if opened.dropped_cache {
+                    "Version 1 project upgraded to version 3. Legacy cached results were discarded; run the study again."
                 } else {
-                    "Version 1 project upgraded to version 2 with its original 3D FEM study."
+                    "Version 1 project upgraded to version 3 with its original 3D FEM study and an empty boundary-set library."
                 })
             } else {
                 None

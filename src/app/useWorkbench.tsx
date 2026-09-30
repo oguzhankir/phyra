@@ -18,6 +18,18 @@ import { assignedRegions, regionNames, type RegionId } from '../domain/project/r
 import { changeStudyDimension } from '../domain/project/study';
 import { inputError } from '../domain/project/validation';
 import {
+  createHistory,
+  recordEdit,
+  undo as undoEdit,
+  redo as redoEdit,
+} from '../domain/project/history';
+import {
+  nextSelectionName,
+  selectedBoundaries,
+  selectionIsCompatible,
+  type NamedSelection,
+} from '../domain/project/namedSelections';
+import {
   extractField,
   fieldOptions,
   type FieldId,
@@ -47,15 +59,22 @@ import { useModalFocus } from '../shared/ui/useModalFocus';
 import { useDesktopLifecycle } from './useDesktopLifecycle';
 import { useRecoverySession } from './useRecoverySession';
 import { useVerificationWorkflow } from './useVerificationWorkflow';
+import { verificationLaunch } from './verificationLaunch';
 
 const uid = () => crypto.randomUUID();
 export function useWorkbench() {
   const [project, setProject] = useState<Project>(() => makeProject('plane-stress-tension'));
   const projectRef = useRef(project);
   projectRef.current = project;
-  const [dirty, setDirty] = useState(false);
+  const historyRef = useRef<ReturnType<typeof createHistory> | null>(null);
+  if (!historyRef.current) historyRef.current = createHistory(project);
+  const [dirty, setDirtyState] = useState(false);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  const setDirty = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirtyState(value);
+  }, []);
   const invalidDraftsRef = useRef(new Map<string, string>());
   const [invalidDraftLabels, setInvalidDraftLabels] = useState<string[]>([]);
   const reportDraftValidity = useCallback((id: string, label: string | null) => {
@@ -74,8 +93,10 @@ export function useWorkbench() {
   const [data, setData] = useState<ResultData | null>(null);
   const [section, setSection] = useState<Section>('study');
   const [selected, setSelected] = useState<RegionId[]>([]);
+  const [selectionMode, setSelectionMode] = useState<'replace' | 'add' | 'toggle'>('replace');
   const [constraintId, setConstraintId] = useState<string | null>(null);
   const [loadId, setLoadId] = useState<string | null>(null);
+  const [namedSelectionId, setNamedSelectionId] = useState<string | null>(null);
   const [fieldId, setFieldId] = useState<FieldId>('geometry');
   const [edges, setEdges] = useState(true);
   const [deformation, setDeformation] = useState<'off' | 'actual' | 'auto' | 'custom'>('auto');
@@ -159,19 +180,80 @@ export function useWorkbench() {
   const factor = lengthFactor(project.displayUnits);
   const constraint = project.study.constraints.find((item) => item.id === constraintId);
   const load = project.study.loads.find((item) => item.id === loadId);
+  const namedSelection = project.namedSelections.find((item) => item.id === namedSelectionId);
 
   const edit = useCallback((change: (next: Project) => void, physical = true) => {
     if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return;
-    setProject((previous) => {
+    try {
+      const previous = projectRef.current;
       const next = structuredClone(previous);
       change(next);
-      if (physical) next.revision++;
-      return next;
-    });
-    setDirty(true);
-    setProbe(null);
-    setError(null);
+      const transition = recordEdit(historyRef.current!, previous, next, physical);
+      if (!transition.changed) return;
+      historyRef.current = transition.history;
+      projectRef.current = transition.project;
+      setProject(transition.project);
+      setDirty(true);
+      setProbe(null);
+      setError(null);
+      if (transition.notice) setNotice(transition.notice);
+    } catch (cause) {
+      setError(String(cause));
+    }
   }, []);
+  const navigateHistory = (direction: 'undo' | 'redo') => {
+    if (
+      busyRef.current ||
+      fileBusyRef.current ||
+      recoveryBusyRef.current ||
+      deviceBusyRef.current ||
+      confirmationRef.current ||
+      help ||
+      invalidDraftsRef.current.size
+    )
+      return;
+    try {
+      const entry =
+        direction === 'undo' ? historyRef.current!.past.at(-1) : historyRef.current!.future.at(-1);
+      const transition = (direction === 'undo' ? undoEdit : redoEdit)(
+        historyRef.current!,
+        projectRef.current,
+      );
+      if (!transition.changed) return;
+      historyRef.current = transition.history;
+      projectRef.current = transition.project;
+      setProject(transition.project);
+      setDirty(true);
+      setProbe(null);
+      setAnimate(false);
+      setError(null);
+      const next = transition.project;
+      const support = next.study.constraints.find((item) => item.id === constraintId);
+      const appliedLoad = next.study.loads.find((item) => item.id === loadId);
+      const group = next.namedSelections.find((item) => item.id === namedSelectionId);
+      if (!support) setConstraintId(null);
+      if (!appliedLoad) setLoadId(null);
+      if (!group) setNamedSelectionId(null);
+      setSelected(
+        section === 'constraints'
+          ? (support?.regions ?? [])
+          : section === 'loads'
+            ? (appliedLoad?.regions ?? [])
+            : section === 'selections' && group && selectionIsCompatible(next, group)
+              ? [...group.regions]
+              : [],
+      );
+      setNotice(
+        entry?.physical
+          ? 'Inputs restored · recompute the analysis'
+          : direction === 'undo'
+            ? 'Edit undone'
+            : 'Edit restored',
+      );
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
   const save = useCallback(
     async (saveAs = false): Promise<boolean> => {
       if (!desktop || busyRef.current || fileBusyRef.current || recoveryBusyRef.current)
@@ -235,12 +317,15 @@ export function useWorkbench() {
   const canReplaceRef = useRef(canReplace);
   canReplaceRef.current = canReplace;
   const replace = (next: Project, result: ResultData | null = null) => {
+    historyRef.current = createHistory(next);
+    projectRef.current = next;
     setProject(next);
     setData(result);
     setDirty(false);
     setSelected([]);
     setConstraintId(null);
     setLoadId(null);
+    setNamedSelectionId(null);
     setSection('study');
     setAnimate(false);
     setFieldSource('primary');
@@ -448,7 +533,7 @@ export function useWorkbench() {
       setCancelling(false);
     }
   };
-  const { verification, verified } = useVerificationWorkflow({
+  const { verification, verified, requestedOperation } = useVerificationWorkflow({
     desktop,
     project,
     currentData,
@@ -456,7 +541,6 @@ export function useWorkbench() {
     fieldSource,
     fieldId,
     replace,
-    execute,
     setDeformation,
     setFieldId,
     setFieldSource,
@@ -555,6 +639,30 @@ export function useWorkbench() {
   recoveryBusyRef.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
   const locked = !!busy || !!fileBusy || deviceBusy || recoveryBusyRef.current;
+  const verificationJobStarted = useRef(false);
+  useEffect(() => {
+    const operation = verificationLaunch(
+      requestedOperation,
+      verificationJobStarted.current,
+      !desktop ||
+        locked ||
+        confirmation ||
+        help ||
+        !!validation ||
+        invalidDraftsRef.current.size > 0 ||
+        !!busyRef.current ||
+        !!fileBusyRef.current ||
+        confirmationRef.current ||
+        deviceBusyRef.current ||
+        recoveryBusyRef.current,
+    );
+    if (!operation) return;
+    // Claim only after the same gates as execute are open. A later readiness
+    // render can retry a pending launch; StrictMode cannot dispatch it twice.
+    verificationJobStarted.current = true;
+    void invoke('verification_trace', { message: `frontend verification launching ${operation}` });
+    void execute(operation);
+  }, [requestedOperation, desktop, locked, confirmation, help, validation, execute]);
   useModalFocus(
     confirmation || help || recovery.prompt,
     () => {
@@ -583,6 +691,9 @@ export function useWorkbench() {
     setHelpContext,
     setHelp,
     setError,
+    undo: () => navigateHistory('undo'),
+    redo: () => navigateHistory('redo'),
+    historyBlocked: locked || confirmation || help || invalidDraftLabels.length > 0,
   });
 
   const resize = (event: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
@@ -617,7 +728,8 @@ export function useWorkbench() {
       invalidDraftsRef.current.size &&
       (next !== section ||
         (next === 'constraints' && id !== constraintId) ||
-        (next === 'loads' && id !== loadId))
+        (next === 'loads' && id !== loadId) ||
+        (next === 'selections' && id !== namedSelectionId))
     ) {
       setError('Complete the numeric input, or press Escape to revert it before changing editors.');
       return;
@@ -631,6 +743,51 @@ export function useWorkbench() {
       setLoadId(id);
       setSelected(project.study.loads.find((item) => item.id === id)?.regions ?? []);
     }
+    if (next === 'selections' && id) {
+      setNamedSelectionId(id);
+      const item = project.namedSelections.find((candidate) => candidate.id === id);
+      setSelected(item && selectionIsCompatible(project, item) ? [...item.regions] : []);
+    }
+  };
+  const addNamedSelection = () => {
+    if (invalidDraftsRef.current.size || locked) return;
+    if (project.namedSelections.length >= 100) {
+      setError(
+        'A project supports at most 100 named selections. Delete an unused set before adding another.',
+      );
+      return;
+    }
+    const chosen = selectedBoundaries(project, selected);
+    if (!chosen.length) {
+      setError('Select boundaries before creating a named selection.');
+      return;
+    }
+    const id = uid();
+    edit(
+      (next) =>
+        next.namedSelections.push({
+          id,
+          name: nextSelectionName(next),
+          geometryKind: next.geometry.kind,
+          dimension: next.study.dimension,
+          regions: assignedRegions(chosen, 'x0'),
+        }),
+      false,
+    );
+    setNamedSelectionId(id);
+    setSection('selections');
+  };
+  const editNamedSelection = (change: (item: NamedSelection) => void) =>
+    edit((next) => {
+      const item = next.namedSelections.find((candidate) => candidate.id === namedSelectionId);
+      if (item) change(item);
+    }, false);
+  const useNamedSelection = (item: NamedSelection) => {
+    if (!selectionIsCompatible(project, item)) {
+      setError('This named selection belongs to another geometry. Repair its boundaries first.');
+      return;
+    }
+    setSelected([...item.regions]);
   };
   const addConstraint = () => {
     if (invalidDraftsRef.current.size) {
@@ -680,6 +837,38 @@ export function useWorkbench() {
     });
   const boundaryEditor = (item: Constraint | Load, change: (regions: RegionId[]) => void) => (
     <>
+      {project.namedSelections.length > 0 && (
+        <label className="field-label">
+          <span>Copy a named selection</span>
+          <select
+            value=""
+            onChange={(event) => {
+              const group = project.namedSelections.find(
+                (candidate) => candidate.id === event.target.value,
+              );
+              if (group && selectionIsCompatible(project, group)) {
+                change([...group.regions]);
+                setSelected([...group.regions]);
+              }
+            }}
+          >
+            <option value="">Choose boundary set…</option>
+            {project.namedSelections.map((group) => (
+              <option
+                key={group.id}
+                value={group.id}
+                disabled={!selectionIsCompatible(project, group)}
+              >
+                {group.name}
+                {selectionIsCompatible(project, group) ? '' : ' · repair required'}
+              </option>
+            ))}
+          </select>
+          <small className="property-hint">
+            Copies the boundaries. Later group edits do not change this assignment.
+          </small>
+        </label>
+      )}
       <div className="boundary-list">
         {regions.map((region) => (
           <label key={region.id}>
@@ -714,10 +903,16 @@ export function useWorkbench() {
       setError('Complete or revert the numeric input before changing dimension.');
       return;
     }
+    if (dimension === project.study.dimension) return;
+    const count = project.study.constraints.length + project.study.loads.length;
     edit((next) => changeStudyDimension(next, dimension));
+    setNotice(
+      `Study dimension changed · ${count} boundary assignments cleared. Undo restores the previous definition.`,
+    );
     setSelected([]);
     setConstraintId(null);
     setLoadId(null);
+    setNamedSelectionId(null);
     setAnimate(false);
   };
   const chooseSource = (source: FieldSource) => {
@@ -728,6 +923,31 @@ export function useWorkbench() {
   };
 
   return {
+    selectionMode,
+    setSelectionMode,
+    undo: () => navigateHistory('undo'),
+    redo: () => navigateHistory('redo'),
+    canUndo:
+      !locked &&
+      !confirmation &&
+      !help &&
+      invalidDraftLabels.length === 0 &&
+      !!historyRef.current?.past.length,
+    canRedo:
+      !locked &&
+      !confirmation &&
+      !help &&
+      invalidDraftLabels.length === 0 &&
+      !!historyRef.current?.future.length,
+    undoLabel: historyRef.current?.past.at(-1)?.label ?? '',
+    redoLabel: historyRef.current?.future.at(-1)?.label ?? '',
+    namedSelectionId,
+    namedSelection,
+    addNamedSelection,
+    editNamedSelection,
+    useNamedSelection,
+    setNamedSelectionId,
+    setNotice,
     recovery,
     rightWidth,
     section,

@@ -27,10 +27,14 @@ export function makeProject(example?: ExampleId): Project {
   project.study.loads.forEach((item) => {
     item.id = crypto.randomUUID();
   });
+  project.namedSelections.forEach((item) => {
+    item.id = crypto.randomUUID();
+  });
   if (!example) {
     project.name = 'Untitled project';
     project.study.constraints = [];
     project.study.loads = [];
+    project.namedSelections = [];
   }
   return project;
 }
