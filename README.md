@@ -7,18 +7,19 @@
 
 <p align="center"><strong>Prepare a physical problem. Solve locally. Understand the result.</strong></p>
 
-Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.1.0 development line** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
+Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.2.0 development build** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
 
 <p align="center">
-  <video controls preload="metadata" playsinline width="100%" poster="assets/media/phyra-introduction-poster.jpg">
-    <source src="assets/media/phyra-introduction.mp4" type="video/mp4" />
-    Your browser does not support embedded video. <a href="assets/media/phyra-introduction.mp4">Watch the Phyra walkthrough</a>.
-  </video>
+  <a href="assets/media/phyra-introduction.mp4">
+    <img src="assets/media/phyra-introduction-poster.jpg" alt="Play the 94-second Phyra product walkthrough" width="100%" />
+  </a>
+  <br />
+  <a href="assets/media/phyra-introduction.mp4">▶ Play the 94-second walkthrough</a>
 </p>
 
 **Explore:** [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
-The walkthrough uses genuine current application screens and saved CPU reference results. It separates implemented mechanics from planned roadmap work; running a new analysis requires the desktop app.
+The walkthrough uses genuine current application screens, saved CPU reference results and a live capture of the 3D result viewport. Its deformation playback visualizes a static field; it is not a dynamic simulation. The video separates implemented mechanics from planned roadmap work; running a new analysis requires the desktop app.
 
 ## What you can do today
 
@@ -74,7 +75,7 @@ Project version 3 persists up to 100 named boundary sets, stamped with their pri
 
 Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Older valid journals migrate in memory while their original bytes remain intact. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
 
-General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](roadmap.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
+General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](ROADMAP.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
 
 ## Learn the implemented method
 

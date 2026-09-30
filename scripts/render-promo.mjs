@@ -63,7 +63,7 @@ function drawText(file, size, x, y, color = '0xf4f5f6') {
 function validScene(scene) {
   return (
     scene &&
-    ['screen', 'card'].includes(scene.type) &&
+    ['screen', 'recording', 'card'].includes(scene.type) &&
     typeof scene.name === 'string' &&
     /^[a-z0-9-]+$/.test(scene.name) &&
     typeof scene.heading === 'string' &&
@@ -129,7 +129,7 @@ async function screenScene(scene, index) {
   );
   const file = path.join(segments, `${String(index + 1).padStart(2, '0')}-${scene.name}.mp4`);
   const filters = [
-    "[0:v]scale=1800:920:force_original_aspect_ratio=decrease,pad=1800:920:(ow-iw)/2:(oh-ih)/2:color=0xf0f2f0,zoompan=z='min(1.045,1+on*0.00012)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=1800x920:fps=30,format=yuv420p,setsar=1[screen]",
+    '[0:v]scale=1800:920:force_original_aspect_ratio=decrease,pad=1800:920:(ow-iw)/2:(oh-ih)/2:color=0xf0f2f0,fps=30,format=yuv420p,setsar=1[screen]',
     '[1:v]drawbox=x=0:y=0:w=1920:h=76:color=0x151b22:t=fill,drawbox=x=0:y=1022:w=1920:h=58:color=0x151b22:t=fill,drawbox=x=0:y=76:w=1920:h=3:color=0x64b8ac:t=fill[base]',
     '[base][screen]overlay=60:80:shortest=1[frame]',
     `[frame]${drawText(heading, 30, '64', '21')},${drawText(chapter, 20, 'w-text_w-64', '27', '0xb5c6d1')},${drawText(detail, 22, '64', '1038', '0xe2e7eb')},fps=30,format=yuv420p[v]`,
@@ -145,6 +145,52 @@ async function screenScene(scene, index) {
     'lavfi',
     '-i',
     'color=c=0xf0f2f0:s=1920x1080:r=30',
+    '-filter_complex',
+    filters,
+    '-map',
+    '[v]',
+    '-t',
+    String(scene.duration),
+    '-r',
+    '30',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'medium',
+    '-crf',
+    '18',
+    '-pix_fmt',
+    'yuv420p',
+    '-an',
+    file,
+  ]);
+  return { file, duration: scene.duration };
+}
+
+async function recordingScene(scene, index) {
+  const source = path.resolve(root, scene.source);
+  if (!source.startsWith(`${root}${path.sep}`)) throw new Error('Recording source must stay in the repository');
+  await access(source);
+  const heading = await textFile(`${scene.name}-heading`, scene.heading);
+  const detail = await textFile(`${scene.name}-detail`, scene.detail);
+  const chapter = await textFile(
+    `${scene.name}-chapter`,
+    `${String(index + 1).padStart(2, '0')}  /  ${String(scenes.length).padStart(2, '0')}`,
+  );
+  const file = path.join(segments, `${String(index + 1).padStart(2, '0')}-${scene.name}.mp4`);
+  const filters = [
+    `[0:v]fps=30,scale=1800:760:force_original_aspect_ratio=decrease,pad=1800:760:(ow-iw)/2:(oh-ih)/2:color=0xf0f2f0,tpad=stop_mode=clone:stop_duration=1,trim=duration=${scene.duration},format=yuv420p,setsar=1[screen]`,
+    '[1:v]drawbox=x=0:y=0:w=1920:h=76:color=0x151b22:t=fill,drawbox=x=0:y=1022:w=1920:h=58:color=0x151b22:t=fill,drawbox=x=0:y=76:w=1920:h=3:color=0x64b8ac:t=fill[base]',
+    '[base][screen]overlay=60:150[frame]',
+    `[frame]drawbox=x=60:y=150:w=1800:h=760:color=0x64b8ac@0.65:t=2,${drawText(heading, 30, '64', '21')},${drawText(chapter, 20, 'w-text_w-64', '27', '0xb5c6d1')},${drawText(detail, 22, '64', '1038', '0xe2e7eb')},fps=30,format=yuv420p[v]`,
+  ].join(';');
+  run([
+    '-i',
+    source,
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=0x151b22:s=1920x1080:r=30',
     '-filter_complex',
     filters,
     '-map',
@@ -232,7 +278,13 @@ const clips = [
 ];
 for (const [index, scene] of scenes.entries()) {
   if (!validScene(scene)) throw new Error('Invalid capture manifest');
-  clips.push(scene.type === 'screen' ? await screenScene(scene, index) : await informationCard(scene, index));
+  clips.push(
+    scene.type === 'screen'
+      ? await screenScene(scene, index)
+      : scene.type === 'recording'
+        ? await recordingScene(scene, index)
+        : await informationCard(scene, index),
+  );
 }
 clips.push(
   await titleCard(
@@ -260,7 +312,7 @@ for (let index = 1; index < clips.length; index += 1) {
 const narrationIndex = clips.length;
 const musicIndex = clips.length + 1;
 graph.push(
-  `[${narrationIndex}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atempo=1.044,volume=1.0,apad=pad_dur=${totalDuration},atrim=duration=${totalDuration}[voice]`,
+  `[${narrationIndex}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atempo=0.972,volume=1.0,apad=pad_dur=${totalDuration},atrim=duration=${totalDuration}[voice]`,
   `[${musicIndex}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.2,afade=t=in:st=0:d=1.8,afade=t=out:st=${Math.max(0, totalDuration - 3)}:d=3,atrim=duration=${totalDuration}[bed]`,
   '[voice][bed]amix=inputs=2:duration=longest:dropout_transition=2,loudnorm=I=-16:TP=-1.5:LRA=10[audio]',
 );
