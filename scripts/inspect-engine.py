@@ -104,7 +104,7 @@ if __name__ == "__main__":
             )
     artifact = ROOT / "artifacts" / "engine-platform.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_text(json.dumps(report, indent=2) + "\n")
+    artifact.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(
             {

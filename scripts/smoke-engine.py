@@ -470,7 +470,9 @@ def main() -> None:
         )
 
         plane = json.loads(
-            (ROOT / "examples" / "plane-stress-tension.json").read_text()
+            (ROOT / "examples" / "plane-stress-tension.json").read_text(
+                encoding="utf-8"
+            )
         )
         plane["study"]["solver"]["pinn"]["device"] = "cpu"
         devices_path = Path(directory) / "devices"
