@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { python, requirePython, root, run } from './common.mjs';
+import { python, pythonEnvironment, requirePython, root, run } from './common.mjs';
 
 // Real local CPU results for the read-only browser viewer. Seeds reproduce
 // numerical fields; execution identities, timestamps and timings remain real.
@@ -18,12 +18,11 @@ async function worker(operation, project, directory, jobId) {
   const frames = await new Promise((resolve, reject) => {
     const child = spawn(python, [path.join(root, 'engine/entry.py'), '--output', directory], {
       cwd: root,
-      env: {
-        ...process.env,
+      env: pythonEnvironment({
         OMP_NUM_THREADS: '1',
         OPENBLAS_NUM_THREADS: '1',
         MKL_NUM_THREADS: '1',
-      },
+      }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

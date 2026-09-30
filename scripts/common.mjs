@@ -15,9 +15,18 @@ export function requirePython() {
     throw new Error('Run npm run setup first to install the managed development engine.');
 }
 
+export function pythonEnvironment(environment = {}) {
+  return { ...process.env, ...environment, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
+}
+
 export function run(executable, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { cwd: root, stdio: 'inherit', ...options });
+    const child = spawn(executable, args, {
+      cwd: root,
+      stdio: 'inherit',
+      ...options,
+      env: pythonEnvironment(options.env),
+    });
     child.on('error', reject);
     child.on('exit', (code, signal) => {
       if (code === 0) resolve();

@@ -146,6 +146,58 @@ def test_worker_real_solve_and_protocol_framing(project, tmp_path):
     assert (tmp_path / "buffer.bin").is_file()
 
 
+def test_worker_unicode_roundtrip_with_cp1252_inherited_stdio(project, tmp_path):
+    """Exercise Windows pipe encoding, Unicode paths and real result persistence."""
+    worker = Path(__file__).resolve().parents[1] / "entry.py"
+    directory = tmp_path / "work-\u00e7al\u0131\u015fma-\u0394"
+    project["id"] = "project-\u00e7al\u0131\u015fma"
+    project["name"] = "\u00c7al\u0131\u015fma \u2192 Physics ML"
+    request = {
+        "protocolVersion": 1,
+        "operation": "solve",
+        "jobId": "unicode-protocol-job",
+        "project": project,
+    }
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    environment.update(PYTHONUTF8="0", PYTHONIOENCODING="cp1252")
+    # The wrapper adds only text probes after the actual worker finishes; it
+    # cannot fabricate a numerical result or change the worker's request.
+    bootstrap = """
+import json, runpy, sys
+from pathlib import Path
+assert sys.stdout.encoding.lower() == "cp1252"
+assert sys.stderr.encoding.lower() == "cp1252"
+worker, directory = sys.argv[1:]
+sys.path.insert(0, str(Path(worker).parent))
+entry = runpy.run_path(worker, run_name="encoding_probe")
+sys.argv = [worker, "--output", directory]
+code = entry["main"]()
+probe = "\\u00c7al\\u0131\\u015fma \\u2192 Physics ML"
+print(json.dumps({"textProbe": probe}, ensure_ascii=False), flush=True)
+print(probe, file=sys.stderr, flush=True)
+raise SystemExit(code)
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", bootstrap, str(worker), str(directory)],
+        input=json.dumps(request, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        cwd=tmp_path,
+        env=environment,
+        timeout=30,
+    )
+    assert process.returncode == 0, process.stderr
+    messages = [json.loads(line) for line in process.stdout.decode("utf-8").splitlines()]
+    assert messages[-1] == {"textProbe": project["name"]}
+    assert project["name"] in process.stderr.decode("utf-8")
+    assert all(message["type"] in ("progress", "complete") for message in messages[:-1])
+    manifest = messages[-2]["manifest"]
+    assert manifest["projectId"] == project["id"]
+    assert manifest["jobId"] == request["jobId"]
+    stored = json.loads((directory / "manifest.json").read_bytes())
+    assert stored == manifest
+    assert validate_cached(project, stored, (directory / "buffer.bin").read_bytes()) == manifest
+
+
 @pytest.mark.parametrize(
     "payload",
     [b"{}", b"not-json", b'{"protocolVersion":NaN}', b"x" * (1024 * 1024 + 1)],

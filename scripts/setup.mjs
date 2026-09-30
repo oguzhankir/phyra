@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { python, run } from './common.mjs';
+import { python, pythonEnvironment, run } from './common.mjs';
 
 if (!existsSync(python)) {
   if (process.platform === 'win32') {
-    const selected = spawnSync('python', [
-      '-c',
-      'import sys; sys.exit(sys.version_info[:2] != (3, 12))',
-    ]);
+    const selected = spawnSync(
+      'python',
+      ['-c', 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'],
+      { env: pythonEnvironment() },
+    );
     if (selected.status === 0) await run('python', ['-m', 'venv', '.venv']);
     else await run('py', ['-3.12', '-m', 'venv', '.venv']);
   } else if (
