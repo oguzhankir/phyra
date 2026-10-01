@@ -10,11 +10,7 @@
 Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.2.0 development build** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
 
 <p align="center">
-  <a href="assets/media/phyra-introduction.mp4">
-    <img src="assets/media/phyra-introduction-poster.jpg" alt="Play the 94-second Phyra product walkthrough" width="100%" />
-  </a>
-  <br />
-  <a href="assets/media/phyra-introduction.mp4">▶ Play the 94-second walkthrough</a>
+  <video src="https://github.com/user-attachments/assets/c47e6fcf-36c7-40b5-82f3-3d48e4d9600a" controls="controls" width="100%" aria-label="Phyra product walkthrough"></video>
 </p>
 
 **Explore:** [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
