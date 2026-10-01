@@ -1,0 +1,90 @@
+[
+  {
+    "type": "screen",
+    "name": "prepare-model",
+    "image": "public/help/preparation-workbench.jpg",
+    "duration": 14,
+    "heading": "PREPARE THE ENGINEERING MODEL",
+    "detail": "3D solids and 2D plane stress  ·  materials, supports, forces and pressure"
+  },
+  {
+    "type": "screen",
+    "name": "solve-fem",
+    "image": "public/help/solid-workbench.jpg",
+    "duration": 14,
+    "heading": "SOLVE LOCALLY. INSPECT THE FIELD.",
+    "detail": "FEM stress and displacement  ·  reactions  ·  force and moment balance"
+  },
+  {
+    "type": "recording",
+    "name": "live-3d-result",
+    "source": "artifacts/promo/3d-cantilever.webm",
+    "duration": 7,
+    "heading": "LIVE 3D VIEWPORT · DISPLACEMENT FIELD",
+    "detail": "Saved FEM result  ·  visual deformation playback, not a dynamic simulation"
+  },
+  {
+    "type": "screen",
+    "name": "compare-methods",
+    "image": "public/help/comparison-workbench.jpg",
+    "duration": 14,
+    "heading": "COMPARE FEM WITH PHYSICS ML",
+    "detail": "Matched nodes and cell centroids  ·  experimental 2D plane-stress PINN"
+  },
+  {
+    "type": "screen",
+    "name": "inspect-training",
+    "image": "public/help/training-workbench.jpg",
+    "duration": 12,
+    "heading": "READ THE METHOD, NOT JUST THE LOSS",
+    "detail": "PDE and boundary residuals  ·  device and precision  ·  measured comparison"
+  },
+  {
+    "type": "card",
+    "name": "roadmap",
+    "duration": 16,
+    "heading": "A CAREFUL PATH FROM SOLID MECHANICS",
+    "detail": "The roadmap expands the product only as complete workflows and independent evidence are ready.",
+    "footer": "ROADMAP DIRECTION  ·  FUTURE WORK, NOT CURRENT CAPABILITIES OR RELEASE DATES",
+    "items": [
+      {
+        "title": "GEOMETRY",
+        "body": "Richer CAD and engineering\npreparation, with boundary\nassignments that remain clear."
+      },
+      {
+        "title": "NEW PHYSICS",
+        "body": "Thermal, flow and coupled\nstudies after their solid\nmechanics foundations validate."
+      },
+      {
+        "title": "PHYSICS ML",
+        "body": "Reusable learned operators,\ninverse problems and\nuncertainty estimates."
+      },
+      {
+        "title": "AI ASSISTANCE",
+        "body": "Reviewable engineering\nproposals under explicit\nuser control."
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "name": "help-and-docs",
+    "duration": 12,
+    "heading": "GUIDANCE THAT STAYS WITH THE WORKFLOW",
+    "detail": "Offline help, real examples and project documentation explain how to work within the current scope.",
+    "footer": "README: SETUP  ·  CONTRIBUTING: DEVELOPMENT  ·  ROADMAP: FUTURE SCOPE",
+    "items": [
+      {
+        "title": "BUILT-IN HELP",
+        "body": "Units, boundary conditions,\nmesh quality and result\ninterpretation."
+      },
+      {
+        "title": "REAL EXAMPLES",
+        "body": "Open a cantilever, cylinder,\nbracket or plane-stress project\nand inspect its inputs."
+      },
+      {
+        "title": "DOCUMENTATION",
+        "body": "README for setup.\nContribution guide for source.\nRoadmap for future scope."
+      }
+    ]
+  }
+]

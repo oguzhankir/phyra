@@ -7,13 +7,19 @@
 
 <p align="center"><strong>Prepare a physical problem. Solve locally. Understand the result.</strong></p>
 
-Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.1.0 development line** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
+Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.2.0 development build** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
 
-[![Phyra product walkthrough — actual application workflows](assets/media/phyra-preview.gif)](assets/media/phyra-introduction.mp4)
+<p align="center">
+  <a href="assets/media/phyra-introduction.mp4">
+    <img src="assets/media/phyra-introduction-poster.jpg" alt="Play the 94-second Phyra product walkthrough" width="100%" />
+  </a>
+  <br />
+  <a href="assets/media/phyra-introduction.mp4">▶ Play the 94-second walkthrough</a>
+</p>
 
-**[Watch the product walkthrough](assets/media/phyra-introduction.mp4)** · [Explore the roadmap](roadmap.md) · [Run an example](examples)
+**Explore:** [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
-The video records the previous interface iteration using actual CPU reference studies. The screenshots below show the current interface inspecting saved CPU fields. Product refinement is continuing; final video recapture is deferred. Computing a new solution requires the desktop app.
+The walkthrough uses genuine current application screens, saved CPU reference results and a live capture of the 3D result viewport. Its deformation playback visualizes a static field; it is not a dynamic simulation. The video separates implemented mechanics from planned roadmap work; running a new analysis requires the desktop app.
 
 ## What you can do today
 
@@ -43,6 +49,8 @@ Current interface · saved CPU FEM/PINN comparison · recorded measurements, not
 Install Node **22.12+**, Python **3.12** and Rust **1.94** with rustfmt/clippy. macOS needs Xcode command-line tools; Windows needs Visual Studio C++ Build Tools, Windows SDK and WebView2. Supported launch targets are macOS Apple Silicon, minimum macOS 14, and Windows x64.
 
 ```sh
+git clone https://github.com/oguzhankir/phyra.git
+cd phyra
 npm ci
 npm run setup
 npm run package:engine
@@ -67,7 +75,7 @@ Project version 3 persists up to 100 named boundary sets, stamped with their pri
 
 Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Older valid journals migrate in memory while their original bytes remain intact. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
 
-General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](roadmap.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
+General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](ROADMAP.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
 
 ## Learn the implemented method
 
@@ -81,9 +89,9 @@ Independent analytical/manufactured references live in [engine tests](engine/tes
 
 **Current runtime evidence:** [scientific and packaged verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed on macOS 15 Apple Silicon and Windows Server 2022 x64. The run covers the current preparation and project-version changes, actual FEM/PINN rendering and comparison, persistence, cancellation and native recovery. That production code is unchanged after integration with the current repository documentation. Representative-user usability remains open.
 
-Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and prior-iteration demonstration media are available; public installers require the redistribution work below.
+Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and the current product walkthrough are available; public installers require the redistribution work below.
 
-Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](roadmap.md) and [contribution guide](CONTRIBUTING.md).
+Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](ROADMAP.md) and [contribution guide](CONTRIBUTING.md).
 
 Built with Tauri 2, React, TypeScript, Three.js, Gmsh, SciPy and PyTorch. Licensed [GPL-3.0-or-later](LICENSE); required upstream notices and target-specific dependency/Corresponding Source obligations are in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt).
 
