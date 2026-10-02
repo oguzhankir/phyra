@@ -16,7 +16,6 @@ from phyra_engine.execution.limits import MAX_CELLS, MAX_NODES, MAX_TRIANGLES
 from phyra_engine.geometry.primitives import classify_surface, create_solid
 from phyra_engine.geometry.regions import SOLID_REGIONS
 from phyra_engine.meshing.types import Mesh
-from phyra_engine.studies.project import validate_project
 
 
 def mesh_id(mesh: Mesh) -> str:
@@ -118,8 +117,9 @@ def validate_mesh(mesh: Mesh) -> None:
         raise EngineError("invalid-mesh", "Boundary orientation must point out of the solid.")
 
 
-def generate_mesh(project: dict[str, Any], progress: Progress | None = None) -> Mesh:
-    validate_project(project)
+def generate_solid(
+    source: dict[str, Any], target_size: float, progress: Progress | None = None
+) -> Mesh:
     if progress:
         progress("geometry", None)
     gmsh.initialize([], readConfigFiles=False)
@@ -127,7 +127,6 @@ def generate_mesh(project: dict[str, Any], progress: Progress | None = None) -> 
         gmsh.option.setNumber("General.Terminal", 0)
         gmsh.option.setNumber("General.NumThreads", 1)
         gmsh.model.add("phyra")
-        source = project["geometry"]
         scale = (
             max(source["length"], 2 * source["radius"])
             if source["kind"] == "cylinder"
@@ -150,7 +149,7 @@ def generate_mesh(project: dict[str, Any], progress: Progress | None = None) -> 
         }
         if set(tags.values()) != set(range(len(regions))):
             raise EngineError("invalid-region", "Solid boundary identification is incomplete.")
-        size = project["study"]["mesh"]["size"] / scale
+        size = target_size / scale
         # A coarse target size must not reduce a circular cross section to the
         # mesher's default seven-sided polygon. Keep at least 24 circle nodes.
         gmsh.option.setNumber("Mesh.MinimumCircleNodes", 24)

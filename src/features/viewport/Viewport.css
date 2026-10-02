@@ -1,7 +1,7 @@
 .viewport-wrap {
   position: relative;
   flex: 1;
-  min-height: 240px;
+  min-height: 160px;
 }
 .viewport {
   position: absolute;

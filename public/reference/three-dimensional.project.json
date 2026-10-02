@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "example-cantilever",
   "name": "Cantilever beam",
   "revision": 0,
@@ -27,14 +27,8 @@
       {
         "id": "support-root",
         "name": "Fixed root",
-        "regions": [
-          "x0"
-        ],
-        "components": [
-          0,
-          0,
-          0
-        ]
+        "regions": ["x0"],
+        "components": [0, 0, 0]
       }
     ],
     "loads": [
@@ -42,14 +36,8 @@
         "id": "load-tip",
         "name": "Tip force",
         "kind": "force",
-        "regions": [
-          "x1"
-        ],
-        "vector": [
-          0,
-          0,
-          -100
-        ],
+        "regions": ["x1"],
+        "vector": [0, 0, -100],
         "pressure": 0
       }
     ],
@@ -78,18 +66,14 @@
       "name": "Fixed root boundaries",
       "geometryKind": "box",
       "dimension": "3d",
-      "regions": [
-        "x0"
-      ]
+      "regions": ["x0"]
     },
     {
       "id": "selection-load-tip",
       "name": "Tip force boundaries",
       "geometryKind": "box",
       "dimension": "3d",
-      "regions": [
-        "x1"
-      ]
+      "regions": ["x1"]
     }
   ]
 }

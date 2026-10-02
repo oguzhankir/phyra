@@ -36,6 +36,57 @@ fn training_metrics_enforce_ownership_finiteness_and_monotonic_progress() {
 }
 
 #[test]
+fn ui_run_requests_require_a_bounded_uuid_before_worker_execution() {
+    for invalid in [
+        "",
+        "owned",
+        "arbitrary-current-job",
+        "9ddcda9e-70aa-4af7-a6cb-9774147238cg",
+        "9ddcda9e70aa4af7a6cb9774147238cf",
+    ] {
+        assert!(RunRequestId::parse(invalid.into()).is_err(), "{invalid}");
+    }
+    let oversized = "0".repeat(MAX_JSON as usize + 1);
+    assert!(RunRequestId::parse(oversized).is_err());
+    assert!(RunRequestId::parse("9ddcda9e-70aa-4af7-a6cb-9774147238cf".into()).is_ok());
+}
+
+#[test]
+fn delayed_run_events_keep_caller_correlation_and_raw_numerical_ownership() {
+    let previous = RunRequestId::parse("9ddcda9e-70aa-4af7-a6cb-9774147238cf".into()).unwrap();
+    let current = RunRequestId::parse("8eee97cf-1852-4f7c-89d4-cda74a89b6b7".into()).unwrap();
+    let raw = metric();
+    let original = raw.clone();
+    let late_event = serde_json::to_value(previous.event(&raw)).unwrap();
+    let current_event = serde_json::to_value(current.event(&raw)).unwrap();
+
+    assert_ne!(late_event["requestId"], current_event["requestId"]);
+    assert_eq!(late_event["payload"]["jobId"], "owned");
+    assert_eq!(late_event["payload"], original);
+    assert_eq!(raw, original);
+    assert_eq!(raw.as_object().unwrap().len(), 8);
+    assert!(raw.get("requestId").is_none());
+    assert_eq!(
+        validate_metrics(&late_event["payload"], "owned", 10, Some((1, 0.1))).unwrap(),
+        (2, 0.25)
+    );
+    // UI correlation belongs to its envelope, not the persisted Python frame.
+    assert!(validate_metrics(&late_event, "owned", 10, Some((1, 0.1))).is_err());
+}
+
+#[test]
+fn a_worker_payload_cannot_replace_native_request_correlation() {
+    let caller = "9DDCDA9E-70AA-4AF7-A6CB-9774147238CF";
+    let request = RunRequestId::parse(caller.into()).unwrap();
+    let progress = json!({"type":"progress","jobId":"native-owned",
+        "stage":"assembling","progress":0.5,"requestId":"forged-worker-value"});
+    let wrapped = serde_json::to_value(request.event(&progress)).unwrap();
+    assert_eq!(wrapped["requestId"], caller);
+    assert_eq!(wrapped["payload"], progress);
+    assert_eq!(wrapped["payload"]["jobId"], "native-owned");
+}
+
+#[test]
 fn devices_require_real_identifiable_cpu_and_bounded_metadata() {
     let inventory = json!({"devices":[{"id":"cpu","label":"CPU","available":true,
         "precision":"float64","reason":""}],"defaultDevice":"cpu","framework":"PyTorch"});

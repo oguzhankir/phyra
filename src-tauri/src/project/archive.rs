@@ -11,7 +11,6 @@ pub(crate) struct OpenedArchive {
     pub(crate) project: Value,
     pub(crate) migrated: bool,
     pub(crate) dropped_cache: bool,
-    pub(crate) source_version: u64,
 }
 
 pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<OpenedArchive, String> {
@@ -67,9 +66,9 @@ pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<Open
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     let (project, migrated) = migrate_project(project)?;
-    // v1 has a different study contract. v2 -> v3 only adds copied boundary
-    // sets; its cached physics must still pass the worker's normal field,
-    // ownership and canonical fingerprint validation before the UI sees it.
+    // v1 has a different study contract. v2/v3 -> v4 add only copied boundary
+    // metadata for primitive studies; retained fields still pass the worker's
+    // normal ownership, physical fingerprint and scientific validation.
     let dropped_cache = source_version == 1 && !cache.is_empty();
     if !dropped_cache && !cache.is_empty() {
         fs::create_dir_all(directory).map_err(|e| e.to_string())?;
@@ -81,7 +80,6 @@ pub(crate) fn read_archive_details(path: &Path, directory: &Path) -> Result<Open
         project,
         migrated,
         dropped_cache,
-        source_version,
     })
 }
 

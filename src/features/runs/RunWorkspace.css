@@ -1,28 +1,37 @@
 .run-workspace {
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-top: 1px solid var(--border-strong);
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 42px;
+  max-height: 45%;
+  container-type: inline-size;
+  container-name: run-workspace;
 }
 .run-workspace-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 33px;
-  padding: 0 15px;
+  min-height: 42px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
   gap: 14px;
+  flex-shrink: 0;
 }
 .run-tabs {
   display: flex;
   align-items: center;
-  gap: 17px;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .run-tabs button {
-  padding: 9px 2px 8px;
+  padding: 11px 2px 10px;
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .run-tabs button.active {
@@ -35,8 +44,9 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .run-state .completed {
   color: var(--success);
@@ -49,11 +59,12 @@
 }
 .run-workspace-body {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(250px, 2fr);
-  gap: 12px;
-  min-height: 150px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 16px;
+  min-height: 0;
+  flex: 0 1 auto;
   max-height: min(270px, 33vh);
-  padding: 11px 12px;
+  padding: 16px;
   overflow-y: auto;
 }
 .run-facts {
@@ -64,20 +75,20 @@
 }
 .run-fact > span {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
 }
 .run-fact > strong {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text);
   font-weight: 550;
   font-variant-numeric: tabular-nums;
 }
 .run-fact small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .run-fact.wide {
   grid-column: 1 / -1;
@@ -103,9 +114,9 @@
 }
 .plot-legend {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   justify-content: flex-end;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 7px;
 }
@@ -120,7 +131,7 @@
   border-radius: 2px;
 }
 .plot-legend small {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
 }
 .training-plot-empty {
@@ -153,7 +164,7 @@
 }
 .comparison-metric span {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
 }
@@ -163,7 +174,7 @@
   color: var(--text);
 }
 .comparison-metric small {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .run-empty {
@@ -175,7 +186,7 @@
 .run-id {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .animation-control {
@@ -183,6 +194,55 @@
   gap: 9px;
   align-items: center;
   margin-top: 13px;
+}
+.run-workspace-body[hidden] {
+  display: none;
+}
+.run-details > summary {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 0;
+  cursor: pointer;
+}
+.run-details[open] > summary {
+  margin-bottom: 7px;
+}
+.run-retained-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+@container run-workspace (max-width: 640px) {
+  .run-workspace-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0 12px;
+  }
+  .run-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    width: 100%;
+  }
+  .run-tabs button {
+    min-width: 0;
+    padding: 9px 2px 8px;
+    white-space: nowrap;
+  }
+  .run-state {
+    width: 100%;
+    min-width: 0;
+    gap: 7px;
+    padding: 3px 0;
+    border-top: 1px solid var(--line);
+  }
+  .run-state > button {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .run-retained-note {
+    white-space: nowrap;
+  }
 }
 ::-webkit-scrollbar {
   width: 6px;

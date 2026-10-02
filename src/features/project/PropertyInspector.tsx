@@ -14,9 +14,17 @@ import type { ProjectInspectorModel } from './model';
 export default function PropertyInspector({ workbench }: { workbench: ProjectInspectorModel }) {
   const { rightWidth, section, showHelp, locked, project, fileBusy, busy, dirty } = workbench;
   return (
-    <aside className="properties-panel" style={{ width: rightWidth }}>
+    <aside
+      id="workbench-properties-panel"
+      className="properties-panel"
+      style={{ width: rightWidth }}
+    >
       <div className="panel-heading">
-        <span>{sectionTitles[section].toUpperCase()}</span>
+        <span>
+          {section === 'results'
+            ? 'Result details'
+            : `Edit ${sectionTitles[section].toLowerCase()}`}
+        </span>
         <button
           className="property-help"
           aria-label={`Help with ${sectionTitles[section].toLowerCase()}`}

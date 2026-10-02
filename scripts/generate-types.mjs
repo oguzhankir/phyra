@@ -6,7 +6,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 // restrictive content security policy. Imported files are validated natively.
 const schema = JSON.parse(await readFile('contracts/project.schema.json', 'utf8'));
 const validate = new Ajv({ strict: true }).compile(schema);
-for (const name of ['cantilever', 'cylinder', 'bracket', 'extension', 'plane-stress-tension']) {
+for (const name of [
+  'cantilever',
+  'cylinder',
+  'bracket',
+  'extension',
+  'plane-stress-tension',
+  'kirsch-quarter',
+]) {
   const project = JSON.parse(await readFile(`examples/${name}.json`, 'utf8'));
   if (!validate(project)) {
     throw new Error(`Invalid bundled example ${name}: ${JSON.stringify(validate.errors)}`);

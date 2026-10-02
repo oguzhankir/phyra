@@ -1,7 +1,7 @@
 {
   "3d": {
     "sha256": {
-      "project": "aeecd025034bacf06dd438ecd19cb3d87c5fa999336f741616ba651e75e16a7f",
+      "project": "4b77cfe2a8aaa3fe2b2d77ee5641d4edf8c7675a8acde3a63c4c44eff175509f",
       "manifest": "58c1d423b7bbb1f98c0f054557d1937ec20bb4e490d53e04885ba5bb62c72acc",
       "buffer": "8f1848f56cbc6553971f5d18c2569567143e9790494a7566e1765a27dfad2c9a"
     },
@@ -11,7 +11,7 @@
   },
   "2d-compare": {
     "sha256": {
-      "project": "e6cadc7898517a52b0c01d423feb75ab296c1c3e8b29fe94c4a2611b51738355",
+      "project": "6d01c6ab8b10ff470a09a881a046c3a8fb864bc420a466bd771c3322297f74a2",
       "manifest": "8dcf73bf3d430b8a772ced3ab9910d4f1c9454f789b857b20380a451402ba341",
       "buffer": "91864c73733d08e963cd48ccf617ab3040f05aa6fbc07d38f58c48c44710d59f"
     },

@@ -1,20 +1,10 @@
 """Displacement networks with exact compatible constant-component lifting."""
 
-from dataclasses import dataclass
-from typing import Any
-
-import numpy as np
 import torch
 from torch import Tensor, nn
 
-
-@dataclass(frozen=True)
-class Normalization:
-    length: float
-    stress: float
-    displacement: float
-    origin: np.ndarray
-    span: np.ndarray
+from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
+from phyra_engine.methods.physicsml.normalization import Normalization
 
 
 class DisplacementNetwork(nn.Module):
@@ -22,17 +12,17 @@ class DisplacementNetwork(nn.Module):
 
     def __init__(
         self,
-        configuration: dict[str, Any],
+        configuration: TrainingConfiguration,
         components: dict[str, list[float | None]],
         scales: Normalization,
         device: str,
         dtype: torch.dtype,
     ):
         super().__init__()
-        layers: list[nn.Module] = [nn.Linear(2, configuration["width"]), nn.Tanh()]
-        for _ in range(configuration["layers"] - 1):
-            layers += [nn.Linear(configuration["width"], configuration["width"]), nn.Tanh()]
-        layers.append(nn.Linear(configuration["width"], 2))
+        layers: list[nn.Module] = [nn.Linear(2, configuration.width), nn.Tanh()]
+        for _ in range(configuration.layers - 1):
+            layers += [nn.Linear(configuration.width, configuration.width), nn.Tanh()]
+        layers.append(nn.Linear(configuration.width, 2))
         self.network = nn.Sequential(*layers).to(device=device, dtype=dtype)
         for layer in self.network:
             if isinstance(layer, nn.Linear):

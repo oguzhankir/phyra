@@ -107,7 +107,7 @@ def test_comparison_metadata_is_independent_of_binary_alignment_and_array_layout
 def test_legacy_migration_is_explicit_and_preserves_original(project):
     upgraded = migrate_project(project)
     assert project["schemaVersion"] == 1
-    assert upgraded["schemaVersion"] == 3
+    assert upgraded["schemaVersion"] == 4
     assert upgraded["namedSelections"] == []
     assert upgraded["geometry"] == project["geometry"]
     assert upgraded["study"]["constraints"] == project["study"]["constraints"]

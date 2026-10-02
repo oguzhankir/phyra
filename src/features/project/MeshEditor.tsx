@@ -3,7 +3,7 @@ import { Group, Metric, NumberInput } from '../../shared/forms/PropertyControls'
 
 import type { ProjectInspectorModel } from './model';
 export default function MeshEditor({ workbench }: { workbench: ProjectInspectorModel }) {
-  const { is2D, project, factor, edit, stat, desktop, validation, execute } = workbench;
+  const { is2D, project, factor, edit, stat } = workbench;
   return (
     <>
       <Group title={is2D ? 'Area discretization' : 'Volume discretization'}>
@@ -17,6 +17,36 @@ export default function MeshEditor({ workbench }: { workbench: ProjectInspectorM
             })
           }
         />
+        {is2D && project.geometry.kind === 'profile' && (
+          <>
+            <label className="field-label">
+              <span>Boundary refinement</span>
+              <input
+                type="checkbox"
+                checked={project.study.mesh.boundarySize !== undefined}
+                onChange={(event) =>
+                  edit((next) => {
+                    if (event.target.checked)
+                      next.study.mesh.boundarySize = next.study.mesh.size / 2;
+                    else delete next.study.mesh.boundarySize;
+                  })
+                }
+              />
+            </label>
+            {project.study.mesh.boundarySize !== undefined && (
+              <NumberInput
+                label="Boundary element size"
+                value={project.study.mesh.boundarySize * factor}
+                unit={project.displayUnits}
+                onChange={(value) =>
+                  edit((next) => {
+                    next.study.mesh.boundarySize = value / factor;
+                  })
+                }
+              />
+            )}
+          </>
+        )}
         <p className="property-hint">
           {is2D
             ? 'Generate a real triangular area mesh for plane-stress FEM and shared field evaluation.'
@@ -46,14 +76,6 @@ export default function MeshEditor({ workbench }: { workbench: ProjectInspectorM
           </p>
         </div>
       </div>
-      <button
-        className="secondary full"
-        disabled={!desktop || !!validation}
-        onClick={() => void execute('mesh')}
-      >
-        <Magnet size={15} />
-        Generate mesh
-      </button>
     </>
   );
 }

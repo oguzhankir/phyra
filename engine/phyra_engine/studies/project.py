@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import re
 import sys
 from copy import deepcopy
 from functools import lru_cache
@@ -12,8 +13,8 @@ from typing import Any
 from jsonschema import Draft7Validator  # type: ignore[import-untyped]
 
 from phyra_engine.errors import EngineError
-from phyra_engine.execution.limits import MAX_CELLS, MAX_NODES, MAX_TRIANGLES
 from phyra_engine.geometry.regions import SOLID_REGIONS
+from phyra_engine.studies.validation import validate_physical_project
 
 SELECTION_WHITESPACE = (
     "\u0009\u000a\u000b\u000c\u000d\u001c\u001d\u001e\u001f\u0020\u0085\u00a0\u1680"
@@ -22,11 +23,11 @@ SELECTION_WHITESPACE = (
 )
 
 
-@lru_cache(maxsize=3)
-def project_validator(version: int = 3) -> Draft7Validator:
+@lru_cache(maxsize=4)
+def project_validator(version: int = 4) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = f"project-v{version}.schema.json" if version in (1, 2) else "project.schema.json"
+    filename = "project.schema.json" if version == 4 else f"project-v{version}.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -49,11 +50,58 @@ def _finite_tree(value: Any) -> None:
             raise EngineError("nonfinite-input", "Every physical input must be finite.")
 
 
+def _validate_named_selections(project: dict[str, Any]) -> None:
+    selection_ids: set[str] = set()
+    selection_names: set[str] = set()
+    geometry = project["geometry"]
+    for selection in project["namedSelections"]:
+        # Sets are copied preparation metadata. Validate their stamped topology
+        # even when it differs from the current geometry; orphans remain repairable.
+        name = (
+            selection["name"]
+            .strip(SELECTION_WHITESPACE)
+            .translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
+        )
+        if not selection["id"].strip(SELECTION_WHITESPACE) or not name:
+            raise EngineError(
+                "invalid-selection", "Boundary set identifiers and names must not be blank."
+            )
+        if selection["id"] in selection_ids or name in selection_names:
+            raise EngineError(
+                "invalid-selection", "Boundary set identifiers and names must be unique."
+            )
+        selection_ids.add(selection["id"])
+        selection_names.add(name)
+        kind = selection["geometryKind"]
+        if selection["dimension"] == "2d" and kind not in ("box", "profile"):
+            raise EngineError(
+                "invalid-selection", "2D boundary sets require rectangular or profile geometry."
+            )
+        if kind == "profile":
+            valid_regions = selection["dimension"] == "2d" and all(
+                re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,99}", region)
+                for region in selection["regions"]
+            )
+        else:
+            selection_regions = (
+                ("x0", "x1", "y0", "y1") if selection["dimension"] == "2d" else SOLID_REGIONS[kind]
+            )
+            valid_regions = set(selection["regions"]).issubset(selection_regions)
+        if not valid_regions:
+            raise EngineError(
+                "invalid-selection", "A boundary set refers to an unavailable stamped boundary."
+            )
+    # Keep this explicit reference so a malformed geometry cannot silently
+    # bypass the schema's geometry-kind validation after an in-memory mutation.
+    if geometry["kind"] not in ("box", "cylinder", "bracket", "profile"):
+        raise EngineError("invalid-geometry", "Unsupported geometry kind.")
+
+
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2, 3):
-        raise EngineError("unsupported-version", "Supported project versions are 1, 2 and 3.")
+    if type(version) is not int or version not in (1, 2, 3, 4):
+        raise EngineError("unsupported-version", "Supported project versions are 1, 2, 3 and 4.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -66,149 +114,23 @@ def validate_project(project: Any) -> dict[str, Any]:
         for key in ("layers", "width", "steps", "interiorPoints", "boundaryPoints", "seed")
     ):
         raise EngineError("invalid-project", "PINN counts and seed must be integers.")
-    geometry = project["geometry"]
-    if geometry["kind"] == "bracket" and geometry["thickness"] >= min(
-        geometry["length"], geometry["width"]
-    ):
-        raise EngineError("invalid-geometry", "Bracket thickness must be below length and width.")
-    study = project["study"]
-    plane = study.get("dimension") == "2d"
-    if version >= 2:
-        if plane and (geometry["kind"] != "box" or study["formulation"] != "plane-stress"):
-            raise EngineError(
-                "unsupported-study", "2D currently supports rectangular plane stress."
-            )
-        if not plane and (study["formulation"] != "solid" or study["solver"]["kind"] != "fem"):
-            raise EngineError(
-                "unsupported-study", "3D currently supports solid elasticity with FEM."
-            )
-    if version == 3:
-        selection_ids: set[str] = set()
-        selection_names: set[str] = set()
-        for selection in project["namedSelections"]:
-            # Sets are copied preparation metadata. Validate their stamped
-            # topology even when it differs from the current geometry; an
-            # orphan cannot assign loads but must survive save/reopen.
-            name = (
-                selection["name"]
-                .strip(SELECTION_WHITESPACE)
-                .translate(
-                    str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
-                )
-            )
-            if not selection["id"].strip(SELECTION_WHITESPACE) or not name:
-                raise EngineError(
-                    "invalid-selection", "Boundary set identifiers and names must not be blank."
-                )
-            if selection["id"] in selection_ids or name in selection_names:
-                raise EngineError(
-                    "invalid-selection", "Boundary set identifiers and names must be unique."
-                )
-            selection_ids.add(selection["id"])
-            selection_names.add(name)
-            if selection["dimension"] == "2d" and selection["geometryKind"] != "box":
-                raise EngineError(
-                    "invalid-selection", "2D boundary sets require rectangular geometry."
-                )
-            selection_regions = (
-                ("x0", "x1", "y0", "y1")
-                if selection["dimension"] == "2d"
-                else SOLID_REGIONS[selection["geometryKind"]]
-            )
-            if not set(selection["regions"]).issubset(selection_regions):
-                raise EngineError(
-                    "invalid-selection", "A boundary set refers to an unavailable stamped boundary."
-                )
-    ids = [item["id"] for item in study["constraints"] + study["loads"]]
-    if len(ids) != len(set(ids)):
-        raise EngineError("invalid-assignment", "Support and load identifiers must be unique.")
-    allowed = set(("x0", "x1", "y0", "y1") if plane else SOLID_REGIONS[geometry["kind"]])
-    for item in study["constraints"] + study["loads"]:
-        if not set(item["regions"]).issubset(allowed):
-            raise EngineError("invalid-region", "An assignment refers to an unavailable boundary.")
-    for constraint in study["constraints"]:
-        if plane and constraint["components"][2] is not None:
-            raise EngineError(
-                "invalid-assignment", "Plane stress has only X and Y displacement DOFs."
-            )
-        if all(component is None for component in constraint["components"]):
-            raise EngineError(
-                "empty-constraint", "A support must prescribe at least one component."
-            )
-    if plane:
-        if any(load["vector"][2] != 0 for load in study["loads"]):
-            raise EngineError("invalid-assignment", "Plane stress supports in-plane loads only.")
-        length, width, size = geometry["length"], geometry["width"], study["mesh"]["size"]
-        if (
-            min(length, width, study["thickness"]) / max(length, width) < 1e-6
-            or max(length, width) < 1e-90
-        ):
-            raise EngineError(
-                "unsupported-geometry", "Plane geometry is too thin or small for float64 geometry."
-            )
-        if size < max(length, width) / MAX_NODES:
-            raise EngineError("resource-limit", "Requested 2D mesh exceeds resource limits.")
-        nx, ny = math.ceil(length / size), math.ceil(width / size)
-        if (nx + 1) * (ny + 1) > MAX_NODES or 2 * nx * ny > MAX_CELLS:
-            raise EngineError("resource-limit", "Requested 2D mesh exceeds resource limits.")
-        return project
-    # Work estimates use nondimensional geometry, avoiding under/overflow from
-    # untrusted tiny sizes. Cylinder curvature refinement also consumes resources.
-    kind = geometry["kind"]
-    active = (
-        [geometry["length"], 2 * geometry["radius"]]
-        if kind == "cylinder"
-        else [geometry[key] for key in ("length", "width", "height")]
-    )
-    if kind == "bracket":
-        active.extend(
-            [
-                geometry["thickness"],
-                geometry["length"] - geometry["thickness"],
-                geometry["width"] - geometry["thickness"],
-            ]
-        )
-    scale = max(active)
-    if min(active) / scale < 1e-6 or scale < 1e-90:
-        raise EngineError(
-            "unsupported-geometry",
-            "Geometry is too thin or small for the supported float64 solid mesher.",
-        )
-    length = geometry["length"] / scale
-    width = geometry["width"] / scale
-    height = geometry["height"] / scale
-    radius = geometry["radius"] / scale
-    thickness = geometry["thickness"] / scale
-    size = study["mesh"]["size"] / scale
-    if kind == "cylinder":
-        volume = math.pi * radius**2 * length
-        area = 2 * math.pi * radius * (length + radius)
-        size = min(size, 2 * math.pi * radius / 24)
-    elif kind == "bracket":
-        footprint = thickness * (length + width - thickness)
-        volume = footprint * height
-        area = 2 * footprint + 2 * (length + width) * height
-    else:
-        volume = length * width * height
-        area = 2 * (length * width + width * height + height * length)
-    if size < (12 * volume / MAX_CELLS) ** (1 / 3) or size < (4 * area / MAX_TRIANGLES) ** 0.5:
-        raise EngineError(
-            "resource-limit",
-            "Requested mesh or curvature refinement exceeds resource limits. "
-            "Increase target size or reduce solid aspect ratio.",
-        )
+    if version >= 3:
+        _validate_named_selections(project)
+    validate_physical_project(project, version)
     return project
 
 
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 3:
+    if project["schemaVersion"] == 4:
         return project
+    source_version = project["schemaVersion"]
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 3
-    upgraded["namedSelections"] = []
-    if project["schemaVersion"] == 1:
+    upgraded["schemaVersion"] = 4
+    if source_version < 3:
+        upgraded["namedSelections"] = []
+    if source_version == 1:
         upgraded["study"].update(
             dimension="3d",
             formulation="solid",
@@ -233,15 +155,22 @@ def migrate_project(project: Any) -> dict[str, Any]:
 
 
 def fingerprint(project: dict[str, Any]) -> str:
-    """Display metadata never changes the canonical physical input digest."""
+    """Display and copied boundary metadata never change a physical input digest."""
     canonical = {
         key: value
         for key, value in project.items()
         if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
-    # v3 only adds nonphysical copied boundary sets. Preserve the v2 digest
-    # format so its validated fields remain reusable after explicit migration.
+    # v3 added only copied boundary sets. A migrated v3 definition retains the
+    # same physical contract and may keep its validated cache. New v4 profile or
+    # traction inputs keep their own schema version in the physical fingerprint.
     if canonical.get("schemaVersion") == 3:
         canonical["schemaVersion"] = 2
+    elif canonical.get("schemaVersion") == 4:
+        has_new_physics = canonical["geometry"]["kind"] == "profile" or any(
+            load["kind"] == "traction" for load in canonical["study"]["loads"]
+        )
+        if not has_new_physics:
+            canonical["schemaVersion"] = 2
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

@@ -2,7 +2,8 @@ Phyra is licensed under GPL-3.0-or-later; see the root LICENSE.
 
 The managed engine includes Gmsh 4.15.2 (GPL-2.0-or-later with the
 Gmsh exception), Python (PSF license), NumPy and SciPy (BSD licenses),
-PyTorch 2.14.0 (BSD-style license), and JSON Schema validation libraries. Gmsh's native library embeds other
+scikit-fem 12.0.2 (BSD-3-Clause license), PyTorch 2.14.0 (BSD-style license),
+and JSON Schema validation libraries. Gmsh's native library embeds other
 components; its original LICENSE and CREDITS are retained alongside the
 corresponding source-license texts. The Gmsh exception is limited to the
 upstream components named in that exception.
@@ -25,5 +26,6 @@ https://gmsh.info/src/gmsh-4.15.2-source.tgz
 https://www.python.org/downloads/source/
 https://numpy.org/
 https://scipy.org/
+https://github.com/kinnala/scikit-fem/tree/12.0.2
 https://github.com/pytorch/pytorch/tree/v2.14.0
 https://www.gnu.org/licenses/gpl-3.0.html

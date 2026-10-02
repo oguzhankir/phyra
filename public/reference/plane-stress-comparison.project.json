@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "plane-stress-tension",
-  "name": "Plane stress · tension",
+  "name": "Plane stress \u00b7 tension",
   "revision": 0,
   "displayUnits": "mm",
   "geometry": {
@@ -27,41 +27,23 @@
       {
         "id": "ux",
         "name": "X restraint",
-        "regions": [
-          "x0"
-        ],
-        "components": [
-          0,
-          null,
-          null
-        ]
+        "regions": ["x0"],
+        "components": [0, null, null]
       },
       {
         "id": "uy",
         "name": "Y restraint",
-        "regions": [
-          "y0"
-        ],
-        "components": [
-          null,
-          0,
-          null
-        ]
+        "regions": ["y0"],
+        "components": [null, 0, null]
       }
     ],
     "loads": [
       {
         "id": "tension",
         "name": "Axial force",
-        "regions": [
-          "x1"
-        ],
+        "regions": ["x1"],
         "kind": "force",
-        "vector": [
-          100,
-          0,
-          0
-        ],
+        "vector": [100, 0, 0],
         "pressure": 0
       }
     ],
@@ -90,27 +72,21 @@
       "name": "X restraint boundaries",
       "geometryKind": "box",
       "dimension": "2d",
-      "regions": [
-        "x0"
-      ]
+      "regions": ["x0"]
     },
     {
       "id": "selection-uy",
       "name": "Y restraint boundaries",
       "geometryKind": "box",
       "dimension": "2d",
-      "regions": [
-        "y0"
-      ]
+      "regions": ["y0"]
     },
     {
       "id": "selection-tension",
       "name": "Axial force boundaries",
       "geometryKind": "box",
       "dimension": "2d",
-      "regions": [
-        "x1"
-      ]
+      "regions": ["x1"]
     }
   ]
 }

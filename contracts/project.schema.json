@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 3
+      "const": 4
     },
     "id": {
       "type": "string",
@@ -40,7 +40,7 @@
       "required": ["kind", "length", "width", "height", "radius", "thickness"],
       "properties": {
         "kind": {
-          "enum": ["box", "cylinder", "bracket"]
+          "enum": ["box", "cylinder", "bracket", "profile"]
         },
         "length": {
           "type": "number",
@@ -66,6 +66,25 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1000
+        },
+        "profile": {
+          "$ref": "#/definitions/Profile"
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "profile"
+          }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["profile"],
+        "properties": {
+          "profile": {
+            "$ref": "#/definitions/Profile"
+          }
         }
       }
     },
@@ -124,6 +143,11 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "maximum": 1000
+            },
+            "boundarySize": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000
             }
           }
         },
@@ -179,10 +203,10 @@
     "Regions": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 20,
+      "maxItems": 80,
       "uniqueItems": true,
       "items": {
-        "enum": ["x0", "x1", "y0", "y1", "z0", "z1", "outer", "inner-x", "inner-y"]
+        "$ref": "#/definitions/BoundaryId"
       }
     },
     "Vector": {
@@ -240,13 +264,46 @@
           "$ref": "#/definitions/Regions"
         },
         "kind": {
-          "enum": ["force", "pressure"]
+          "enum": ["force", "pressure", "traction"]
         },
         "vector": {
           "$ref": "#/definitions/Vector"
         },
         "pressure": {
           "type": "number"
+        },
+        "traction": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AffineTraction"
+            },
+            {
+              "$ref": "#/definitions/KirschTraction"
+            }
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "traction"
+          }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["traction"],
+        "properties": {
+          "traction": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/AffineTraction"
+              },
+              {
+                "$ref": "#/definitions/KirschTraction"
+              }
+            ]
+          }
         }
       }
     },
@@ -312,6 +369,156 @@
         }
       }
     },
+    "BoundaryId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "Point2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number",
+        "minimum": -1000,
+        "maximum": 1000
+      }
+    },
+    "Profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outer", "holes"],
+      "properties": {
+        "outer": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/definitions/ProfileSegment"
+          }
+        },
+        "holes": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/definitions/ProfileHole"
+          }
+        }
+      }
+    },
+    "ProfileSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "start", "end"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/BoundaryId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": ["line", "arc"]
+        },
+        "start": {
+          "$ref": "#/definitions/Point2"
+        },
+        "end": {
+          "$ref": "#/definitions/Point2"
+        },
+        "center": {
+          "$ref": "#/definitions/Point2"
+        },
+        "clockwise": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "arc"
+          }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["center", "clockwise"],
+        "properties": {
+          "center": {
+            "$ref": "#/definitions/Point2"
+          },
+          "clockwise": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "ProfileHole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "center", "radius"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/BoundaryId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "center": {
+          "$ref": "#/definitions/Point2"
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "AffineTraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "xx", "yy", "xy"],
+      "properties": {
+        "kind": {
+          "const": "affine"
+        },
+        "xx": {
+          "$ref": "#/definitions/Vector"
+        },
+        "yy": {
+          "$ref": "#/definitions/Vector"
+        },
+        "xy": {
+          "$ref": "#/definitions/Vector"
+        }
+      }
+    },
+    "KirschTraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "radius", "center", "tension"],
+      "properties": {
+        "kind": {
+          "const": "kirsch"
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "center": {
+          "$ref": "#/definitions/Point2"
+        },
+        "tension": {
+          "type": "number"
+        }
+      }
+    },
     "NamedSelection": {
       "type": "object",
       "additionalProperties": false,
@@ -328,7 +535,7 @@
           "maxLength": 200
         },
         "geometryKind": {
-          "enum": ["box", "cylinder", "bracket"]
+          "enum": ["box", "cylinder", "bracket", "profile"]
         },
         "dimension": {
           "enum": ["2d", "3d"]

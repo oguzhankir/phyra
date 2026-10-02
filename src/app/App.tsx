@@ -1,11 +1,21 @@
-import { Bookmark, Check, GitCompareArrows, Magnet, Play, Save, Square, X } from 'lucide-react';
+import {
+  ArrowRight,
+  Bookmark,
+  Check,
+  ChevronRight,
+  Download,
+  GitCompareArrows,
+  Magnet,
+  Play,
+  Square,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { primaryOperation } from '../domain/project/study';
+import { primaryOperation, supportsPinn } from '../domain/project/study';
 import { selectionIsCompatible } from '../domain/project/namedSelections';
 import { type FieldId } from '../domain/results/fields';
 import { displayValue, formatValue } from '../domain/units';
 import { referenceLabels } from '../features/examples/references';
-import HelpPanel from '../features/help/HelpPanel';
 import {
   classifyProblem,
   validationProblem,
@@ -13,17 +23,24 @@ import {
   type Problem,
 } from '../features/problems/problems';
 import ProblemsPanel from '../features/problems/ProblemsPanel';
-import RecoveryDialog from '../features/project/RecoveryDialog';
 import RunWorkspace from '../features/runs/RunWorkspace';
 import { contourGradient } from '../features/viewport/contours';
 import Viewport from '../features/viewport/Viewport';
 import ModelTree from '../features/workbench/ModelTree';
-import { sectionDescriptions, sectionTitles } from '../features/workbench/navigation';
+import {
+  sectionDescriptions,
+  sectionTitles,
+  stageForSection,
+  workflowStages,
+} from '../features/workbench/navigation';
 import WorkbenchHeader from '../features/workbench/WorkbenchHeader';
 import { NumericDraftContext } from '../shared/forms/PropertyControls';
+import { useModalFocus } from '../shared/ui/useModalFocus';
 
 import PropertyInspector from '../features/project/PropertyInspector';
 import { useWorkbench } from './useWorkbench';
+import { createWorkbenchCommands } from './workbenchCommands';
+import WorkbenchOverlays from './WorkbenchOverlays';
 export default function App() {
   const workbench = useWorkbench();
   const {
@@ -34,6 +51,7 @@ export default function App() {
     canRedo,
     undoLabel,
     redoLabel,
+    historyBlocked,
     namedSelectionId,
     addNamedSelection,
     selectionMode,
@@ -57,6 +75,7 @@ export default function App() {
     exportFields,
     showHelp,
     leftWidth,
+    rightWidth,
     section,
     constraintId,
     loadId,
@@ -66,6 +85,7 @@ export default function App() {
     addConstraint,
     addLoad,
     resize,
+    adjustPanel,
     is2D,
     execute,
     busy,
@@ -105,13 +125,30 @@ export default function App() {
     setRunExpanded,
     runExpanded,
     confirmation,
-    setConfirmation,
-    confirmResolver,
     help,
-    helpContext,
-    setHelp,
   } = workbench;
   const [problemsOpen, setProblemsOpen] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const stage = stageForSection(section);
+  const sections = workflowStages.flatMap((item) => item.sections);
+  const nextSection = sections[sections.indexOf(section) + 1] ?? 'results';
+  const canCompute = !locked && !validation && desktop;
+  useModalFocus(commandsOpen && !help && !confirmation && !recovery.prompt, () =>
+    setCommandsOpen(false),
+  );
+  useEffect(() => {
+    const search = (event: KeyboardEvent) => {
+      if ((!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      if (!help && !confirmation && !recovery.prompt && !fileBusy)
+        setCommandsOpen((value) => !value);
+    };
+    window.addEventListener('keydown', search);
+    return () => window.removeEventListener('keydown', search);
+  }, [help, confirmation, recovery.prompt, fileBusy]);
+  useEffect(() => {
+    if (help || confirmation || recovery.prompt || fileBusy) setCommandsOpen(false);
+  }, [help, confirmation, recovery.prompt, fileBusy]);
   const problems = useMemo(() => {
     const items: Problem[] = [];
     if (validation) items.push(validationProblem(validation));
@@ -142,13 +179,18 @@ export default function App() {
     for (const [index, warning] of (currentData?.manifest.warnings ?? []).entries())
       items.push(warningProblem(warning, index));
     return items;
-  }, [validation, error, data, currentData, project]);
+  }, [validation, error, data, currentData]);
   useEffect(() => {
-    if (error) setProblemsOpen(true);
+    setProblemsOpen(!!error);
   }, [error]);
   const problemAction = (problem: Problem) => {
     const invalid = document.querySelector<HTMLInputElement>('input[aria-invalid="true"]');
     if (invalid && (problem.id === 'validation' || problem.message.includes('numeric'))) {
+      let ancestor = invalid.parentElement;
+      while (ancestor) {
+        if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+        ancestor = ancestor.parentElement;
+      }
       invalid.focus();
       invalid.scrollIntoView({ block: 'nearest' });
       return;
@@ -156,12 +198,13 @@ export default function App() {
     if (problem.section) selectSection(problem.section);
     else showHelp(problem.help ?? 'overview');
   };
+  const commands = createWorkbenchCommands(workbench);
   return (
     <NumericDraftContext.Provider value={reportDraftValidity}>
       <div className="app-shell">
         <WorkbenchHeader
-          canUndo={canUndo}
-          canRedo={canRedo}
+          canUndo={canUndo && !historyBlocked}
+          canRedo={canRedo && !historyBlocked}
           undoLabel={undoLabel}
           redoLabel={redoLabel}
           onUndo={undo}
@@ -190,16 +233,16 @@ export default function App() {
           onExport={() => void exportFields()}
           onHelp={() => showHelp()}
           onFilesHelp={() => showHelp('files')}
+          onCommands={() => setCommandsOpen(true)}
         />
         <div className="workspace">
-          <aside className="model-panel" style={{ width: leftWidth }}>
+          <aside id="workbench-model-panel" className="model-panel" style={{ width: leftWidth }}>
             <ModelTree
               project={project}
               section={section}
               constraintId={constraintId}
               loadId={loadId}
               namedSelectionId={namedSelectionId}
-              onAddSelection={addNamedSelection}
               hasSelection={selected.length > 0}
               locked={locked}
               cells={stat?.cells}
@@ -209,39 +252,50 @@ export default function App() {
               onExample={(example) => void create(example)}
               onAddSupport={addConstraint}
               onAddLoad={addLoad}
+              onAddSelection={addNamedSelection}
             />
           </aside>
           <div
             className="panel-splitter"
             role="separator"
             aria-label="Resize model panel"
+            aria-orientation="vertical"
+            aria-controls="workbench-model-panel"
+            aria-valuemin={184}
+            aria-valuemax={360}
+            aria-valuenow={leftWidth}
+            tabIndex={0}
+            title="Drag or use the left and right arrow keys to resize"
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+              event.preventDefault();
+              adjustPanel('left', event.key === 'ArrowRight' ? 20 : -20);
+            }}
             onPointerDown={(event) => resize(event, 'left')}
           />
           <main className="work-area">
             <div className="work-heading">
-              <div>
+              <div className="work-context">
+                <div className="work-breadcrumb">
+                  <span>
+                    {stage.number}. {stage.title}
+                  </span>
+                  <ChevronRight size={12} />
+                  <span>{is2D ? '2D plane stress' : '3D solid elasticity'}</span>
+                </div>
                 <h1 title={sectionDescriptions[section]}>{sectionTitles[section]}</h1>
-                <span className="eyebrow">
-                  {is2D ? '2D PLANE STRESS' : '3D SOLID'} · STATIC STRUCTURAL
-                </span>
+                <p className="work-subtitle">{sectionDescriptions[section]}</p>
               </div>
               <div className="run-actions">
-                <button
-                  className="secondary"
-                  disabled={locked || !!validation || !desktop}
-                  onClick={() => void execute('mesh')}
-                >
-                  <Magnet size={15} />
-                  Mesh
-                </button>
-                {is2D && !busy && (
+                {section === 'solver' && supportsPinn(project) && !busy && (
                   <button
                     className="secondary"
-                    disabled={locked || !!validation || !desktop}
+                    disabled={!canCompute}
+                    title="Compare FEM and PINN at identical locations"
                     onClick={() => void execute('compare')}
                   >
                     <GitCompareArrows size={15} />
-                    Compare
+                    Compare FEM + PINN
                   </button>
                 )}
                 {busy ? (
@@ -253,10 +307,41 @@ export default function App() {
                     <Square size={13} />
                     {cancelling ? 'Stopping…' : 'Cancel'}
                   </button>
+                ) : stage.id === 'prepare' ? (
+                  <button className="primary" onClick={() => selectSection(nextSection)}>
+                    Next: {sectionTitles[nextSection]}
+                    <ArrowRight size={15} />
+                  </button>
+                ) : section === 'mesh' ? (
+                  <>
+                    <button className="secondary" onClick={() => selectSection('solver')}>
+                      Method <ArrowRight size={14} />
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={!canCompute}
+                      onClick={() => void execute('mesh')}
+                    >
+                      <Magnet size={15} /> Generate mesh
+                    </button>
+                  </>
+                ) : section === 'results' ? (
+                  <>
+                    <button className="secondary" onClick={() => selectSection('solver')}>
+                      New run
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={locked || !solved || !desktop}
+                      onClick={() => void exportFields()}
+                    >
+                      <Download size={15} /> Export fields
+                    </button>
+                  </>
                 ) : (
                   <button
                     className="primary"
-                    disabled={locked || !!validation || !desktop}
+                    disabled={!canCompute}
                     onClick={() => void execute(primaryOperation(project))}
                   >
                     <Play size={14} fill="currentColor" />
@@ -290,7 +375,9 @@ export default function App() {
                 <span className={solved ? 'indicator solved' : 'indicator'} />
                 {solved ? 'Solution' : currentData ? 'Mesh' : 'Geometry'}
                 <span className="toolbar-divider" />
-                {is2D ? 'RECTANGLE' : project.geometry.kind.toUpperCase()}
+                {project.geometry.kind.toUpperCase() === 'BOX' && is2D
+                  ? 'RECTANGLE'
+                  : project.geometry.kind.toUpperCase()}
               </div>
               <select
                 aria-label="Boundary selection mode"
@@ -304,29 +391,33 @@ export default function App() {
                 <option value="add">Add to selection</option>
                 <option value="toggle">Toggle selection</option>
               </select>
-              <label className="edge-toggle">
-                <input
-                  type="checkbox"
-                  checked={edges}
-                  onChange={(event) => setEdges(event.target.checked)}
-                />
-                Mesh edges
-              </label>
-              <select
-                aria-label="Displayed result field"
-                disabled={!solved || locked}
-                value={solved ? fieldId : 'geometry'}
-                onChange={(event) => {
-                  setFieldId(event.target.value as FieldId);
-                  setProbe(null);
-                }}
-              >
-                {availableFields.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              {currentData && (
+                <label className="edge-toggle">
+                  <input
+                    type="checkbox"
+                    checked={edges}
+                    onChange={(event) => setEdges(event.target.checked)}
+                  />
+                  Mesh edges
+                </label>
+              )}
+              {solved && (
+                <select
+                  aria-label="Displayed result field"
+                  disabled={!solved || locked}
+                  value={solved ? fieldId : 'geometry'}
+                  onChange={(event) => {
+                    setFieldId(event.target.value as FieldId);
+                    setProbe(null);
+                  }}
+                >
+                  {availableFields.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             {currentData?.manifest.operation === 'compare' && (
               <div className="comparison-source">
@@ -401,46 +492,48 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div className="selection-bar">
-              <span>
-                <span className="selection-dot" />
-                {selected.length
-                  ? `${selected.length} ${selected.length === 1 ? 'boundary' : 'boundaries'} selected`
-                  : 'Select a boundary in the viewport'}
-              </span>
-              {selected.length > 0 && (
-                <>
-                  <div className="selection-chips">
-                    {selected.map((region) => (
-                      <button key={region} onClick={() => selectRegion(region)}>
-                        {region}
-                        <X size={10} />
-                      </button>
-                    ))}
-                  </div>
-                  <button className="text-button" disabled={locked} onClick={addConstraint}>
-                    Add support
-                  </button>
-                  <button className="text-button" disabled={locked} onClick={addLoad}>
-                    Add load
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={locked || project.namedSelections.length >= 100}
-                    onClick={addNamedSelection}
-                  >
-                    <Bookmark size={13} /> Save boundary set
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label="Clear selection"
-                    onClick={() => setSelected([])}
-                  >
-                    <X size={14} />
-                  </button>
-                </>
-              )}
-            </div>
+            {(selected.length > 0 || ['geometry', 'constraints', 'loads'].includes(section)) && (
+              <div className="selection-bar">
+                <span>
+                  <span className="selection-dot" />
+                  {selected.length
+                    ? `${selected.length} ${selected.length === 1 ? 'boundary' : 'boundaries'} selected`
+                    : 'Select a boundary in the viewport'}
+                </span>
+                {selected.length > 0 && (
+                  <>
+                    <div className="selection-chips">
+                      {selected.map((region) => (
+                        <button key={region} onClick={() => selectRegion(region)}>
+                          {region}
+                          <X size={10} />
+                        </button>
+                      ))}
+                    </div>
+                    <button className="text-button" disabled={locked} onClick={addConstraint}>
+                      Add support
+                    </button>
+                    <button className="text-button" disabled={locked} onClick={addLoad}>
+                      Add load
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={locked || project.namedSelections.length >= 100}
+                      onClick={addNamedSelection}
+                    >
+                      <Bookmark size={13} /> Save boundary set
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label="Clear selection"
+                      onClick={() => setSelected([])}
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <div className="diagnostics-strip">
               {recovery.records.length > 0 && !recovery.prompt && (
                 <button className="text-button" onClick={() => recovery.setPrompt(true)}>
@@ -455,12 +548,14 @@ export default function App() {
                   <span>
                     <b>{stat.cells.toLocaleString()}</b> cells
                   </span>
-                  <span title={stat.qualityMetric}>
-                    Minimum quality <b>{formatValue(stat.minQuality)}</b>
-                  </span>
+                  {section === 'mesh' && (
+                    <span title={stat.qualityMetric}>
+                      Minimum quality <b>{formatValue(stat.minQuality)}</b>
+                    </span>
+                  )}
                 </>
               ) : (
-                <span>Geometry ready · generate a mesh to inspect discretization</span>
+                <span>{validation ? 'Inputs need attention' : 'Geometry preview'}</span>
               )}
               <span className="status-right">
                 {fileBusy ? (
@@ -489,93 +584,61 @@ export default function App() {
                 )}
               </span>
             </div>
-            <ProblemsPanel
-              problems={problems}
-              open={problemsOpen}
-              onToggle={() => setProblemsOpen((value) => !value)}
-              onAction={problemAction}
-              onDismiss={() => setError(null)}
-            />
-            <RunWorkspace
-              project={project}
-              manifest={currentData?.manifest}
-              recordedReference={!!referenceId}
-              history={metrics}
-              status={runStatus}
-              execution={runExecution}
-              elapsed={runElapsed}
-              stage={busy ? progress?.stage : undefined}
-              tab={runTab}
-              onTab={(tab) => {
-                setRunTab(tab);
-                setRunExpanded(true);
-              }}
-              expanded={runExpanded}
-              onToggle={() => setRunExpanded((value) => !value)}
-            />
+            {(problems.length > 0 || problemsOpen) && (
+              <ProblemsPanel
+                problems={problems}
+                open={problemsOpen}
+                onToggle={() => setProblemsOpen((value) => !value)}
+                onAction={problemAction}
+                onDismiss={() => setError(null)}
+              />
+            )}
+            {(busy || (stage.id !== 'prepare' && (runExecution || currentData))) && (
+              <RunWorkspace
+                project={project}
+                manifest={currentData?.manifest}
+                recordedReference={!!referenceId}
+                history={metrics}
+                status={runStatus}
+                execution={runExecution}
+                elapsed={runElapsed}
+                stage={busy ? progress?.stage : undefined}
+                tab={runTab}
+                onTab={(tab) => {
+                  setRunTab(tab);
+                  setRunExpanded(true);
+                }}
+                expanded={runExpanded}
+                onToggle={() => setRunExpanded((value) => !value)}
+              />
+            )}
           </main>
           <div
             className="panel-splitter"
             role="separator"
             aria-label="Resize properties panel"
+            aria-orientation="vertical"
+            aria-controls="workbench-properties-panel"
+            aria-valuemin={260}
+            aria-valuemax={430}
+            aria-valuenow={rightWidth}
+            tabIndex={0}
+            title="Drag or use the left and right arrow keys to resize"
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+              event.preventDefault();
+              adjustPanel('right', event.key === 'ArrowLeft' ? 20 : -20);
+            }}
             onPointerDown={(event) => resize(event, 'right')}
           />
           <PropertyInspector workbench={workbench} />
         </div>
-        {recovery.prompt && !confirmation && !help && (
-          <RecoveryDialog
-            records={recovery.records}
-            pending={recovery.pending}
-            onRestore={(record) => void recovery.restore(record)}
-            onDiscard={(record) => void recovery.discard(record)}
-            onLater={() => recovery.setPrompt(false)}
-          />
-        )}
-        {confirmation && (
-          <div className="modal-backdrop">
-            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
-              <div className="modal-icon">
-                <Save size={23} />
-              </div>
-              <h2 id="unsaved-title">Save your changes?</h2>
-              <p>
-                Your current project has unsaved changes. Save before continuing, or discard them.
-              </p>
-              <div className="modal-actions">
-                {(['cancel', 'discard', 'save'] as const).map((choice) => (
-                  <button
-                    key={choice}
-                    className={choice === 'save' ? 'primary' : 'secondary'}
-                    disabled={choice === 'save' && (!!validation || !desktop)}
-                    onClick={() => {
-                      setConfirmation(false);
-                      confirmResolver.current?.(choice);
-                      confirmResolver.current = null;
-                    }}
-                  >
-                    {choice === 'save'
-                      ? 'Save changes'
-                      : choice === 'discard'
-                        ? 'Discard'
-                        : 'Cancel'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {help && !confirmation && (
-          <div className="modal-backdrop help-backdrop">
-            <div
-              className="modal help-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Phyra help"
-            >
-              <HelpPanel open={help} context={helpContext} onClose={() => setHelp(false)} />
-            </div>
-          </div>
-        )}
+        <WorkbenchOverlays
+          workbench={workbench}
+          commandsOpen={commandsOpen}
+          commands={commands}
+          onCommandsClose={() => setCommandsOpen(false)}
+        />
       </div>
     </NumericDraftContext.Provider>
   );

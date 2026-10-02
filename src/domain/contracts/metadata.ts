@@ -98,3 +98,77 @@ export function assertTrainingMetadata(manifest: Manifest): void {
   )
     throw new Error('Invalid independent-point residual metadata.');
 }
+
+export function assertReferenceMetadata(manifest: Manifest): void {
+  const reference = manifest.reference;
+  if (reference === undefined) return;
+  const invalid = () => {
+    throw new Error('Invalid independent analytical-reference metadata.');
+  };
+  const keys = (value: unknown, expected: string[]) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).length !== expected.length ||
+      expected.some((key) => !Object.hasOwn(value, key))
+    )
+      invalid();
+  };
+  keys(reference, [
+    'kind',
+    'source',
+    'mapping',
+    'quadratureOrder',
+    'displacement',
+    'stress',
+    'holeTraction',
+    'parameters',
+  ]);
+  if (
+    manifest.dimension !== '2d' ||
+    manifest.operation !== 'solve' ||
+    manifest.solver !== 'fem' ||
+    reference.kind !== 'kirsch-plane-stress' ||
+    reference.quadratureOrder !== 5 ||
+    reference.source !== 'https://doi.org/10.1016/j.finel.2026.104523' ||
+    typeof reference.mapping !== 'string' ||
+    reference.mapping.length > 1000
+  )
+    invalid();
+  const metric = (value: typeof reference.displacement) => {
+    keys(value, ['relativeL2', 'maxAbsolute', 'referenceNorm']);
+    if (
+      ![value.maxAbsolute, value.referenceNorm].every(
+        (item) => Number.isFinite(item) && item >= 0,
+      ) ||
+      (value.referenceNorm === 0
+        ? value.relativeL2 !== null
+        : value.relativeL2 === null || !Number.isFinite(value.relativeL2) || value.relativeL2 < 0)
+    )
+      invalid();
+  };
+  metric(reference.displacement);
+  metric(reference.stress);
+  keys(reference.parameters, ['radius', 'center', 'tension', 'young', 'poisson']);
+  const p = reference.parameters;
+  if (
+    !(p.radius > 0 && p.radius <= 1000) ||
+    !(p.young > 0 && p.young <= 1e15) ||
+    !(p.poisson > -1 && p.poisson <= 0.45) ||
+    !Number.isFinite(p.tension) ||
+    !Array.isArray(p.center) ||
+    p.center.length !== 2 ||
+    p.center.some((item) => !Number.isFinite(item) || Math.abs(item) > 1000)
+  )
+    invalid();
+  const hole = reference.holeTraction;
+  keys(hole, ['rms', 'relativeRms', 'maxAbsolute']);
+  if (
+    ![hole.rms, hole.maxAbsolute].every((item) => Number.isFinite(item) && item >= 0) ||
+    (p.tension === 0
+      ? hole.relativeRms !== null
+      : hole.relativeRms === null || !Number.isFinite(hole.relativeRms) || hole.relativeRms < 0)
+  )
+    invalid();
+}

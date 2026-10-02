@@ -51,6 +51,7 @@ names = [
     "gmsh",
     "numpy",
     "scipy",
+    "scikit-fem",
     "jsonschema",
     "jsonschema-specifications",
     "attrs",

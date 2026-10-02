@@ -106,8 +106,8 @@ export default function NamedSelectionEditor({
       </Group>
       <Group title="Assignment behavior">
         <p className="property-hint">
-          Named selections store reusable boundaries for this primitive and study dimension.
-          Remeshing and geometry size edits within the same primitive preserve their identities.
+          Named selections store reusable boundary IDs for their geometry type and study dimension.
+          Profile segment IDs stay compatible when the edited profile retains them.
         </p>
         <p className="property-hint">
           Copy a set from the support or load editor. Changing or deleting the set later does not

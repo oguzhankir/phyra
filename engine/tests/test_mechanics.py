@@ -15,7 +15,7 @@ from scipy.sparse import coo_matrix
 from phyra_engine.errors import EngineError
 from phyra_engine.materials.isotropic import solid_matrix as constitutive_matrix
 from phyra_engine.methods.classical.solid import assemble, element_matrices, solve_system
-from phyra_engine.studies.solid import integrate_surface_loads
+from phyra_engine.physics.elasticity.solid import integrate_surface_loads
 
 
 def load(regions, vector=(0, 0, 0), pressure=0, kind="force"):

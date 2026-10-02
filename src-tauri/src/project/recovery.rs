@@ -620,7 +620,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        assert_eq!(restored.project["schemaVersion"], 3);
+        assert_eq!(restored.project["schemaVersion"], 4);
         assert_eq!(restored.project["namedSelections"], json!([]));
         assert_eq!(restored.project["revision"], previous["revision"]);
         assert_eq!(restored.project["geometry"], previous["geometry"]);
@@ -988,5 +988,28 @@ mod tests {
         )
         .is_err());
         assert_eq!(*project_state.current_path.lock().unwrap(), association);
+    }
+
+    #[test]
+    fn legacy_recovery_is_upgraded_in_memory_and_original_copy_is_preserved() {
+        let temp = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let path = record_path(temp.path(), &id).unwrap();
+        let mut legacy = project(7);
+        legacy["schemaVersion"] = json!(2);
+        legacy.as_object_mut().unwrap().remove("namedSelections");
+        let bytes = serde_json::to_vec(&Record {
+            format_version: 1,
+            saved_at: 100,
+            app_version: "0.1.0".into(),
+            project: legacy,
+        })
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let restored = read_record(&path).unwrap();
+        let mut expected = project(7);
+        expected["namedSelections"] = json!([]);
+        assert_eq!(restored.project, expected);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
     }
 }

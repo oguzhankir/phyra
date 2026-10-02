@@ -10,6 +10,8 @@ analysis = Analysis(
     pathex=[str(root / 'engine')],
     binaries=[(gmsh.libpath, '.')],
     datas=[(str(root / 'contracts'), 'contracts')] + collect_data_files('jsonschema_specifications'),
+    # The adapter imports its scikit-fem API statically. Optional IO, supermesh
+    # and visualization modules are not collected as runtime capabilities.
     hiddenimports=[],
     excludes=['tkinter', 'matplotlib', 'IPython', 'pytest'],
     noarchive=False,

@@ -14,12 +14,12 @@ from phyra_engine.execution.registry import (
     METHODS,
     capabilities,
     execute_method,
-    generate_study_mesh,
     methods_for_operation,
 )
 from phyra_engine.geometry.regions import SOLID_REGIONS
 from phyra_engine.meshing.types import Mesh, Mesh2D
 from phyra_engine.methods.classical.solid import solve_mesh
+from phyra_engine.studies.mesh import generate_study_mesh
 
 ROOT = Path(__file__).resolve().parents[2]
 

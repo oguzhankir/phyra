@@ -1,21 +1,21 @@
 .properties-scroll {
-  padding: 12px 12px 16px;
+  padding: 20px 18px 24px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
 }
 .property-group {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 .group-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 9px;
+  margin-bottom: 14px;
   min-height: 15px;
 }
 .group-heading h3 {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   font-weight: 600;
 }
@@ -31,7 +31,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 4px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text);
   cursor: pointer;
 }
@@ -63,13 +63,13 @@
   display: block;
   color: var(--text);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 13px;
 }
 .info-card p {
   margin-top: 6px;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.6;
 }
 .metric {
   display: flex;
@@ -80,18 +80,18 @@
   border-bottom: 1px solid var(--line);
 }
 .metric > span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .metric strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
   color: var(--text);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .metric small {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 400;
 }
@@ -110,7 +110,7 @@
   gap: 7px;
   min-width: 48px;
   color: var(--text);
-  font-size: 11px;
+  font-size: 12px;
 }
 .component-editor .field-label {
   flex: 1;
@@ -122,7 +122,7 @@
 .free-component {
   border-bottom: 1px dashed var(--line);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   padding: 7px 0;
   flex: 1;
 }
@@ -132,7 +132,7 @@
   color: var(--muted);
 }
 .empty-state p {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--muted);
   margin: 12px 0 17px;
@@ -164,12 +164,12 @@
 .vector-summary span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 6px;
 }
 .vector-summary code {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text);
   margin-bottom: 12px;
   overflow-wrap: anywhere;
@@ -194,7 +194,7 @@
 
 .experimental-note {
   color: var(--warning);
-  font-size: 11px;
+  font-size: 12px;
   padding: 12px;
   background: var(--warning-soft);
   border: 1px solid var(--line);
@@ -236,4 +236,65 @@
 .selection-repair p {
   margin: 5px 0 0;
   line-height: 1.5;
+}
+.properties-scroll .field-label {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.properties-scroll .property-hint {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.properties-scroll input:not([type='checkbox']),
+.properties-scroll select {
+  min-height: 34px;
+  font-size: 13px;
+}
+.properties-scroll .segmented button {
+  min-height: 32px;
+  font-size: 12px;
+}
+.inspector-disclosure {
+  margin: 12px 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+.inspector-disclosure > summary {
+  padding: 11px 12px;
+  min-height: 38px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.inspector-disclosure > summary:hover {
+  background: var(--hover);
+}
+.inspector-disclosure > summary small {
+  display: block;
+  margin: 4px 0 0 15px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.inspector-disclosure[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.inspector-disclosure-body {
+  padding: 14px 12px;
+}
+.inspector-disclosure-body .metric:first-child {
+  padding-top: 0;
+}
+.inspector-disclosure-body .property-hint:first-child {
+  margin-top: 0;
+}
+.method-device-note {
+  margin-bottom: 24px;
 }

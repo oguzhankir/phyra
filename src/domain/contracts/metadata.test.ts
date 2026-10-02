@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import schema from '../../../contracts/engine-capabilities.schema.json';
 import { makeProject } from '../../features/examples/projects';
-import { assertCapabilities, assertTrainingMetadata } from './metadata';
+import { assertCapabilities, assertTrainingMetadata, assertReferenceMetadata } from './metadata';
 import type { Manifest } from './types';
 function schemaValue(node: unknown): unknown {
   const item = node as Record<string, unknown>;
@@ -56,5 +56,32 @@ describe('versioned engine metadata', () => {
     manifest.training!.validation.seed = configuration.seed ^ 0x5eed5eed;
     manifest.training!.validation.pde = NaN;
     expect(() => assertTrainingMetadata(manifest)).toThrow();
+  });
+});
+
+describe('independent analytical diagnostics', () => {
+  it('keeps field units and zero-reference definitions explicit while rejecting nonfinite metrics', () => {
+    const manifest = {
+      dimension: '2d',
+      operation: 'solve',
+      solver: 'fem',
+      reference: {
+        kind: 'kirsch-plane-stress',
+        source: 'https://doi.org/10.1016/j.finel.2026.104523',
+        mapping: 'area-weighted at identical points',
+        quadratureOrder: 5,
+        displacement: { relativeL2: 0.002, maxAbsolute: 1e-7, referenceNorm: 1e-4 },
+        stress: { relativeL2: 0.02, maxAbsolute: 0.03, referenceNorm: 1 },
+        holeTraction: { rms: 0.05, relativeRms: 0.1, maxAbsolute: 0.08 },
+        parameters: { radius: 1, center: [0, 0], tension: 0.5, young: 1e5, poisson: 0.3 },
+      },
+    } as Manifest;
+    expect(() => assertReferenceMetadata(manifest)).not.toThrow();
+    manifest.reference!.displacement.relativeL2 = NaN;
+    expect(() => assertReferenceMetadata(manifest)).toThrow('analytical-reference');
+    manifest.reference!.displacement = { relativeL2: null, maxAbsolute: 0, referenceNorm: 0 };
+    expect(() => assertReferenceMetadata(manifest)).not.toThrow();
+    manifest.reference!.displacement.relativeL2 = 0;
+    expect(() => assertReferenceMetadata(manifest)).toThrow();
   });
 });

@@ -33,7 +33,14 @@ export function useModalFocus(open: boolean, onEscape: () => void, identity: str
     window.addEventListener('keydown', key);
     return () => {
       window.removeEventListener('keydown', key);
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      if (
+        previous instanceof HTMLElement &&
+        previous.isConnected &&
+        !previous.matches(':disabled') &&
+        previous.getClientRects().length > 0
+      )
+        previous.focus();
+      else document.querySelector<HTMLElement>('[data-modal-focus-fallback]')?.focus();
     };
   }, [open, identity]);
 }

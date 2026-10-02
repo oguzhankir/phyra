@@ -16,6 +16,7 @@ import {
 import { displayValue, formatValue } from '../../domain/units';
 import { regionNames, type RegionId } from '../../domain/project/regions';
 import { contourColor } from './contours';
+import { tractionGlyph } from './traction';
 import { surfaceData, type SurfaceData } from './surface';
 import { pickedRegion, nearestHitNode, displayedNode, visibleTriangles } from './picking';
 import { nextSelection, selectionIntent, type SelectionMode } from './selection';
@@ -783,10 +784,16 @@ export default function Viewport(props: Props) {
       for (const load of props.project.study.loads.filter((item) =>
         item.regions.includes(region),
       )) {
+        const traction =
+          load.kind === 'traction'
+            ? tractionGlyph(load.traction, center.x, center.y, normal.x, normal.y)
+            : null;
         const direction =
           load.kind === 'pressure'
             ? normal.clone().multiplyScalar(-Math.sign(load.pressure))
-            : new THREE.Vector3(...load.vector).normalize();
+            : load.kind === 'traction'
+              ? new THREE.Vector3(...(traction ?? [0, 0]), 0).normalize()
+              : new THREE.Vector3(...load.vector).normalize();
         if (direction.lengthSq() === 0) continue;
         const arrow = new THREE.ArrowHelper(
           direction,
@@ -886,9 +893,32 @@ export default function Viewport(props: Props) {
           surface.updateMatrixWorld(true);
           const center = bounds.getCenter(new THREE.Vector3());
           const plane = props.project.study.dimension === '2d';
-          const target = plane
-            ? new THREE.Vector3(bounds.max.x - length * 1e-6, center.y, 0)
-            : center;
+          const target = center.clone();
+          if (plane && data.boundaryEdges && data.edgeRegions) {
+            const x1 = data.regionIds.indexOf('x1');
+            const edges = Array.from(data.edgeRegions.keys()).filter(
+              (edge) => data.edgeRegions![edge] === x1,
+            );
+            const edge = edges[Math.floor(edges.length / 2)];
+            if (edge !== undefined) {
+              const a = data.boundaryEdges[edge * 2];
+              const b = data.boundaryEdges[edge * 2 + 1];
+              target.copy(displayedNode(data, a, state.scale));
+              target.add(displayedNode(data, b, state.scale)).multiplyScalar(0.5);
+              // Move slightly into the adjacent triangle so the ray has an unambiguous hit.
+              for (let cell = 0; cell < data.triangles.length / 3; cell++) {
+                const nodes = Array.from(data.triangles.slice(cell * 3, cell * 3 + 3));
+                if (nodes.includes(a) && nodes.includes(b)) {
+                  const centroid = nodes
+                    .map((node) => displayedNode(data, node, state.scale))
+                    .reduce((sum, point) => sum.add(point), new THREE.Vector3())
+                    .multiplyScalar(1 / 3);
+                  target.lerp(centroid, 1e-5);
+                  break;
+                }
+              }
+            }
+          }
           const ray = new THREE.Raycaster(
             target
               .clone()
@@ -978,9 +1008,11 @@ export default function Viewport(props: Props) {
         )
       : null;
   const regionLabel = hovered
-    ? (regionNames(props.project.geometry.kind, props.project.study.dimension).find(
-        (region) => region.id === hovered,
-      )?.name ?? hovered)
+    ? (regionNames(
+        props.project.geometry.kind,
+        props.project.study.dimension,
+        props.project.geometry.profile,
+      ).find((region) => region.id === hovered)?.name ?? hovered)
     : null;
   const resetView = () => {
     const view = props.project.study.dimension === '2d' ? 'top' : 'isometric';

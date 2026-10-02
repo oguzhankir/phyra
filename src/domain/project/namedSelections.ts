@@ -17,7 +17,9 @@ export function selectionNameKey(name: string): string {
 
 export function selectionIsCompatible(project: Project, selection: NamedSelection): boolean {
   const available = new Set(
-    regionNames(project.geometry.kind, project.study.dimension).map(({ id }) => id),
+    regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile).map(
+      ({ id }) => id,
+    ),
   );
   return (
     selection.geometryKind === project.geometry.kind &&
@@ -50,7 +52,7 @@ export function nextSelectionName(project: Project): string {
 
 export function selectedBoundaries(project: Project, regions: readonly RegionId[]): RegionId[] {
   const chosen = new Set(regions);
-  return regionNames(project.geometry.kind, project.study.dimension)
+  return regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile)
     .map(({ id }) => id)
     .filter((id) => chosen.has(id));
 }

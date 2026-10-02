@@ -1,10 +1,19 @@
 import type { Project } from '../contracts/types';
 import { namedSelectionError } from './namedSelections';
+import { profileError } from './profile';
+import { regionNames } from './regions';
+import { supportsPinn } from './study';
 
 export function inputError(project: Project): string | null {
   const selectionError = namedSelectionError(project);
   if (selectionError) return selectionError;
   const g = project.geometry;
+  if (g.kind === 'profile') {
+    if (project.study.dimension !== '2d') return 'Profiles require a 2D plane-stress study.';
+    const error = profileError(g.profile);
+    if (error) return error;
+  } else if (project.study.dimension === '2d' && g.kind !== 'box')
+    return 'The 2D study supports rectangles or line/arc profiles.';
   const dimensions =
     project.study.dimension === '2d'
       ? [g.length, g.width, project.study.thickness]
@@ -23,8 +32,45 @@ export function inputError(project: Project): string | null {
     return 'Poisson’s ratio must be greater than −1 and at most 0.45 for this formulation.';
   if (!(project.study.mesh.size > 0) || project.study.mesh.size > 1000)
     return 'Mesh size must be positive and at most 1,000 m.';
-  if (project.study.solver.kind === 'pinn' && project.study.dimension !== '2d')
-    return 'PINN is supported for 2D plane stress only.';
+  if (
+    project.study.mesh.boundarySize !== undefined &&
+    (!Number.isFinite(project.study.mesh.boundarySize) ||
+      !(project.study.mesh.boundarySize > 0) ||
+      project.study.mesh.boundarySize > 1000)
+  )
+    return 'Boundary mesh size must be finite, positive, and at most 1,000 m.';
+  if (project.study.solver.kind === 'pinn' && !supportsPinn(project))
+    return 'PINN supports rectangular 2D studies with force or pressure loads. Choose FEM for profiles or traction loads.';
+  const boundaries = new Set(
+    regionNames(g.kind, project.study.dimension, g.profile).map((item) => item.id),
+  );
+  for (const item of [...project.study.constraints, ...project.study.loads]) {
+    const missing = item.regions.filter((id) => !boundaries.has(id));
+    if (missing.length)
+      return `${item.name} references deleted or renamed boundaries (${missing.join(', ')}). Explicitly repair its assigned boundaries.`;
+  }
+  for (const load of project.study.loads) {
+    if (!load.vector.every(Number.isFinite) || !Number.isFinite(load.pressure))
+      return 'Load values must be finite.';
+    if (load.kind === 'traction') {
+      if (project.study.dimension !== '2d')
+        return 'Spatial traction is supported for 2D plane stress only.';
+      const traction = load.traction;
+      if (!traction) return `${load.name} needs a typed traction definition.`;
+      if (
+        traction.kind === 'affine' &&
+        ![...traction.xx, ...traction.yy, ...traction.xy].every(Number.isFinite)
+      )
+        return 'Affine stress traction coefficients must be finite (constant Pa; X/Y coefficients Pa/m).';
+      if (
+        traction.kind === 'kirsch' &&
+        (!(traction.radius > 0 && traction.radius <= 1000) ||
+          !Number.isFinite(traction.tension) ||
+          traction.center.some((value) => !Number.isFinite(value) || Math.abs(value) > 1000))
+      )
+        return 'Kirsch traction needs a finite positive radius, finite tension in Pa, and a finite center in m.';
+    }
+  }
   const settings = project.study.solver.pinn;
   if (
     ![

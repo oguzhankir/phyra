@@ -16,9 +16,12 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.devices import device_capabilities, select_device
 from phyra_engine.materials.isotropic import plane_stress_matrix as constitutive_matrix
 from phyra_engine.meshing.plane_stress import generate_rectangle
+from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
 from phyra_engine.methods.physicsml.elasticity import equilibrium_residual, stress_and_strain
-from phyra_engine.methods.physicsml.networks import DisplacementNetwork, Normalization
-from phyra_engine.methods.physicsml.plane_stress import train, validate_configuration
+from phyra_engine.methods.physicsml.evaluation import evaluate_fields
+from phyra_engine.methods.physicsml.networks import DisplacementNetwork
+from phyra_engine.methods.physicsml.normalization import Normalization
+from phyra_engine.methods.physicsml.plane_stress import train
 
 
 def configuration(**overrides):
@@ -73,10 +76,44 @@ def test_exact_nonlinear_autograd_stress_and_pde():
     # this nontrivial exact continuum solution, independently of FEM assembly.
 
 
+def test_chunked_field_evaluation_preserves_locations_and_physical_units():
+    length, displacement, young, poisson = 0.4, 0.002, 3e9, 0.3
+    stress = young * displacement / length
+    scales = Normalization(
+        length, stress, displacement, np.array([2.0, -3.0]), np.array([length, 0.1])
+    )
+    normalized = np.random.default_rng(19).random((2051, 2)) * [1, 0.25]
+    locations = scales.origin + length * normalized
+    fields = evaluate_fields(
+        BendingReference(),
+        locations,
+        scales,
+        torch.tensor(constitutive_matrix(1, poisson)),
+        "cpu",
+        torch.float64,
+    )
+    x, y = normalized.T
+    expected_displacement = displacement * np.column_stack((x * y, -(x * x + poisson * y * y) / 2))
+    expected_stress = stress * np.column_stack((y, np.zeros((len(y), 2))))
+    expected_strain = displacement / length * np.column_stack((y, -poisson * y, np.zeros(len(y))))
+    np.testing.assert_allclose(fields.displacement, expected_displacement, rtol=1e-12, atol=1e-17)
+    np.testing.assert_allclose(fields.stress, expected_stress, rtol=1e-12, atol=1e-8)
+    np.testing.assert_allclose(fields.strain, expected_strain, rtol=1e-12, atol=1e-17)
+    assert all(
+        field.dtype == np.float64 for field in (fields.displacement, fields.stress, fields.strain)
+    )
+
+
 def test_explicit_component_lifting_preserves_nonzero_supports():
     scales = Normalization(0.1, 1e6, 1e-4, np.zeros(2), np.array([0.1, 0.05]))
     components = {"x0": [2e-4, None], "x1": [4e-4, None], "y0": [None, -3e-4], "y1": [None, None]}
-    model = DisplacementNetwork(configuration(), components, scales, "cpu", torch.float64)
+    model = DisplacementNetwork(
+        TrainingConfiguration.from_mapping(configuration()),
+        components,
+        scales,
+        "cpu",
+        torch.float64,
+    )
     # Perturb the neural output: explicit support values must still hold.
     final = model.network[-1]
     assert isinstance(final, nn.Linear)
@@ -135,6 +172,24 @@ def test_cooperative_cancellation_publishes_no_result():
     assert [event["step"] for event in metrics] == [0, 1, 2]
 
 
+def test_metrics_callback_cannot_mutate_measured_training_history():
+    mesh = generate_rectangle(0.1, 0.05, 0.002, 0.025)
+    settings = configuration()
+
+    def mutate_receiving_event(event):
+        event["step"] = -1
+        event["total"] = float("nan")
+        # The trainer has already decoded the request; editing its source does
+        # not change the running step budget or the persisted configuration.
+        settings["steps"] = 100
+
+    result = train(mesh, study(), settings, mutate_receiving_event)
+    history = result["training"]["history"]
+    assert [event["step"] for event in history] == list(range(5))
+    assert all(np.isfinite(event["total"]) for event in history)
+    assert result["training"]["configuration"]["steps"] == 4
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -156,7 +211,7 @@ def test_cooperative_cancellation_publishes_no_result():
 )
 def test_invalid_configuration_is_rejected(overrides):
     with pytest.raises(EngineError):
-        validate_configuration(configuration(**overrides))
+        TrainingConfiguration.from_mapping(configuration(**overrides))
 
 
 def test_devices_are_capability_probed_and_auto_is_explicit():
@@ -228,7 +283,7 @@ def test_real_axial_training_converges_without_fem_warmstart():
 
 def test_combined_training_resource_budget_is_bounded():
     with pytest.raises(EngineError) as error:
-        validate_configuration(
+        TrainingConfiguration.from_mapping(
             configuration(layers=6, width=128, interiorPoints=4096, boundaryPoints=1024)
         )
     assert error.value.code == "resource-limit"

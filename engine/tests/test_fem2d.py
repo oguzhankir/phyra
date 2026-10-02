@@ -27,7 +27,7 @@ from phyra_engine.methods.classical.plane_stress import (
     solve_mesh,
     solve_system,
 )
-from phyra_engine.studies.plane_stress import constraint_dofs, integrate_edge_loads
+from phyra_engine.physics.elasticity.plane_stress import constraint_dofs, integrate_edge_loads
 
 
 def rectangle(length=0.4, width=0.1, thickness=0.02, nx=4, ny=2):

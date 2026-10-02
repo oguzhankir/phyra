@@ -13,8 +13,8 @@ export interface EngineCapabilities {
    */
   materialModels: ["homogeneous-isotropic-linear-elastic"];
   /**
-   * @minItems 2
-   * @maxItems 2
+   * @minItems 3
+   * @maxItems 3
    */
   meshing: [
     {
@@ -36,6 +36,16 @@ export interface EngineCapabilities {
        * @maxItems 1
        */
       geometryKinds: ["box"];
+    },
+    {
+      id: "gmsh-occ-profile-tri3";
+      dimension: "2d";
+      cellType: "triangle3";
+      /**
+       * @minItems 1
+       * @maxItems 1
+       */
+      geometryKinds: ["profile"];
     }
   ];
   /**
@@ -70,7 +80,7 @@ export interface EngineCapabilities {
       kind: "fem";
       dimension: "2d";
       formulation: "plane-stress";
-      framework: "scipy";
+      framework: "scikit-fem";
       operation: "solve";
       configuration: null;
       /**

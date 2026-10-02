@@ -1,4 +1,8 @@
-import { assertCapabilities, assertTrainingMetadata } from '../../domain/contracts/metadata';
+import {
+  assertCapabilities,
+  assertTrainingMetadata,
+  assertReferenceMetadata,
+} from '../../domain/contracts/metadata';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
@@ -10,9 +14,21 @@ import type {
   Devices,
 } from '../../domain/contracts/types';
 
-export async function runJob(operation: Operation, project: Project): Promise<Manifest> {
-  const manifest = await invoke<Manifest>('run_job', { operation, project });
+// Correlation belongs to the transient desktop event transport. Numerical
+// manifests and training histories retain their native job identity unchanged.
+export interface ExecutionEvent<T> {
+  requestId: string;
+  payload: T;
+}
+
+export async function runJob(
+  operation: Operation,
+  project: Project,
+  requestId: string,
+): Promise<Manifest> {
+  const manifest = await invoke<Manifest>('run_job', { operation, project, requestId });
   assertTrainingMetadata(manifest);
+  assertReferenceMetadata(manifest);
   return manifest;
 }
 export async function getDevices(project: Project): Promise<Devices> {
@@ -20,8 +36,12 @@ export async function getDevices(project: Project): Promise<Devices> {
   if (result.capabilities) assertCapabilities(result.capabilities);
   return result;
 }
-export function subscribeMetrics(callback: (value: TrainingMetric) => void): Promise<() => void> {
-  return listen<TrainingMetric>('engine-metrics', (event) => callback(event.payload));
+export function subscribeMetrics(
+  callback: (value: ExecutionEvent<TrainingMetric>) => void,
+): Promise<() => void> {
+  return listen<ExecutionEvent<TrainingMetric>>('engine-metrics', (event) =>
+    callback(event.payload),
+  );
 }
 export async function readBuffer(jobId: string): Promise<ArrayBuffer> {
   const value = await invoke<ArrayBuffer | number[]>('read_buffer', { jobId });
@@ -44,7 +64,10 @@ export async function openProject(): Promise<{
     notice?: string;
   } | null>('open_project');
   if (!opened) return null;
-  if (opened.manifest) assertTrainingMetadata(opened.manifest);
+  if (opened.manifest) {
+    assertTrainingMetadata(opened.manifest);
+    assertReferenceMetadata(opened.manifest);
+  }
   return {
     ...opened,
     buffer: opened.manifest ? await readBuffer(opened.manifest.jobId) : undefined,
@@ -60,6 +83,8 @@ export function saveProject(
 export function exportResults(jobId: string): Promise<string | null> {
   return invoke('export_results', { jobId });
 }
-export function subscribeProgress(callback: (value: Progress) => void): Promise<() => void> {
-  return listen<Progress>('engine-progress', (event) => callback(event.payload));
+export function subscribeProgress(
+  callback: (value: ExecutionEvent<Progress>) => void,
+): Promise<() => void> {
+  return listen<ExecutionEvent<Progress>>('engine-progress', (event) => callback(event.payload));
 }

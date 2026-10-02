@@ -1,5 +1,6 @@
 use crate::{
     execution::{
+        events::RunRequestId,
         state::{cancel_child, owned_directory, retain_job, EngineState},
         validation::{validate_devices, validate_metrics},
     },

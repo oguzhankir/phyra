@@ -8,8 +8,12 @@ import numpy as np
 from phyra_engine.errors import EngineError
 from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.classical.plane_stress import assemble
+from phyra_engine.physics.elasticity.plane_stress import (
+    constraint_dofs,
+    edge_tractions,
+    integrate_edge_loads,
+)
 from phyra_engine.results.fields import von_mises
-from phyra_engine.studies.plane_stress import constraint_dofs, edge_tractions, integrate_edge_loads
 
 
 def number(value: Any) -> bool:
@@ -254,6 +258,19 @@ def validate_result(
         ):
             raise EngineError(
                 "invalid-cache", "Cached FEM reactions disagree with constrained equilibrium."
+            )
+        from phyra_engine.methods.classical.scikit_plane import recover_stress
+
+        expected_stress = recover_stress(
+            mesh, study["material"]["young"], study["material"]["poisson"], flat
+        )
+        stress_scale = max(float(np.max(np.abs(expected_stress))), np.finfo(float).tiny)
+        if not np.allclose(
+            arrays["stress"][:, [0, 1, 3]], expected_stress, rtol=1e-12, atol=stress_scale * 1e-12
+        ):
+            raise EngineError(
+                "invalid-cache",
+                "Cached FEM stress disagrees with recovered displacement gradients.",
             )
         energy = float(0.5 * flat @ internal)
         if not np.isclose(diagnostic["strainEnergy"], energy, rtol=1e-12, atol=0):
