@@ -17,6 +17,11 @@ import {
   deleteAssistantConversation,
 } from '../platform/desktop/assistant';
 import { conversationTitle, promptHistory } from '../domain/assistant/prompt';
+import {
+  ConversationRegistry,
+  conversationFits,
+  updateConversationAnswer,
+} from '../domain/assistant/conversation';
 import { ASSISTANT_SYSTEM } from '../features/assistant/context';
 import { sessionRetirement } from './assistantLifecycle';
 
@@ -38,7 +43,7 @@ const messageError = (error: unknown) =>
 export function useAssistantSession(owner: string, projectId: string | null, desktop: boolean) {
   const [sessionId] = useState(() => crypto.randomUUID());
   const [configuration, setConfiguration] = useState<AssistantConfiguration | null>(null);
-  const conversations = useRef(new Map<string, AssistantConversation>());
+  const conversations = useRef(new ConversationRegistry());
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
   const [conversation, setConversation] = useState(() => fresh(projectId));
@@ -48,6 +53,7 @@ export function useAssistantSession(owner: string, projectId: string | null, des
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [unsaved, setUnsaved] = useState(false);
   const requestRef = useRef<{
     id: string;
     owner: string;
@@ -61,9 +67,13 @@ export function useAssistantSession(owner: string, projectId: string | null, des
   const retire = useRef<ReturnType<typeof sessionRetirement> | null>(null);
   if (!retire.current) retire.current = sessionRetirement(() => releaseAssistantSession(sessionId));
 
-  function publish(key: string, value: AssistantConversation) {
-    conversations.current.set(key, value);
-    if (live.current && ownerRef.current === key) setConversation(value);
+  function publish(key: string, value: AssistantConversation, dirty = false) {
+    conversations.current.publish(key, value, dirty);
+    const visible = conversations.current.get(ownerRef.current);
+    if (live.current && visible?.id === value.id) {
+      setConversation(visible);
+      setUnsaved(conversations.current.isUnsaved(visible.id));
+    }
   }
   async function refreshHistory() {
     if (!desktop || ownerRef.current !== owner) return;
@@ -109,15 +119,25 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner, projectId, desktop]);
 
-  async function send(question: string, context: AssistantContext, allowRemote: boolean) {
-    if (!desktop || !configuration || requestRef.current || historyBusy) return false;
+  async function send(
+    question: string,
+    context: AssistantContext,
+    allowRemote: boolean,
+    onAccepted?: () => void,
+  ) {
+    if (!desktop || !configuration || requestRef.current || historyBusy || unsaved) return false;
     if (!configuration.settings.model.trim()) {
       setError('Choose a model in Assistant settings.');
       return false;
     }
     const key = owner;
     const base = conversations.current.get(key) ?? conversation;
-    if (base.messages.length >= 158) {
+    const input = promptHistory(base.messages, context.text, ASSISTANT_SYSTEM, question);
+    if (!input.fits) {
+      setError('The question or attached context exceeds the supported request limits.');
+      return false;
+    }
+    if (base.messages.length > 158) {
       setError('Start a new conversation; this conversation has reached its local history limit.');
       return false;
     }
@@ -153,25 +173,44 @@ export function useAssistantSession(owner: string, projectId: string | null, des
       updatedAt: now,
       messages: [...base.messages, user, answer],
     };
+    if (!conversationFits(next)) {
+      setError('Start a new conversation; this conversation has reached its local storage limit.');
+      return false;
+    }
     const running = { id, owner: key, conversation: next, sequence: -1, cancelled: false };
     requestRef.current = running;
     setPending(true);
     setError(null);
-    publish(key, next);
+    let accepted = false;
+    let storageFull = false;
     const replaceAnswer = (update: Partial<AssistantMessage>) => {
-      const current = running.conversation;
-      running.conversation = {
-        ...current,
-        updatedAt: Date.now(),
-        messages: current.messages.map((item) =>
-          item.id === answer.id ? { ...item, ...update } : item,
-        ),
-      };
-      publish(key, running.conversation);
+      const candidate = updateConversationAnswer(running.conversation, answer.id, update);
+      const previousText = running.conversation.messages.find(
+        (item) => item.id === answer.id,
+      )!.content;
+      const addsText = update.content !== undefined && update.content !== previousText;
+      if (!conversationFits(candidate, addsText ? 4096 : 0)) {
+        storageFull = true;
+        running.cancelled = true;
+        void cancelAssistant(id, sessionId).catch(() => {});
+        if (live.current && ownerRef.current === key)
+          setError(
+            update.content?.includes('\0')
+              ? 'Response stopped because the provider returned invalid text. The valid partial response is retained.'
+              : 'Response stopped at the local storage limit. Start a new conversation.',
+          );
+        return;
+      }
+      running.conversation = candidate;
+      publish(key, candidate, true);
     };
     try {
       // Commit the user turn and context before contacting the provider.
       await writeAssistantConversation(next);
+      accepted = true;
+      publish(key, running.conversation);
+      conversations.current.saved(next);
+      onAccepted?.();
       if (running.cancelled) {
         replaceAnswer({ status: 'cancelled' });
         return false;
@@ -183,10 +222,7 @@ export function useAssistantSession(owner: string, projectId: string | null, des
           conversationId: next.id,
           projectId: base.projectId,
           settings: configuration.settings,
-          messages: [
-            ...promptHistory(base.messages, context.text, ASSISTANT_SYSTEM, question).messages,
-            { role: 'user', content: question },
-          ],
+          messages: [...input.messages, { role: 'user', content: question }],
           system: ASSISTANT_SYSTEM,
           context,
           allowRemote,
@@ -206,23 +242,32 @@ export function useAssistantSession(owner: string, projectId: string | null, des
           if (event.type === 'usage' && event.usage) replaceAnswer({ usage: event.usage });
         },
       );
+      const displayed = running.conversation.messages.find((item) => item.id === answer.id)!;
       replaceAnswer({
-        content: completion.text,
+        content: running.cancelled ? displayed.content : completion.text,
         status: running.cancelled ? 'cancelled' : completion.status,
         usage: completion.usage,
       });
-      return completion.status === 'complete' && !running.cancelled;
+      if (storageFull) replaceAnswer({ status: 'cancelled' });
+      return true;
     } catch (failure) {
-      replaceAnswer({ status: running.cancelled ? 'cancelled' : 'error' });
+      if (accepted) replaceAnswer({ status: running.cancelled ? 'cancelled' : 'error' });
       if (live.current && ownerRef.current === key && !running.cancelled)
-        setError(messageError(failure));
-      return false;
+        setError(
+          accepted ? messageError(failure) : `Message could not be saved: ${messageError(failure)}`,
+        );
+      return accepted;
     } finally {
-      try {
-        await writeAssistantConversation(running.conversation);
-      } catch (failure) {
-        if (live.current && ownerRef.current === key)
-          setError(`Conversation could not be saved: ${messageError(failure)}`);
+      if (accepted) {
+        try {
+          await writeAssistantConversation(running.conversation);
+          conversations.current.saved(running.conversation);
+          publish(key, running.conversation);
+        } catch (failure) {
+          publish(key, running.conversation, true);
+          if (live.current && ownerRef.current === key)
+            setError(`Conversation could not be saved: ${messageError(failure)}`);
+        }
       }
       if (requestRef.current === running) requestRef.current = null;
       if (live.current) {
@@ -242,19 +287,19 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     }
   }
   function newConversation() {
-    if (requestRef.current || historyBusy) return;
+    if (requestRef.current || historyBusy || unsaved) return;
     publish(owner, fresh(projectId));
     setError(null);
   }
   async function openConversation(id: string) {
-    if (requestRef.current || historyBusy) return;
+    if (requestRef.current || historyBusy || unsaved) return;
     setHistoryBusy(true);
     const key = owner;
     try {
       const value = await readAssistantConversation(id);
       if (value.projectId !== projectId)
         throw new Error('This conversation belongs to another project.');
-      if (ownerRef.current === key) publish(key, value);
+      if (ownerRef.current === key) publish(key, conversations.current.bind(key, value));
     } catch (failure) {
       if (ownerRef.current === key) setError(messageError(failure));
     } finally {
@@ -262,11 +307,14 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     }
   }
   async function removeConversation(id: string) {
-    if (requestRef.current || historyBusy) return;
+    if (requestRef.current || historyBusy || conversations.current.isUnsaved(id)) return;
     setHistoryBusy(true);
     try {
       await deleteAssistantConversation(id);
-      if (conversation.id === id) publish(owner, fresh(projectId));
+      const visibleOwner = ownerRef.current;
+      const visible = conversations.current.get(visibleOwner);
+      conversations.current.remove(id);
+      if (visible?.id === id) publish(visibleOwner, fresh(visible.projectId));
       await refreshHistory();
     } catch (failure) {
       setError(messageError(failure));
@@ -279,6 +327,43 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     setConfiguration({ settings, credentialPresent });
     setError(null);
   }
+  async function retrySave() {
+    if (!desktop || requestRef.current || historyBusy || !unsaved) return;
+    const key = owner;
+    const value = conversations.current.get(key) ?? conversation;
+    setHistoryBusy(true);
+    try {
+      await writeAssistantConversation(value);
+      conversations.current.saved(value);
+      publish(key, value);
+      if (live.current && ownerRef.current === key) setError(null);
+      await refreshHistory();
+    } catch (failure) {
+      if (live.current && ownerRef.current === key)
+        setError(`Conversation could not be saved: ${messageError(failure)}`);
+    } finally {
+      if (live.current) setHistoryBusy(false);
+    }
+  }
+  async function restoreSaved() {
+    if (!desktop || requestRef.current || historyBusy || !unsaved) return;
+    const key = owner;
+    const current = conversations.current.get(key) ?? conversation;
+    setHistoryBusy(true);
+    try {
+      const saved = await readAssistantConversation(current.id);
+      if (saved.projectId !== current.projectId)
+        throw new Error('This conversation belongs to another project.');
+      conversations.current.publish(key, saved, false);
+      conversations.current.saved(saved);
+      publish(key, saved);
+      if (live.current && ownerRef.current === key) setError(null);
+    } catch (failure) {
+      if (live.current && ownerRef.current === key) setError(messageError(failure));
+    } finally {
+      if (live.current) setHistoryBusy(false);
+    }
+  }
   return {
     sessionId,
     configuration,
@@ -288,6 +373,9 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     error,
     pending,
     historyBusy,
+    unsaved,
+    retrySave,
+    restoreSaved,
     send,
     stop,
     newConversation,

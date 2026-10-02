@@ -32,8 +32,16 @@ export interface AssistantViewModel {
   error: string | null;
   pending: boolean;
   historyBusy: boolean;
+  unsaved: boolean;
+  retrySave: () => Promise<void>;
+  restoreSaved: () => Promise<void>;
   configured: (settings: AssistantSettings, credentialPresent: boolean) => void;
-  send: (question: string, context: AssistantContext, allowRemote: boolean) => Promise<boolean>;
+  send: (
+    question: string,
+    context: AssistantContext,
+    allowRemote: boolean,
+    onAccepted?: () => void,
+  ) => Promise<boolean>;
   stop: () => Promise<void>;
   newConversation: () => void;
   openConversation: (id: string) => Promise<void>;
@@ -65,6 +73,7 @@ export default function AssistantPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [discardUnsaved, setDiscardUnsaved] = useState(false);
   useEffect(() => {
     onModalChange?.(settingsOpen);
     return () => onModalChange?.(false);
@@ -80,6 +89,7 @@ export default function AssistantPanel({
     setConsent(false);
     setUiError(null);
     setDeleteId(null);
+    setDiscardUnsaved(false);
     followOutput.current = true;
   }, [study?.documentId, conversationId]);
   useEffect(() => {
@@ -122,7 +132,14 @@ export default function AssistantPanel({
   const remote = !!settings && !settings.local;
   const connected = !!settings?.model;
   async function submit(text = question) {
-    if (!text.trim() || session.pending || !prepared.context) return;
+    if (
+      !text.trim() ||
+      session.pending ||
+      session.historyBusy ||
+      session.unsaved ||
+      !prepared.context
+    )
+      return;
     if (remote && !consent) {
       setUiError(
         'Review the context and allow sending this conversation to the selected provider.',
@@ -132,8 +149,7 @@ export default function AssistantPanel({
     setUiError(null);
     followOutput.current = true;
     const context = assistantContext(text, study, includeStudy);
-    setQuestion('');
-    await session.send(text.trim(), context, !remote || consent);
+    await session.send(text.trim(), context, !remote || consent, () => setQuestion(''));
   }
   if (!open) return null;
   return (
@@ -151,7 +167,7 @@ export default function AssistantPanel({
         <button
           type="button"
           onClick={session.newConversation}
-          disabled={session.pending || session.historyBusy}
+          disabled={session.pending || session.historyBusy || session.unsaved}
           title="New conversation"
           aria-label="New assistant conversation"
         >
@@ -192,7 +208,7 @@ export default function AssistantPanel({
               <div key={item.id}>
                 <button
                   type="button"
-                  disabled={session.pending || session.historyBusy}
+                  disabled={session.pending || session.historyBusy || session.unsaved}
                   aria-current={conversationId === item.id ? 'page' : undefined}
                   onClick={() => void session.openConversation(item.id)}
                 >
@@ -203,7 +219,11 @@ export default function AssistantPanel({
                 </button>
                 <button
                   type="button"
-                  disabled={session.pending || session.historyBusy}
+                  disabled={
+                    session.pending ||
+                    session.historyBusy ||
+                    (session.unsaved && conversationId === item.id)
+                  }
                   aria-label={`Delete conversation ${item.title}`}
                   onClick={() => setDeleteId(item.id)}
                 >
@@ -353,6 +373,47 @@ export default function AssistantPanel({
         <div ref={bottom} />
       </div>
       {mcpPanel}
+      {session.unsaved && !session.pending && (
+        <section className="assistant-unsaved" aria-label="Unsaved conversation">
+          <strong>Conversation not saved</strong>
+          <p>
+            The text remains in this panel. Retry before closing the project or starting another
+            conversation. Connection lets you repair provider credential access.
+          </p>
+          <button
+            type="button"
+            disabled={session.historyBusy}
+            onClick={() => void session.retrySave()}
+          >
+            {session.historyBusy ? 'Saving conversation…' : 'Retry save'}
+          </button>
+          <button
+            type="button"
+            disabled={session.historyBusy}
+            onClick={() => setDiscardUnsaved(true)}
+          >
+            Restore saved copy
+          </button>
+          {discardUnsaved && (
+            <div>
+              <p>Discard the unsaved response changes and restore the last saved text?</p>
+              <button
+                type="button"
+                disabled={session.historyBusy}
+                onClick={() => {
+                  void session.restoreSaved();
+                  setDiscardUnsaved(false);
+                }}
+              >
+                Discard changes and restore
+              </button>
+              <button type="button" onClick={() => setDiscardUnsaved(false)}>
+                Keep unsaved text
+              </button>
+            </div>
+          )}
+        </section>
+      )}
       <form
         className="assistant-composer"
         onSubmit={(event) => {
@@ -452,6 +513,7 @@ export default function AssistantPanel({
                 !prepared.context ||
                 !historyInput?.fits ||
                 session.historyBusy ||
+                session.unsaved ||
                 (remote && !consent)
               }
             >
