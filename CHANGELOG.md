@@ -24,6 +24,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Fixed
 
+- macOS assistant settings check whether a credential exists without decrypting its secret, avoiding unnecessary Keychain authorization requests when opening the panel or saving connection settings.
 - Closing or replacing a dirty project offers Save, Discard and Cancel, waits for an active automatic write and preserves the project when saving fails or is cancelled. A saved project can close directly.
 - Assistant settings and history load on first panel use. OS credential access and serialized assistant storage run on background workers so they cannot block the native UI thread.
 - Delayed assistant settings and MCP snapshot updates cannot replace newer saved connections or active-document publications.

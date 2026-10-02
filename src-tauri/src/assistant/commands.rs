@@ -24,7 +24,7 @@ pub async fn assistant_get_settings(
 ) -> Result<Configuration, String> {
     blocking_storage(Arc::clone(&state.storage_lock), move || {
         let settings = storage::read_settings(&storage::directory(&app)?)?;
-        let credential_present = storage::credential(&settings)?.is_some();
+        let credential_present = storage::credential_present(&settings)?;
         Ok(Configuration {
             settings,
             credential_present,
@@ -40,7 +40,7 @@ pub async fn assistant_save_settings(
 ) -> Result<Configuration, String> {
     blocking_storage(Arc::clone(&state.storage_lock), move || {
         providers::validate_settings(&settings, false)?;
-        let credential_present = storage::credential(&settings)?.is_some();
+        let credential_present = storage::credential_present(&settings)?;
         storage::write_settings(&storage::directory(&app)?, settings.clone())?;
         Ok(Configuration {
             settings,

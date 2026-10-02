@@ -195,6 +195,39 @@ pub fn credential(settings: &Settings) -> Result<Option<Zeroizing<String>>, Stri
         Err(_) => Err(CREDENTIAL_ACCESS_ERROR.into()),
     }
 }
+/// Settings only need item existence, never the decrypted provider secret.
+pub fn credential_present(settings: &Settings) -> Result<bool, String> {
+    if settings.local {
+        return Ok(false);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use security_framework::{
+            item::{ItemClass, ItemSearchOptions},
+            os::macos::keychain::{SecKeychain, SecPreferencesDomain},
+        };
+        let account = credential_account(settings)?;
+        let keychain = SecKeychain::default_for_domain(SecPreferencesDomain::User)
+            .map_err(|_| CREDENTIAL_ACCESS_ERROR)?;
+        let mut search = ItemSearchOptions::new();
+        search
+            .keychains(&[keychain])
+            .class(ItemClass::generic_password())
+            .service("org.phyra.workbench.assistant")
+            .account(&account)
+            .load_attributes(true)
+            .load_data(false);
+        match search.search() {
+            Ok(items) => Ok(!items.is_empty()),
+            Err(error) if error.code() == -25300 => Ok(false), // errSecItemNotFound
+            Err(_) => Err(CREDENTIAL_ACCESS_ERROR.into()),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(credential(settings)?.is_some())
+    }
+}
 pub fn store_credential(settings: &Settings, value: Zeroizing<String>) -> Result<(), String> {
     if settings.local {
         return Err("Local endpoints do not need a stored credential".into());
