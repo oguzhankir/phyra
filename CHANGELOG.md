@@ -10,7 +10,6 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Integrations separates local MCP management from chat, with Documentation/Current project access cards, copyable client configuration, disconnection and an access log.
 - Isolated assistant session transactions and presentation contracts support independent development while preserving exact context, cancellation, stream ordering and history failure recovery.
 - Search actions now explains editor navigation and project actions. Help/F1 is the single general help entry, and help/action search use restrained keyboard focus styling.
-
 - Explicit provider disconnection removes its saved key and active model selection while preserving local conversations and projects. Saved keys remain available across application restarts.
 - macOS packaging accepts an installed `APPLE_SIGNING_IDENTITY`, signs embedded native code before its containing bundle, and refuses an unavailable identity instead of silently substituting ad hoc signing.
 - Home screen for creating a named 2D or 3D project, opening a local project and starting from an editable example.
@@ -31,6 +30,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Fixed
 
+- Empty conversations open at the top without clipping the welcome content. Streaming follows only the chat transcript, preserving the surrounding workbench scroll position.
 - macOS assistant settings check whether a credential exists without decrypting its secret, avoiding unnecessary Keychain authorization requests when opening the panel or saving connection settings.
 - Closing or replacing a dirty project offers Save, Discard and Cancel, waits for an active automatic write and preserves the project when saving fails or is cancelled. A saved project can close directly.
 - Assistant settings and history load on first panel use. OS credential access and serialized assistant storage run on background workers so they cannot block the native UI thread.

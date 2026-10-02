@@ -5,6 +5,14 @@ import AcademicMarkdown from '../../shared/FormattedText';
 import { openAssistantReference } from '../../platform/desktop/assistant';
 import type { AssistantStudyContext } from './context';
 
+/** Set only the owned transcript viewport; ancestor panels must not scroll. */
+export function scrollAssistantTranscript(
+  viewport: Pick<HTMLDivElement, 'scrollTop' | 'scrollHeight' | 'clientHeight'>,
+  empty: boolean,
+) {
+  viewport.scrollTop = empty ? 0 : Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+}
+
 export default function AssistantTranscript({
   conversation,
   pending,
@@ -23,22 +31,36 @@ export default function AssistantTranscript({
   onError: (message: string) => void;
 }) {
   const session = { conversation, pending };
-  const bottom = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const followOutput = useRef(true);
   const lastScroll = useRef(0);
+  const wasEmpty = useRef(!conversation.messages.length);
   useEffect(() => {
     followOutput.current = true;
+    lastScroll.current = 0;
+    wasEmpty.current = true;
+    if (viewport.current) scrollAssistantTranscript(viewport.current, true);
   }, [conversation.id]);
   useEffect(() => {
+    const current = viewport.current;
+    if (!current) return;
+    if (!conversation.messages.length) {
+      scrollAssistantTranscript(current, true);
+      wasEmpty.current = true;
+      return;
+    }
+    if (wasEmpty.current) followOutput.current = true;
+    wasEmpty.current = false;
     const now = Date.now();
     if (followOutput.current && (!pending || now - lastScroll.current > 160)) {
-      bottom.current?.scrollIntoView({ block: 'nearest' });
+      scrollAssistantTranscript(current, false);
       lastScroll.current = now;
     }
-  }, [conversation.messages, pending]);
+  }, [conversation.id, conversation.messages, pending]);
   const setUiError = onError;
   return (
     <div
+      ref={viewport}
       className="assistant-messages"
       onScroll={(event) => {
         const el = event.currentTarget;
@@ -150,7 +172,6 @@ export default function AssistantTranscript({
           )}
         </article>
       ))}
-      <div ref={bottom} />
     </div>
   );
 }
