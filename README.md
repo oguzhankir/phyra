@@ -13,7 +13,7 @@ Phyra is an open-source engineering analysis desktop workbench combining classic
   <video src="https://github.com/user-attachments/assets/c47e6fcf-36c7-40b5-82f3-3d48e4d9600a" controls="controls" width="100%" aria-label="Phyra product walkthrough"></video>
 </p>
 
-**Explore:** [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
+**Explore:** [source repository](https://github.com/oguzhankir/phyra) · [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
 The checked-in video and screenshots show a preceding interface iteration inspecting genuine saved CPU results. The current workspace groups tasks into Prepare → Solve → Inspect, with contextual actions and searchable commands; final media recapture is deferred. Deformation playback visualizes a static field, not a dynamic simulation. Computing a new solution requires the desktop app.
 
@@ -23,11 +23,12 @@ The checked-in video and screenshots show a preceding interface iteration inspec
 - **Train from physics:** solve rectangular plane-stress elasticity with a real PyTorch PINN, using equilibrium and boundary conditions without FEM training labels. Inspect training settings, live PDE/boundary losses, device and precision.
 - **Compare and inspect:** switch FEM, PINN, absolute and relative differences; probe authoritative values; inspect stress/displacement, reactions and balance. Use standard camera views, fit/reset, boundary isolation and undeformed node/preview-vertex distance measurement.
 - **Understand the method:** open offline Workbench help or contextual screen help for workflow, assumptions, physical conditions, mesh quality, interpretation and limitations.
+- **Ask with context:** connect your own Gemini, OpenAI, Anthropic, OpenAI-compatible or local Ollama endpoint for documentation/study explanations with inspectable context and source citations. Optional local MCP gives scoped read-only inspection.
 - **Keep ownership:** local isolated workers, cancellation, stale-result detection, versioned `.phyra` save/reopen, definition-only recovery copies and SI CSV exports. Analysis needs no account, API key or network service.
 
 Undo/redo preserves up to 80 definition edits within a 16 MiB session budget. Physical undo restores the inputs and requires a new analysis; it cannot reactivate earlier fields. Project names, display units and named-set metadata leave physical results current. Opening or restoring a project starts a fresh edit history.
 
-![Current Phyra primitive preparation and named boundary sets](public/help/preparation-workbench.jpg)
+![Preceding Phyra primitive preparation and named boundary sets](public/help/preparation-workbench.jpg)
 
 Preceding interface layout · primitive preparation and copied boundary sets; constrained sketching and CAD import remain future work.
 
@@ -58,7 +59,13 @@ For a browser preview after `npm ci`, run `npm run dev:web` and open the local U
 
 Phyra opens on **Home**. Choose **New project** to name a 2D or 3D study, **Open project…** to reopen a file, or **Cantilever beam** from Example projects for a first desktop study. **Prepare** contains the study, geometry, material, supports and loads; **Solve** contains mesh and method settings; **Inspect** contains current fields and physical checks. The main action above the viewport follows the selected task. For Physics ML, choose **Plate in tension** on Home, inspect thickness and supports, then use **Compare FEM + PINN** in Solution method. **Commands** or **Ctrl/⌘ K** searches available editors and actions. Choose **Help** or press **F1** for the current screen’s offline guide.
 
-The project opens in a tab with a visible × close action. Switching to Home keeps it open. The first **Save project…** chooses a `.phyra` file location; enabled **Auto-save** then writes validated changes after a 1.5-second pause. Close a saved project directly, or use **Save / Discard / Cancel** for unsaved changes. Draft recovery remains separate from the project file.
+Projects open in independent tabs, with up to 32 documents in a session. Each owns its definition, edit history, file association, recovery and result publication. Switching tabs preserves that state. The first **Save project…** chooses a `.phyra` file location; enabled **Auto-save** then writes validated changes after a 1.5-second pause. A successful save briefly confirms completion. Close a saved project directly, or use **Save / Discard / Cancel** for unsaved changes. Draft recovery remains separate from the project file.
+
+The preparation checklist reviews seven categories before running: study, geometry, material, supports, loads, mesh settings and method eligibility. Its rigid-motion check considers the selected boundary components; the meshed worker performs the authoritative restraint-rank and scientific checks. In 2D Geometry, draft rectangles, polylines and holes on the bounded sketch canvas, convert selected edges to circular arcs, use grid snapping and radius edits, then **Apply sketch** or **Revert**. This is not a full geometric constraint solver or feature-history CAD system.
+
+Open the assistant with **Ctrl/⌘ J**. Provider settings discovers model IDs from the selected endpoint. Text streaming uses Gemini `streamGenerateContent`, OpenAI Responses, Anthropic Messages and compatible Chat Completions; listed models may have unknown streaming or context capabilities. Store remote keys in the native OS credential store, scoped by provider and endpoint origin. Keys are not returned to the interface or stored in `.phyra` files. Choose documentation-only context or explicitly attach the SI study and available run/result summaries, review the context and preceding-turn count, then enable the remote-send checkbox. No local files, screenshots or bulk field buffers are automatically attached. Provider pricing is unknown; your provider controls API charges.
+
+Assistant transcripts use separate local version 1 storage, bounded to 160 messages/2 MiB per conversation, 100 conversations and 32 MiB total. Each answer retains its provider/model/endpoint and supplied context, so earlier explanations can be checked against their original study revision. They do not update when inputs change or certify a physical conclusion. The assistant cannot edit, solve, export or browse. **Local MCP access** is off until scoped consent; it exposes help/project/run snapshots through stdio protocol `2025-11-25`, includes an access audit, and expires after 90 seconds without session refresh. Copy its generated JSON configuration into a compatible local client; no automatic host registration or mutating agent tools are implemented.
 
 ## Scientific scope
 
@@ -76,7 +83,7 @@ Project schema version 4 persists profiles, typed traction inputs and up to 100 
 
 Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Older valid journals migrate in memory while their original bytes remain intact. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
 
-General CAD import, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and an AI assistant are future work. The [roadmap](ROADMAP.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
+General CAD import, constrained sketching, assemblies, multiple materials, anisotropy/composites/graded and nonlinear materials, contact, transient physics, thermal/flow solvers, reusable learned models and assistant-driven model/solver actions are future work. The [roadmap](ROADMAP.md) sets their dependencies and scientific acceptance gates, including optional framework adapters and a future CPU/Apple/NVIDIA/distributed execution runtime. No external Physics ML framework or distributed runtime is integrated today.
 
 ## Learn the implemented method
 
@@ -94,7 +101,7 @@ Minimum macOS 14 execution and manual consumer installation, native dialogs and 
 
 Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](ROADMAP.md), the [contribution guide](CONTRIBUTING.md) and its [implementation ownership and extension guide](CONTRIBUTING.md#finding-and-extending-the-implementation). Automated dependency checks enforce those boundaries.
 
-Built with Tauri 2, React, TypeScript, Three.js, Gmsh, scikit-fem, SciPy and PyTorch. Licensed [GPL-3.0-or-later](LICENSE); required upstream notices and target-specific dependency/Corresponding Source obligations are in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt).
+Built with Tauri 2, React, TypeScript, Three.js, Gmsh, scikit-fem, SciPy and PyTorch. Licensed [GPL-3.0-or-later](LICENSE); required upstream notices and target-specific dependency/Corresponding Source obligations are in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt). Optional provider marks retain their [upstream MIT license](public/providers/LICENSE) and [provenance notice](public/providers/NOTICE); their use does not imply endorsement.
 
 ## Citation
 

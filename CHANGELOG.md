@@ -27,6 +27,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Closing or replacing a dirty project offers Save, Discard and Cancel, waits for an active automatic write and preserves the project when saving fails or is cancelled. A saved project can close directly.
 - Assistant settings and history load on first panel use. OS credential access and serialized assistant storage run on background workers so they cannot block the native UI thread.
 - Delayed assistant settings and MCP snapshot updates cannot replace newer saved connections or active-document publications.
+- Layout changes preserve viewport pan, orbit and relative zoom so a model does not become cropped when the preparation checklist disappears.
+- Failed response writes preserve the transcript with Retry save and a confirmed restore of the saved copy. Questions remain in the composer when their initial write fails. Shared history tabs use one current transcript, and streamed responses stop before exceeding local history limits. Credential checks cover provider origins in earlier turns even after changing the active provider.
 
 ## Initial baseline — 0.2.0 development
 

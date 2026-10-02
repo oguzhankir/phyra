@@ -51,30 +51,33 @@ The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM
 
 ## 2. Verified starting point
 
-“Completed” means implemented and verified within the scope shown. “Experimental” means a real implementation exists but has restricted applicability or incomplete evidence. “Partial” means verified support covers only part of the capability, with remaining limits stated in the table. Capabilities listed as Planned or Planned / research are future work; capabilities absent from this table have not been assessed here.
+“Completed” means implemented and verified within the scope shown. “Experimental” means a real implementation exists but has restricted applicability or incomplete evidence. “Partial” means verified support covers only part of the capability, with remaining limits stated in the table. “Implemented” records current functionality whose broader provider/platform workflow evidence remains open. Capabilities listed as Planned or Planned / research are future work; capabilities absent from this table have not been assessed here.
 
 | Capability | Current status | Verified scope and remaining limit |
 |---|---|---|
 | Desktop and local execution | Completed, limited | Tauri 2, React/TypeScript and Three.js; isolated Python workers, cancellation, cleanup and run ownership |
-| Geometry-to-results workflow | Completed, limited | Parametric box, cylinder and connected bracket solids; rectangular 2D domains; no general sketcher or imported CAD |
+| Geometry-to-results workflow | Completed, limited | Parametric box, cylinder and connected bracket solids; rectangular and bounded line/arc/circular-hole 2D profiles; interactive draft tools, no general constrained sketcher or imported CAD |
 | 3D classical elasticity | Completed, limited | Homogeneous isotropic, small-strain linear static solids with first-order tetrahedra |
-| 2D classical elasticity | Completed, limited | Rectangular plane stress with constant-strain triangles and physical thickness |
-| Supports and loads | Completed, limited | Component restraints, prescribed displacement, total force and inward pressure on supported boundaries |
+| 2D classical elasticity | Completed, limited | Rectangle/profile plane stress with constant-strain triangles, physical thickness and independent Kirsch checks for the matching quarter-plate case |
+| Supports and loads | Completed, limited | Component restraints, prescribed displacement, total force and pressure; typed affine/Kirsch spatial traction for 2D FEM |
 | Elasticity PINN | Experimental | Real PyTorch/autograd plane-stress residuals and boundary terms on a rectangle; measured seeded training; no general geometry or field-error guarantee |
 | FEM/PINN comparison | Completed, limited | Same nodes and cell centroids, relative L2 and maximum differences, comparison fields |
 | Results | Completed, limited | Displacement/stress fields, probes, units, deformation and undeformed overlay; animation scales a static result and is not dynamics |
 | Persistence and recovery | Completed, bounded | Versioned .phyra archives, schema migration, stale-result rejection, recovery journals and SI CSV export |
 | Boundary selections and edit history | Completed, bounded | Copied named boundary sets, explicit repair, bounded definition undo/redo; no associative CAD references |
+| Project tabs and preparation | Implemented, bounded | Up to 32 isolated documents and seven-category preparation checks; meshed worker restraint validation remains authoritative |
 | Device coverage | Partial | CPU reference and measured Apple MPS PINN path on available hardware; CUDA remains unverified |
 | Desktop distribution | Partial | Hosted package/workflow evidence on macOS 15 Apple Silicon and Windows Server 2022 x64; minimum-version, clean consumer installation and production distribution evidence remain open |
 | CAD authoring and neutral import | Planned | No constrained sketcher, feature history, general B-rep editing or neutral CAD import |
-| Broader classical physics and materials | Planned | No general 2D domain support, multiple-material regions, thermal, nonlinear, dynamic or contact solver |
+| Broader classical physics and materials | Planned | No unrestricted CAD domains, multiple-material regions, thermal, nonlinear, dynamic or contact solver |
 | Reusable Physics ML models | Planned / research | No validated operator, mesh/graph or geometry-conditioned product workflow |
-| BYOK assistant and MCP | Planned | No provider adapter, in-product assistant, agent actions or MCP server |
+| BYOK documentation/study assistant | Implemented, limited | Native text-stream adapters, discovered model IDs, OS credential storage, inspectable cited snapshots and local history; broader provider/platform workflow evidence remains open |
+| Local MCP | Implemented, read only | Opt-in help/project/run snapshots, protocol 2025-11-25, native scopes/revocation, expiring consent and access audit; no model-changing tools or automatic host registration |
+| Agent workflows and research portfolio | Planned / research | No assistant mutations, automated solver actions, parameter sweeps or reusable research-agent workflow |
 
 Baseline evidence is in the [independent engine references](engine/tests), [frontend domain and feature tests](src/domain), [native lifecycle and persistence tests](src-tauri/src/tests), and [packaged workflow verifier](scripts/test-desktop.mjs). Hosted verification at [commit 3498f34](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed 168 frontend, 234 quick Python, 3 slow numerical and 38 macOS / 37 Windows native tests. Packaged FEM/PINN, rendering, save/reopen, cancellation, recovery and device workflows were exercised on the hosted macOS and Windows targets. This does not establish representative-user usability, minimum macOS 14 execution, manual consumer installation or untested GPU support.
 
-The current project archive schema is version 3. Existing v1/v2 data is validated against frozen schemas before migration. Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit. Raising limits is not a scalability milestone; memory, rendering, persistence and numerical behavior must be measured together.
+The current project archive schema is version 4, including bounded exact profiles and typed traction. Existing v1/v2/v3 data is validated against frozen schemas before migration; compatible primitive caches pass normal fingerprint/field validation and v1 caches are discarded. Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit. Raising limits is not a scalability milestone; memory, rendering, persistence and numerical behavior must be measured together. The hosted baseline above predates subsequent profile, tab, sketch and assistant changes and does not verify those later workflows.
 
 ## 3. Capability status and product contract
 
@@ -104,7 +107,7 @@ Extend the existing engine capability contract rather than maintaining separate,
 
 ## 4. Development sequence
 
-The work advances through dependent product outcomes; there are no release-by-release promises in this document. CAD-kernel evaluation, selected-paper research, PhysicsNeMo evaluation and the offline documentation assistant can begin in parallel. Solver integrations and agent actions should only enter the product after their shared data and permission contracts are understood.
+The work advances through dependent product outcomes; there are no release-by-release promises in this document. CAD-kernel evaluation, selected-paper research, PhysicsNeMo evaluation and broader evaluation of the implemented documentation assistant can proceed in parallel. Solver integrations and agent actions should only enter the product after their shared data and permission contracts are understood.
 
 | Order | Product outcome | Required evidence before the next dependent step |
 |---|---|---|
@@ -112,7 +115,7 @@ The work advances through dependent product outcomes; there are no release-by-re
 | 2. Deliver mechanical CAD and meshing | Add constrained 2D sketching, parametric feature history, selected 3D modeling, neutral import and analysis-ready mesh controls. | Valid geometry and stable selections through edit, import, remesh, save and reopen. |
 | 3. Build the classical analysis foundation | Generalize 2D and 3D solid mechanics, common materials and boundary conditions; add further study families separately. | Independent analytic/manufactured references, equilibrium checks, mesh/time convergence and failure tests per formulation. |
 | 4. Reproduce selected research workflows | Use shared CAD, material, mesh and solver features to recreate representative literature cases; add Physics ML methods on the same problem/field contract. | Reproducible case packs, held-out cases, disclosed deviations, error and cost comparison with the reference path. |
-| 5. Deliver AI-assisted engineering | Add BYOK documentation and study assistants, approved native workflow tools, computer-use affordances and MCP access. | Grounded-answer evaluation, credential/data-flow tests, tool authorization, stale-input checks, undo and cancellation. |
+| 5. Deliver AI-assisted engineering | Validate the implemented BYOK documentation/study chat and read-only MCP core; extend to approved native workflow tools and bounded research agents. | Grounded-answer evaluation, credential/data-flow tests, tool authorization, stale-input checks, undo and cancellation. |
 | 6. Harden the workbench | Complete results, reporting, offline help, package workflows, GPU capability reporting, compatibility and user validation. | Representative users complete declared tasks; each promoted capability passes packaged desktop and scientific gates. |
 
 A paper is a source of problem definitions and evidence, not a product specification by itself. A selected paper may expose a missing reusable feature; implement that feature only after confirming its broader role in Phyra and its validation path. The target is a library of reproducible workflows built from shared product capabilities, not a stack of paper-specific solvers.
@@ -238,9 +241,11 @@ Maintain the support matrix by method × operation × framework/runtime × platf
 
 AI assistance is part of the product direction, not a future optional extra. It should help users understand the product and operate supported workflows without becoming an authority on physical correctness.
 
+The current core retrieves versioned offline help and optionally attaches the active SI study and available run/result summaries. Gemini, OpenAI Responses, Anthropic Messages and compatible/Ollama adapters stream text; model discovery uses endpoint-returned IDs. Native OS credentials are isolated by provider and endpoint origin. Remote sending requires explicit context consent; local version 1 transcripts retain original context and provider/model/endpoint provenance. Numerical execution stays local, and the assistant has no mutation, solve/export or browsing tools. Adapters and fixture tests do not establish live operation of every provider/model or packaged platform.
+
 ### BYOK provider architecture
 
-Start with direct provider adapters and a provider-neutral internal event contract. Support provider-native APIs where they are needed for important features, a common OpenAI-compatible endpoint contract, and user-managed local model endpoints. Track each model's actual support for streaming, tool calls, structured outputs, document/image input, context limits, cancellation and usage reporting. Do not silently downgrade a request when a feature is missing.
+Maintain the implemented direct provider adapters and provider-neutral text event contract. Extend provider-native and compatible APIs only when needed features are supported and measured. Track each model's actual support for streaming, tool calls, structured outputs, document/image input, context limits, cancellation and usage reporting; current adapters expose text streaming and available limits/usage only. Unknown capabilities remain unknown. Do not silently downgrade a request when a feature is missing.
 
 Do not require a Phyra-hosted gateway. A shared gateway can simplify organization-wide routing, virtual keys, budgets and observability, but it introduces a separate service, credential and data-routing responsibilities. The desktop should allow users to connect directly with their own key or configure a gateway they already control. Evaluate a multi-provider SDK only if its licensing, protocol coverage and failure behavior reduce maintenance without becoming a required proxy deployment. Local and offline workflows remain available without an API key.
 
@@ -260,7 +265,9 @@ Mutations must have a reviewable diff and a working undo path. Read-only help, g
 
 ### MCP and computer-use integration
 
-Provide a local MCP server so supported MCP clients can discover Phyra resources and invoke typed tools. Initial tools should cover capability/status queries, project/study inspection, geometry and condition changes, mesh creation, solver launch/cancellation, result queries and export under explicit scopes. Version tool schemas, validate all inputs and outputs, return structured result metadata, identify the active project/run, and keep a visible audit of actions. Provide a tested registration path for supported hosts, with a one-click install only where the host offers a supported installation API. The server is local-only by default; it must not expose a general shell, arbitrary file access or public network listener.
+The implemented local stdio server is pinned to MCP 2025-11-25 and exposes capability/help/project/run inspection through opt-in scopes. Native consent has a 90-second renewable lease, revocation and a visible access audit. Snapshots follow the active tab and carry permitted project/revision/run identity. Registration currently copies generated JSON into a stdio-capable local client; no one-click host installation is claimed.
+
+Future MCP mutations should cover geometry/condition change sets, mesh creation, solver launch/cancellation and export only after typed validation, reviewable diffs, undo and explicit authorization are complete. Version tool schemas, validate all inputs and outputs, return structured provenance and retain an action audit. Provide a tested registration path for supported hosts, with one-click installation only where the host offers a supported installation API. The server must not expose a general shell, arbitrary file access or public network listener.
 
 MCP is a transport and discovery contract, not Phyra's permission policy. The desktop remains responsible for consent and enforcement. Clearly show which tools are exposed, indicate each invocation and require user confirmation for sensitive changes, solve/export actions or external data transfer. Test against a pinned stable protocol release; do not assume a host will enforce Phyra's safety rules.
 
