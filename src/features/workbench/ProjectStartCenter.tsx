@@ -8,6 +8,9 @@ import { useModalFocus } from '../../shared/ui/useModalFocus';
 type Dimension = Project['study']['dimension'];
 type Props = {
   desktop: boolean;
+  canOpen?: boolean;
+  openProjects?: { id: string; name: string; path: string | null; dirty: boolean }[];
+  onContinueDocument?: (id: string) => void;
   locked: boolean;
   hasProject: boolean;
   projectName: string;
@@ -141,7 +144,7 @@ export default function ProjectStartCenter(props: Props) {
           </button>
           <button
             className="secondary start-open-action"
-            disabled={disabled || !props.desktop}
+            disabled={disabled || !(props.canOpen ?? props.desktop)}
             onClick={() => void run(props.onOpen)}
           >
             <FolderOpen size={17} /> Open project…
@@ -172,17 +175,36 @@ export default function ProjectStartCenter(props: Props) {
           {props.hasProject && (
             <section className="start-open-project">
               <h2>Open in this session</h2>
-              <button className="start-project-row" onClick={props.onContinue}>
-                <FolderOpen size={22} />
-                <span>
-                  <strong>{props.projectName}</strong>
-                  <small>{props.projectPath ?? 'Draft · choose a file location with Save'}</small>
-                </span>
-                <span className="start-project-state">
-                  {props.dirty ? 'Unsaved changes' : props.projectPath ? 'Saved' : 'Draft'}
-                </span>
-                <ArrowRight size={16} />
-              </button>
+              {(
+                props.openProjects ?? [
+                  {
+                    id: 'current',
+                    name: props.projectName,
+                    path: props.projectPath,
+                    dirty: props.dirty,
+                  },
+                ]
+              ).map((project) => (
+                <button
+                  key={project.id}
+                  className="start-project-row"
+                  onClick={() =>
+                    props.onContinueDocument
+                      ? props.onContinueDocument(project.id)
+                      : props.onContinue()
+                  }
+                >
+                  <FolderOpen size={22} />
+                  <span>
+                    <strong>{project.name}</strong>
+                    <small>{project.path ?? 'Draft · choose a file location with Save'}</small>
+                  </span>
+                  <span className="start-project-state">
+                    {project.dirty ? 'Unsaved changes' : project.path ? 'Saved' : 'Draft'}
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              ))}
             </section>
           )}
           <div className="start-section-heading">

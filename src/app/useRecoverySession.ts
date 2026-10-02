@@ -2,16 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Project } from '../domain/contracts/types';
 import { recoveryEligible, recoverySnapshot } from '../domain/project/recovery';
 import { inputError } from '../domain/project/validation';
-import {
-  clearRecovery,
-  getRecovery,
-  nextRecoverySequence,
-  readRecovery,
-  writeRecovery,
-  type RecoveryRecord,
-} from '../platform/desktop/recovery';
+import { createRecoveryClient, type RecoveryRecord } from '../platform/desktop/recovery';
 import { restoreRecoveryRecord } from './recoveryActions';
 type Props = {
+  documentId: string;
+  discover?: boolean;
   desktop: boolean;
   verification: boolean;
   project: Project;
@@ -22,6 +17,8 @@ type Props = {
   onError: (message: string) => void;
 };
 export function useRecoverySession({
+  documentId,
+  discover = true,
   desktop,
   verification,
   project,
@@ -31,6 +28,7 @@ export function useRecoverySession({
   onRestore,
   onError,
 }: Props) {
+  const [client] = useState(() => createRecoveryClient(documentId));
   const [records, setRecords] = useState<RecoveryRecord[]>([]);
   const [prompt, setPrompt] = useState(false);
   const [pending, setPending] = useState(false);
@@ -53,11 +51,12 @@ export function useRecoverySession({
       return;
     }
     let disposed = false;
-    void getRecovery()
+    void client
+      .initialize()
       .then((inventory) => {
         if (disposed) return;
-        setRecords(inventory.records);
-        setPrompt(inventory.records.length > 0);
+        setRecords(discover ? inventory.records : []);
+        setPrompt(discover && inventory.records.length > 0);
         setReady(true);
         if (inventory.unreadableCount)
           latest.current.onError(
@@ -74,7 +73,7 @@ export function useRecoverySession({
     return () => {
       disposed = true;
     };
-  }, [enabled]);
+  }, [enabled, client, discover]);
   useEffect(() => {
     if (
       !enabled ||
@@ -99,8 +98,8 @@ export function useRecoverySession({
       )
         return;
       const snapshot = recoverySnapshot(project);
-      const ownSequence = nextRecoverySequence();
-      void enqueue(() => writeRecovery(snapshot, ownSequence))
+      const ownSequence = client.nextSequence();
+      void enqueue(() => client.writeRecovery(snapshot, ownSequence))
         .then((result) => {
           if (disposed || JSON.stringify(latest.current.project) !== identity || !result.accepted)
             return;
@@ -121,19 +120,19 @@ export function useRecoverySession({
   }, [enabled, ready, prompt, pending, blocked, project, dirty, invalidDrafts, enqueue]);
   const clearOwn = useCallback(async () => {
     if (!enabled) return;
-    const ownSequence = nextRecoverySequence();
-    await enqueue(() => clearRecovery(ownSequence));
+    const ownSequence = client.nextSequence();
+    await enqueue(() => client.clearRecovery(ownSequence));
     setSavedAt(null);
     setCheckpointRevision(null);
   }, [enabled, enqueue]);
   const restore = async (record: RecoveryRecord) => {
-    if (pending || blocked) return;
+    if (pending || blocked) return false;
     setPending(true);
     try {
       await restoreRecoveryRecord(record.id, {
-        read: readRecovery,
+        read: client.readRecovery,
         checkpoint: (snapshot) =>
-          enqueue(() => writeRecovery(snapshot, nextRecoverySequence(), true)),
+          enqueue(() => client.writeRecovery(snapshot, client.nextSequence(), true)),
         adopt: (next, checkpoint) => {
           latest.current.onRestore(next);
           setPrompt(false);
@@ -142,7 +141,7 @@ export function useRecoverySession({
           setFailed(false);
         },
         removePrior: async (id) => {
-          await enqueue(() => clearRecovery(nextRecoverySequence(), id));
+          await enqueue(() => client.clearRecovery(client.nextSequence(), id));
           setRecords((previous) => previous.filter((item) => item.id !== id));
         },
         onCleanupFailure: (cause) =>
@@ -150,8 +149,10 @@ export function useRecoverySession({
             `Recovery cleanup: the recovered project is active; its earlier copy was preserved. ${String(cause)}`,
           ),
       });
+      return true;
     } catch (cause) {
       latest.current.onError(`Recovery restore failed: ${String(cause)}`);
+      return false;
     } finally {
       setPending(false);
     }
@@ -160,7 +161,7 @@ export function useRecoverySession({
     if (pending || blocked) return;
     setPending(true);
     try {
-      await enqueue(() => clearRecovery(nextRecoverySequence(), record.id));
+      await enqueue(() => client.clearRecovery(client.nextSequence(), record.id));
       setRecords((previous) => {
         const next = previous.filter((item) => item.id !== record.id);
         if (!next.length) setPrompt(false);
@@ -198,5 +199,12 @@ export function useRecoverySession({
     clearOwn,
     restore,
     discard,
+    refresh: async () => {
+      if (!enabled) return;
+      const inventory = await client.getRecovery();
+      setRecords(inventory.records);
+      return inventory;
+    },
+    release: () => enqueue(() => client.release()),
   };
 }

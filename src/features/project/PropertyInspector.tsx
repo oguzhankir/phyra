@@ -11,14 +11,16 @@ import StudyEditor from './StudyEditor';
 import SupportEditor from './SupportEditor';
 
 import type { ProjectInspectorModel } from './model';
-export default function PropertyInspector({ workbench }: { workbench: ProjectInspectorModel }) {
+export default function PropertyInspector({
+  workbench,
+  panelId = 'workbench-properties-panel',
+}: {
+  workbench: ProjectInspectorModel;
+  panelId?: string;
+}) {
   const { rightWidth, section, showHelp, locked, project, busy } = workbench;
   return (
-    <aside
-      id="workbench-properties-panel"
-      className="properties-panel"
-      style={{ width: rightWidth }}
-    >
+    <aside id={panelId} className="properties-panel" style={{ width: rightWidth }}>
       <div className="panel-heading">
         <span>
           {section === 'results'

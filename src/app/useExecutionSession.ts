@@ -14,6 +14,7 @@ import {
   type RunStatus,
 } from '../domain/execution/presentation';
 import { supportsPinn } from '../domain/project/study';
+import { prepareStudy } from '../domain/project/readiness';
 import type { ResultData } from '../domain/results/fields';
 import type { RunTab } from '../features/runs/RunWorkspace';
 import {
@@ -29,13 +30,14 @@ import { ExecutionOwnership } from './executionOwnership';
 import type { WorkbenchActivity } from './workbenchActivity';
 
 interface Props {
+  documentId: string;
   desktop: boolean;
   verificationRef: RefObject<boolean>;
   activity: WorkbenchActivity;
   project: Project;
   projectRef: RefObject<Project>;
   invalidDraftsRef: RefObject<Map<string, string>>;
-  validation: string | null;
+  initialData?: ResultData | null;
   onStart: (operation: Operation) => void;
   onComplete: (manifest: Manifest) => void;
   onError: (message: string | null) => void;
@@ -45,8 +47,7 @@ interface Props {
 // Owns current/retained fields, native worker identity, run metrics and probed devices.
 // Views receive state and actions; they cannot publish a result or acquire a worker.
 export function useExecutionSession(props: Props) {
-  const { desktop, activity, project, projectRef, invalidDraftsRef, validation, verificationRef } =
-    props;
+  const { desktop, activity, project, projectRef, invalidDraftsRef, verificationRef } = props;
   const callbacks = useRef(props);
   callbacks.current = props;
   const busyRef = activity.execution;
@@ -54,7 +55,7 @@ export function useExecutionSession(props: Props) {
   const deviceBusyRef = activity.device;
   const recoveryBusyRef = activity.recovery;
   const confirmationRef = activity.confirmation;
-  const [data, setData] = useState<ResultData | null>(null);
+  const [data, setData] = useState<ResultData | null>(() => props.initialData ?? null);
   const currentData = resultIsCurrent(project, data) ? data : null;
   const [busy, setBusy] = useState<Operation | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -88,11 +89,29 @@ export function useExecutionSession(props: Props) {
       fileBusyRef.current ||
       confirmationRef.current ||
       invalidDraftsRef.current.size ||
-      validation ||
       deviceBusyRef.current ||
       recoveryBusyRef.current
     )
       return;
+    if (
+      activity.native.execution.current ||
+      activity.native.file.current ||
+      activity.native.device.current ||
+      activity.native.closing.current
+    ) {
+      callbacks.current.onNotice(
+        'Another project is using the numerical worker or a native file operation. Wait for it to finish.',
+      );
+      return;
+    }
+    const preparation = prepareStudy(project, invalidDraftsRef.current.size);
+    if (operation === 'mesh' ? !preparation.canMesh : !preparation.canRun) {
+      callbacks.current.onError(
+        preparation.checks.find((check) => check.section === preparation.firstMissing)?.detail ??
+          'Complete study preparation before computing.',
+      );
+      return;
+    }
     if ((operation === 'train' || operation === 'compare') && !supportsPinn(project)) {
       callbacks.current.onError(
         'PINN training and comparison require a rectangular 2D study with force or pressure loads.',
@@ -104,6 +123,7 @@ export function useExecutionSession(props: Props) {
     setRunExecution({ project: snapshot, operation });
     setBusy(operation);
     busyRef.current = operation;
+    activity.native.execution.current = operation;
     setCancelling(false);
     setProgress(null);
     callbacks.current.onError(null);
@@ -119,12 +139,12 @@ export function useExecutionSession(props: Props) {
       setRunTab('training');
     }
     try {
-      const manifest = await runJob(operation, snapshot, job.requestId);
+      const manifest = await runJob(operation, snapshot, job.requestId, props.documentId);
       if (verificationRef.current)
         void invoke('verification_trace', { message: 'frontend manifest received' });
       if (!ownership.current.bind(job, manifest.jobId)) return;
       setRunExecution((previous) => (previous ? { ...previous, jobId: manifest.jobId } : previous));
-      const buffer = await readBuffer(manifest.jobId);
+      const buffer = await readBuffer(manifest.jobId, props.documentId);
       if (verificationRef.current)
         void invoke('verification_trace', {
           message: `frontend buffer received ${buffer.byteLength}`,
@@ -164,6 +184,7 @@ export function useExecutionSession(props: Props) {
       if (ownership.current.finish(job)) {
         setBusy(null);
         busyRef.current = null;
+        activity.native.execution.current = null;
         setCancelling(false);
         if (runStarted.current !== null)
           setRunElapsed((performance.now() - runStarted.current) / 1000);
@@ -240,8 +261,18 @@ export function useExecutionSession(props: Props) {
     return () => window.clearInterval(interval);
   }, [busy]);
   const refreshDevices = async () => {
-    if (!desktop || busyRef.current || fileBusyRef.current || deviceBusyRef.current) return;
+    if (
+      !desktop ||
+      busyRef.current ||
+      fileBusyRef.current ||
+      deviceBusyRef.current ||
+      activity.native.execution.current ||
+      activity.native.file.current ||
+      activity.native.device.current
+    )
+      return;
     deviceBusyRef.current = true;
+    activity.native.device.current = true;
     setDeviceBusy(true);
     try {
       setDeviceError(null);
@@ -251,6 +282,7 @@ export function useExecutionSession(props: Props) {
       callbacks.current.onError(`Device detection failed: ${String(cause)}`);
     } finally {
       deviceBusyRef.current = false;
+      activity.native.device.current = false;
       setDeviceBusy(false);
     }
   };

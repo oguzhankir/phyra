@@ -1,7 +1,8 @@
 use super::fields::array_values;
 use crate::{
-    execution::state::{owned_directory, EngineState},
+    execution::state::{owned_document_directory, EngineState},
     platform::files::{read_bounded, MAX_BLOB, MAX_JSON},
+    project::state::{document_identity, ProjectState},
 };
 use serde_json::Value;
 use std::io::Write;
@@ -10,10 +11,17 @@ use tauri::Manager;
 pub(crate) async fn export_results(
     app: tauri::AppHandle,
     job_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EngineState>();
-        let directory = owned_directory(&state, &job_id)?;
+        let document = document_identity(document_id.as_deref())?;
+        let project_state = app.state::<ProjectState>();
+        let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+        documents.require_owner(owner_id.as_deref())?;
+        documents.require_open(document)?;
+        let directory = owned_document_directory(&state, document, &job_id)?;
         let manifest: Value =
             serde_json::from_slice(&read_bounded(&directory.join("manifest.json"), MAX_JSON)?)
                 .map_err(|e| e.to_string())?;

@@ -1,0 +1,26 @@
+.project-document-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.project-document-workspace[hidden] {
+  display: none;
+}
+.project-document-tabs {
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.project-document-tab {
+  white-space: nowrap;
+}
+.project-document-tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+}
+.document-worker-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+  padding: 0 12px;
+  white-space: nowrap;
+}

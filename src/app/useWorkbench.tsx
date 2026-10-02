@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Constraint, Load, Project } from '../domain/contracts/types';
 import {
   nextSelectionName,
@@ -10,46 +10,69 @@ import { assignedRegions, regionNames } from '../domain/project/regions';
 import { changeStudyDimension } from '../domain/project/study';
 import { lengthFactor } from '../domain/units';
 import { useModalFocus } from '../shared/ui/useModalFocus';
-import { useDesktopLifecycle } from './useDesktopLifecycle';
 import { useExecutionSession, type ExecutionSession } from './useExecutionSession';
 import { useProjectSession } from './useProjectSession';
 import { useRecoverySession } from './useRecoverySession';
 import { useVerificationWorkflow } from './useVerificationWorkflow';
 import { useWorkbenchView, type WorkbenchView } from './useWorkbenchView';
-import { useWorkbenchActivity } from './workbenchActivity';
+import { useWorkbenchActivity, type NativeActivity } from './workbenchActivity';
+import type { useTheme } from '../features/workbench/theme';
+import type { ProjectDocumentSeed } from './projectDocuments';
+import { prepareStudy } from '../domain/project/readiness';
+import { closeProject } from '../platform/desktop/bridge';
 
 const uid = () => crypto.randomUUID();
 
 // Composes definition, execution and presentation owners. Cross-owner transitions
 // live here; each feature consumes only its explicit view/edit contract.
 type WorkbenchOptions = {
+  seed: ProjectDocumentSeed;
+  nativeActivity: NativeActivity;
+  appearance: ReturnType<typeof useTheme>;
+  active: boolean;
+  windowClosing: boolean;
   onProjectActivated: () => void;
   onNewProjectRequested: () => void;
-  hasProject: boolean;
-  projectActive: boolean;
-  newProjectOpen: boolean;
+  onRecoveryRestored?: () => void;
+  onRecoveryFailed?: (message: string) => void;
 };
 export function useWorkbench({
+  seed,
+  nativeActivity,
+  appearance,
+  active,
+  windowClosing,
   onProjectActivated,
   onNewProjectRequested,
-  hasProject,
-  projectActive,
-  newProjectOpen,
+  onRecoveryRestored,
+  onRecoveryFailed,
 }: WorkbenchOptions) {
   const desktop = '__TAURI_INTERNALS__' in window;
-  const activity = useWorkbenchActivity();
+  const activity = useWorkbenchActivity(nativeActivity);
   const executionRef = useRef<ExecutionSession | null>(null);
   const viewRef = useRef<WorkbenchView | null>(null);
   const verificationRef = useRef(false);
   const clearRecoveryRef = useRef<() => Promise<void>>(async () => {});
+  const releaseRecoveryRef = useRef<() => Promise<void>>(async () => {});
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(seed.notice ?? null);
 
   const session = useProjectSession({
+    documentId: seed.id,
+    initialProject: seed.project,
+    initialPath: seed.path,
+    initialDirty: seed.dirty,
+    initialReferenceId: seed.referenceId,
     desktop,
     activity,
     currentResult: () => executionRef.current?.data ?? null,
     clearRecovery: () => clearRecoveryRef.current(),
+    retireDocument: async () => {
+      if (desktop) {
+        await releaseRecoveryRef.current();
+        await closeProject(seed.id);
+      }
+    },
     beforeConfirmation: () => viewRef.current?.setHelp(false),
     onEdit: () => viewRef.current?.setProbe(null),
     onHistoryNavigate: (next, message) => {
@@ -92,13 +115,14 @@ export function useWorkbench({
     onNotice: setNotice,
   });
   const execution = useExecutionSession({
+    documentId: seed.id,
+    initialData: seed.data,
     desktop,
     activity,
     verificationRef,
     project: session.project,
     projectRef: session.projectRef,
     invalidDraftsRef: session.invalidDraftsRef,
-    validation: session.validation,
     onStart: (operation) => {
       viewRef.current?.setProbe(null);
       viewRef.current?.setAnimate(false);
@@ -114,6 +138,7 @@ export function useWorkbench({
   });
   executionRef.current = execution;
   const view = useWorkbenchView({
+    appearance,
     project: session.project,
     currentData: execution.currentData,
     invalidDraftsRef: session.invalidDraftsRef,
@@ -121,6 +146,10 @@ export function useWorkbench({
   });
   viewRef.current = view;
   const { project, edit, invalidDraftsRef } = session;
+  const preparation = useMemo(
+    () => prepareStudy(project, session.invalidDraftLabels.length),
+    [project, session.invalidDraftLabels.length],
+  );
   const {
     section,
     selected,
@@ -146,7 +175,7 @@ export function useWorkbench({
   const load = project.study.loads.find((item) => item.id === loadId);
 
   const { verification, verified, requestedOperation } = useVerificationWorkflow({
-    desktop,
+    desktop: desktop && !!seed.verification,
     project,
     currentData: execution.currentData,
     liveMetrics: execution.liveMetrics,
@@ -166,9 +195,15 @@ export function useWorkbench({
     }
   }, [requestedOperation]);
   useEffect(() => {
-    if (section === 'solver' && !execution.devices && !verification && !execution.deviceError)
+    if (
+      active &&
+      section === 'solver' &&
+      !execution.devices &&
+      !verification &&
+      !execution.deviceError
+    )
       void execution.refreshDevices();
-  }, [section, execution.devices, desktop, verification, execution.deviceError]);
+  }, [active, section, execution.devices, desktop, verification, execution.deviceError]);
   useEffect(() => {
     if (!notice) return;
     const timeout = window.setTimeout(() => setNotice(null), 5000);
@@ -176,12 +211,20 @@ export function useWorkbench({
   }, [notice]);
 
   const recovery = useRecoverySession({
+    documentId: seed.id,
+    discover: false,
     desktop,
     verification,
     project,
     dirty: session.dirty,
     invalidDrafts: session.invalidDraftLabels.length,
-    blocked: !!execution.busy || !!session.fileBusy || execution.deviceBusy || session.confirmation,
+    blocked:
+      !!execution.busy ||
+      !!session.fileBusy ||
+      execution.deviceBusy ||
+      session.confirmation ||
+      session.transitioning ||
+      windowClosing,
     onRestore: (next) => {
       session.replace(next);
       session.setDirty(true);
@@ -192,12 +235,18 @@ export function useWorkbench({
   });
   activity.recovery.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
+  releaseRecoveryRef.current = recovery.release;
   const locked =
     !!execution.busy ||
     !!session.fileBusy ||
     session.transitioning ||
     execution.deviceBusy ||
-    activity.recovery.current;
+    activity.recovery.current ||
+    windowClosing;
+  const nativeLocked =
+    !!nativeActivity.execution.current ||
+    !!nativeActivity.file.current ||
+    nativeActivity.device.current;
   const historyBlocked =
     locked ||
     session.confirmation ||
@@ -205,7 +254,7 @@ export function useWorkbench({
     recovery.prompt ||
     session.invalidDraftLabels.length > 0;
   useModalFocus(
-    session.confirmation || view.help || recovery.prompt,
+    active && (session.confirmation || view.help || recovery.prompt),
     () => {
       if (session.confirmation) {
         session.setConfirmation(false);
@@ -216,59 +265,28 @@ export function useWorkbench({
     },
     session.confirmation ? 'unsaved' : view.help ? 'help' : recovery.prompt ? 'recovery' : null,
   );
-  const createFromShortcut = useCallback(
-    async (
-      example?: Parameters<typeof session.create>[0],
-      name?: string,
-      dimension?: Project['study']['dimension'],
-    ) => {
-      if (!example && !name && onNewProjectRequested) {
-        if (
-          activity.execution.current ||
-          activity.file.current ||
-          activity.confirmation.current ||
-          activity.recovery.current ||
-          activity.device.current ||
-          newProjectOpen
-        )
-          return false;
-        onNewProjectRequested();
-        return false;
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!seed.recoveryRecord || restored.current || !recovery.ready || locked) return;
+    restored.current = true;
+    void recovery.restore(seed.recoveryRecord).then(async (success) => {
+      if (success) onRecoveryRestored?.();
+      else {
+        try {
+          await recovery.release();
+        } catch (cause) {
+          setError(`Recovery lease cleanup failed: ${String(cause)}`);
+        }
+        onRecoveryFailed?.('Recovery restore failed. The original recovery copy was preserved.');
       }
-      const created = await session.create(example, name, dimension);
-      if (created) onProjectActivated?.();
-      return created;
-    },
-    [session.create, onProjectActivated, onNewProjectRequested, activity, newProjectOpen],
-  );
-  const openFromShortcut = useCallback(async () => {
-    const opened = await session.open();
-    if (opened) onProjectActivated?.();
-    return opened;
-  }, [session.open, onProjectActivated]);
-  useDesktopLifecycle({
-    desktop,
-    hasProject,
-    projectActive,
-    modalOpen: newProjectOpen || activity.recovery.current || session.transitioning,
-    busyRef: activity.execution,
-    fileBusyRef: activity.file,
-    confirmationRef: activity.confirmation,
-    dirtyRef: session.dirtyRef,
-    canReplaceRef: session.canReplaceRef,
-    help: view.help,
-    confirmation: session.confirmation,
-    section,
-    save: session.save,
-    open: openFromShortcut,
-    create: createFromShortcut,
-    setHelpContext: view.setHelpContext,
-    setHelp: view.setHelp,
-    setError,
-    undo: session.undo,
-    redo: session.redo,
-    historyBlocked,
-  });
+    });
+  }, [seed.recoveryRecord, recovery.ready, locked]);
+  useEffect(() => {
+    if (!seed.referenceId) return;
+    view.setSection('results');
+    view.setFieldSource(seed.referenceId === '2d-compare' ? 'fem' : 'primary');
+    execution.setRunTab(seed.referenceId === '2d-compare' ? 'comparison' : 'run');
+  }, [seed.referenceId]);
 
   const addConstraint = () => {
     if (invalidDraftsRef.current.size) {
@@ -375,11 +393,14 @@ export function useWorkbench({
 
   return {
     ...session,
+    documentId: seed.id,
     ...execution,
     ...view,
     desktop,
     recovery,
     locked,
+    nativeLocked,
+    preparation,
     historyBlocked,
     error,
     setError,
@@ -405,6 +426,7 @@ export function useWorkbench({
     stat: execution.currentData?.manifest.statistics,
     verification,
     verified,
+    requestNewProject: onNewProjectRequested,
   };
 }
 export type Workbench = ReturnType<typeof useWorkbench>;

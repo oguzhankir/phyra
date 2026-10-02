@@ -58,6 +58,7 @@ pub(crate) fn run() {
             execution::commands::read_buffer,
             project::commands::open_project,
             project::commands::save_project,
+            project::commands::close_project,
             project::recovery::get_recovery,
             project::recovery::write_recovery,
             project::recovery::read_recovery,

@@ -1,80 +1,44 @@
+import { useEffect, useRef } from 'react';
 import { subscribeCloseRequested } from '../platform/desktop/lifecycle';
-import { useEffect, useRef, type RefObject, type Dispatch, type SetStateAction } from 'react';
-import type { Operation } from '../domain/contracts/types';
-import type { Section } from '../features/workbench/navigation';
-import type { HelpContext } from '../features/help/content';
-import type { ExampleId } from '../features/examples/projects';
-import type { Project } from '../domain/contracts/types';
 import { historyShortcut } from './historyShortcut';
+import type { NativeActivity } from './workbenchActivity';
+import type { ProjectDocumentSnapshot } from './projectDocuments';
+
 type Props = {
   desktop: boolean;
-  hasProject: boolean;
-  projectActive: boolean;
+  active: ProjectDocumentSnapshot | null;
+  nativeActivity: NativeActivity;
   modalOpen: boolean;
-  busyRef: RefObject<Operation | null>;
-  fileBusyRef: RefObject<string | null>;
-  confirmationRef: RefObject<boolean>;
-  dirtyRef: RefObject<boolean>;
-  canReplaceRef: RefObject<() => Promise<boolean>>;
-  help: boolean;
-  confirmation: boolean;
-  section: Section;
-  save: (as?: boolean) => Promise<boolean>;
-  open: () => Promise<boolean>;
-  create: (
-    example?: ExampleId,
-    name?: string,
-    dimension?: Project['study']['dimension'],
-  ) => Promise<boolean>;
-  setHelpContext: Dispatch<SetStateAction<HelpContext>>;
-  setHelp: Dispatch<SetStateAction<boolean>>;
-  setError: (message: string | null) => void;
-  undo: () => void;
-  redo: () => void;
-  historyBlocked: boolean;
+  anyDirty: boolean;
+  onNew: () => void;
+  onOpen: () => Promise<boolean>;
+  onSave: (as?: boolean) => Promise<boolean>;
+  onCloseDocument: () => Promise<void>;
+  onHelp: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canCloseWindow: () => Promise<boolean>;
+  onWindowCloseFailed: () => void;
+  onError: (message: string) => void;
 };
-export function useDesktopLifecycle({
-  desktop,
-  hasProject,
-  projectActive,
-  modalOpen,
-  busyRef,
-  fileBusyRef,
-  confirmationRef,
-  dirtyRef,
-  canReplaceRef,
-  help,
-  confirmation,
-  section,
-  save,
-  open,
-  create,
-  setHelpContext,
-  setHelp,
-  setError,
-  undo,
-  redo,
-  historyBlocked,
-}: Props) {
-  const modalOpenRef = useRef(modalOpen);
-  modalOpenRef.current = modalOpen;
+
+// One application-level listener routes commands to the currently focused
+// document. Hidden document owners never receive another tab's shortcut.
+export function useDesktopLifecycle(props: Props) {
+  const latest = useRef(props);
+  latest.current = props;
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (modalOpen) {
-        if (
-          event.key === 'F1' ||
-          ((event.metaKey || event.ctrlKey) &&
-            ['s', 'o', 'n', 'w', 'k'].includes(event.key.toLowerCase()))
-        )
-          event.preventDefault();
+      const current = latest.current;
+      if (
+        current.modalOpen ||
+        current.nativeActivity.closing.current ||
+        document.querySelector('.modal[aria-modal="true"]')
+      )
         return;
-      }
       if (event.key === 'F1') {
         event.preventDefault();
-        if (!confirmation) {
-          setHelpContext(projectActive ? section : 'overview');
-          setHelp(true);
-        }
+        current.onHelp();
         return;
       }
       const platform = /Mac|iPhone|iPad/i.test(navigator.platform)
@@ -84,24 +48,31 @@ export function useDesktopLifecycle({
           : 'other';
       const action = historyShortcut(event, {
         platform,
-        blocked: historyBlocked || !projectActive,
+        blocked: !current.active || current.active.historyBlocked,
       });
       if (action) {
         event.preventDefault();
-        (action === 'redo' ? redo : undo)();
+        (action === 'undo' ? current.onUndo : current.onRedo)();
         return;
       }
       if (!event.metaKey && !event.ctrlKey) return;
       const character = event.key.toLowerCase();
-      if (!['s', 'o', 'n'].includes(character)) return;
+      if (!['s', 'o', 'n', 'w'].includes(character)) return;
+      if (character === 'w' && !current.active) return;
       event.preventDefault();
-      if (busyRef.current || fileBusyRef.current || confirmationRef.current || help) return;
-      if (character === 's' && hasProject) void save(event.shiftKey);
-      if (character === 'o') void open();
-      if (character === 'n') void create();
+      if (character === 'n') current.onNew();
+      if (character === 'w') void current.onCloseDocument();
+      if (character === 's' && current.active) void current.onSave(event.shiftKey);
+      if (character === 'o') void current.onOpen();
     };
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (dirtyRef.current || busyRef.current || fileBusyRef.current) {
+      const current = latest.current;
+      if (
+        current.anyDirty ||
+        current.nativeActivity.execution.current ||
+        current.nativeActivity.file.current ||
+        current.nativeActivity.device.current
+      ) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -112,51 +83,41 @@ export function useDesktopLifecycle({
       window.removeEventListener('keydown', key);
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [
-    save,
-    open,
-    create,
-    help,
-    confirmation,
-    section,
-    undo,
-    redo,
-    historyBlocked,
-    hasProject,
-    projectActive,
-    modalOpen,
-  ]);
+  }, []);
   useEffect(() => {
-    if (!desktop) return;
-    let unsubscribe: (() => void) | undefined;
+    if (!props.desktop) return;
     let dead = false;
+    let unsubscribe: (() => void) | undefined;
     subscribeCloseRequested(async (event, close) => {
-      if (modalOpenRef.current) {
-        event.preventDefault();
-        return;
-      }
-      if (busyRef.current || fileBusyRef.current) {
-        event.preventDefault();
-        setError(
-          fileBusyRef.current
-            ? 'Wait for the project file operation to finish before closing Phyra.'
-            : 'Cancel the running job before closing Phyra.',
+      event.preventDefault();
+      const current = latest.current;
+      if (
+        current.modalOpen ||
+        document.querySelector('.modal[aria-modal="true"]') ||
+        current.nativeActivity.execution.current ||
+        current.nativeActivity.file.current ||
+        current.nativeActivity.device.current
+      ) {
+        current.onError(
+          'Finish the active dialog or native operation before closing Phyra. Running analyses can be cancelled in their project tab.',
         );
         return;
       }
-      if (dirtyRef.current) {
-        event.preventDefault();
-        if (await canReplaceRef.current()) await close();
+      try {
+        if (await current.canCloseWindow()) await close();
+      } catch (cause) {
+        current.onWindowCloseFailed();
+        current.onError(`Phyra remains open: ${String(cause)}`);
       }
     })
       .then((remove) => {
         if (dead) remove();
         else unsubscribe = remove;
       })
-      .catch((cause) => setError(`Window lifecycle failed: ${String(cause)}`));
+      .catch((cause) => latest.current.onError(`Window lifecycle failed: ${String(cause)}`));
     return () => {
       dead = true;
       unsubscribe?.();
     };
-  }, [desktop]);
+  }, [props.desktop]);
 }

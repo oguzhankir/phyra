@@ -38,6 +38,7 @@ type Props = {
   onUndo: () => void;
   onRedo: () => void;
   onCommands?: () => void;
+  onAssistantOpen?: () => void;
 };
 
 export default function WorkbenchHeader(props: Props) {
@@ -189,6 +190,15 @@ export default function WorkbenchHeader(props: Props) {
         </button>
       </div>
       <div className="header-end">
+        {props.onAssistantOpen && (
+          <button
+            className="command-trigger"
+            aria-label="Open AI assistant"
+            onClick={props.onAssistantOpen}
+          >
+            Assistant
+          </button>
+        )}
         {props.onCommands && (
           <button
             className="command-trigger"

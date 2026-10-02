@@ -13,9 +13,10 @@ import type { HelpContext } from '../features/help/content';
 import type { Section } from '../features/workbench/navigation';
 import type { SelectionMode } from '../features/viewport/selection';
 import { selectionIsCompatible } from '../domain/project/namedSelections';
-import { useTheme } from '../features/workbench/theme';
+import type { useTheme } from '../features/workbench/theme';
 
 interface Props {
+  appearance: ReturnType<typeof useTheme>;
   project: Project;
   currentData: ResultData | null;
   invalidDraftsRef: RefObject<Map<string, string>>;
@@ -24,7 +25,13 @@ interface Props {
 
 // Presentation state only: navigation, selection, field display and pane layout.
 // Authoritative definitions and numerical fields belong to their session owners.
-export function useWorkbenchView({ project, currentData, invalidDraftsRef, onError }: Props) {
+export function useWorkbenchView({
+  project,
+  currentData,
+  invalidDraftsRef,
+  onError,
+  appearance,
+}: Props) {
   const is2D = project.study.dimension === '2d';
   const [section, setSection] = useState<Section>('study');
   const [selected, setSelected] = useState<RegionId[]>([]);
@@ -32,7 +39,9 @@ export function useWorkbenchView({ project, currentData, invalidDraftsRef, onErr
   const [constraintId, setConstraintId] = useState<string | null>(null);
   const [loadId, setLoadId] = useState<string | null>(null);
   const [namedSelectionId, setNamedSelectionId] = useState<string | null>(null);
-  const [fieldId, setFieldId] = useState<FieldId>('geometry');
+  const [fieldId, setFieldId] = useState<FieldId>(() =>
+    currentData && currentData.manifest.operation !== 'mesh' ? 'displacement-mag' : 'geometry',
+  );
   const [edges, setEdges] = useState(true);
   const [deformation, setDeformation] = useState<'off' | 'actual' | 'auto' | 'custom'>('auto');
   const [customScale, setCustomScale] = useState(10);
@@ -43,7 +52,7 @@ export function useWorkbenchView({ project, currentData, invalidDraftsRef, onErr
   const [rightWidth, setRightWidth] = useState(336);
   const [help, setHelp] = useState(false);
   const [helpContext, setHelpContext] = useState<HelpContext>('overview');
-  const { theme, preference, setPreference } = useTheme();
+  const { theme, preference, setPreference } = appearance;
   const showHelp = (context: HelpContext = section) => {
     setHelpContext(context);
     setHelp(true);

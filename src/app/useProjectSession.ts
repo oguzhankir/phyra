@@ -23,10 +23,16 @@ export type AutosaveStatus =
   'off' | 'needs-save' | 'waiting' | 'saving' | 'saved' | 'paused' | 'error';
 
 interface Props {
+  documentId: string;
+  initialProject: Project;
+  initialPath?: string | null;
+  initialDirty?: boolean;
+  initialReferenceId?: ReferenceId | null;
   desktop: boolean;
   activity: WorkbenchActivity;
   currentResult: () => ResultData | null;
   clearRecovery: () => Promise<void>;
+  retireDocument: () => Promise<void>;
   beforeConfirmation: () => void;
   onReplace: (project: Project, data: ResultData | null) => void;
   onReference: (id: ReferenceId) => void;
@@ -47,12 +53,12 @@ export function useProjectSession(props: Props) {
   const deviceBusyRef = activity.device;
   const recoveryBusyRef = activity.recovery;
   const confirmationRef = activity.confirmation;
-  const [project, setProject] = useState<Project>(() => makeProject('plane-stress-tension'));
+  const [project, setProject] = useState<Project>(() => structuredClone(props.initialProject));
   const projectRef = useRef(project);
   projectRef.current = project;
   const historyRef = useRef(createHistory(project));
   const [, setHistoryRevision] = useState(0);
-  const [dirty, setDirtyState] = useState(false);
+  const [dirty, setDirtyState] = useState(props.initialDirty ?? false);
   const documentGeneration = useRef(0);
   const editGeneration = useRef(0);
   const [saveRevision, setSaveRevision] = useState(0);
@@ -79,7 +85,7 @@ export function useProjectSession(props: Props) {
     }
     setInvalidDraftLabels(Array.from(drafts.values()));
   }, []);
-  const [path, setPath] = useState<string | null>(null);
+  const [path, setPath] = useState<string | null>(props.initialPath ?? null);
   const pathRef = useRef(path);
   pathRef.current = path;
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
@@ -89,7 +95,9 @@ export function useProjectSession(props: Props) {
   const pendingSave = useRef<Promise<boolean> | null>(null);
   const transitionPending = useRef(false);
   const [transitioning, setTransitioning] = useState(false);
-  const [referenceId, setReferenceId] = useState<ReferenceId | null>(null);
+  const [referenceId, setReferenceId] = useState<ReferenceId | null>(
+    props.initialReferenceId ?? null,
+  );
   const [fileBusy, setFileBusy] = useState<FileOperation | null>(null);
   const [confirmation, setConfirmation] = useState(false);
   const confirmResolver = useRef<((choice: 'save' | 'discard' | 'cancel') => void) | null>(null);
@@ -175,13 +183,26 @@ export function useProjectSession(props: Props) {
         deviceBusyRef.current
       )
         return false;
-      if (automatic && (confirmationRef.current || transitionPending.current || !pathRef.current))
+      if (
+        activity.native.execution.current ||
+        activity.native.file.current ||
+        activity.native.device.current
+      )
+        return false;
+      if (
+        automatic &&
+        (confirmationRef.current ||
+          transitionPending.current ||
+          activity.native.closing.current ||
+          !pathRef.current)
+      )
         return false;
       if (invalidDraftsRef.current.size) {
         callbacks.current.onError('Complete or revert the invalid numeric input before saving.');
         return false;
       }
       fileBusyRef.current = 'save';
+      activity.native.file.current = 'save';
       setFileBusy('save');
       automaticSave.current = automatic;
       if (automatic) setAutosavePhase('saving');
@@ -195,7 +216,8 @@ export function useProjectSession(props: Props) {
         const saved = await persistProjectSnapshot(
           { project: current, path: pathRef.current, jobId: cache, saveAs, automatic },
           {
-            write: saveProject,
+            write: (definition, jobId, as, automaticWrite) =>
+              saveProject(definition, jobId, as, automaticWrite, props.documentId),
             sameDocument: () => documentGeneration.current === document,
             current: () => editGeneration.current === edit && invalidDraftsRef.current.size === 0,
             associate: (savedPath) => {
@@ -227,6 +249,7 @@ export function useProjectSession(props: Props) {
       } finally {
         automaticSave.current = false;
         fileBusyRef.current = null;
+        activity.native.file.current = null;
         setFileBusy(null);
       }
     },
@@ -256,6 +279,10 @@ export function useProjectSession(props: Props) {
       blocked: () =>
         !!busyRef.current ||
         !!fileBusyRef.current ||
+        !!activity.native.execution.current ||
+        !!activity.native.file.current ||
+        activity.native.device.current ||
+        activity.native.closing.current ||
         recoveryBusyRef.current ||
         deviceBusyRef.current ||
         confirmationRef.current ||
@@ -341,7 +368,10 @@ export function useProjectSession(props: Props) {
     try {
       return await closeProjectDocument({
         canReplace,
-        clearRecovery: () => callbacks.current.clearRecovery(),
+        clearRecovery: async () => {
+          await callbacks.current.clearRecovery();
+          await callbacks.current.retireDocument();
+        },
         close: () => {
           replace(makeProject());
           callbacks.current.onNotice('Project closed');
@@ -398,11 +428,19 @@ export function useProjectSession(props: Props) {
     try {
       if (!(await canReplace())) return false;
       if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return false;
+      if (
+        activity.native.execution.current ||
+        activity.native.file.current ||
+        activity.native.device.current
+      )
+        return false;
       fileBusyRef.current = 'open';
+      activity.native.file.current = 'open';
       setFileBusy('open');
       ownsFileOperation = true;
-      const opened = await openProject();
+      const opened = await openProject(props.documentId);
       if (!opened) return false;
+      if ('existingDocumentId' in opened) return false;
       replace(
         opened.project,
         opened.manifest && opened.buffer
@@ -428,6 +466,7 @@ export function useProjectSession(props: Props) {
       setTransitioning(false);
       if (ownsFileOperation) {
         fileBusyRef.current = null;
+        activity.native.file.current = null;
         setFileBusy(null);
       }
     }
@@ -472,15 +511,23 @@ export function useProjectSession(props: Props) {
       fileBusyRef.current
     )
       return;
+    if (
+      activity.native.execution.current ||
+      activity.native.file.current ||
+      activity.native.device.current
+    )
+      return;
     fileBusyRef.current = 'export';
+    activity.native.file.current = 'export';
     setFileBusy('export');
     try {
-      const saved = await exportResults(currentData.manifest.jobId);
+      const saved = await exportResults(currentData.manifest.jobId, props.documentId);
       if (saved) callbacks.current.onNotice('Physical fields exported');
     } catch (cause) {
       callbacks.current.onError(String(cause));
     } finally {
       fileBusyRef.current = null;
+      activity.native.file.current = null;
       setFileBusy(null);
     }
   };

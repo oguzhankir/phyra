@@ -14,6 +14,7 @@ interface Props {
     | 'helpContext'
     | 'validation'
     | 'desktop'
+    | 'nativeLocked'
     | 'setConfirmation'
     | 'confirmResolver'
     | 'setHelp'
@@ -38,6 +39,7 @@ export default function WorkbenchOverlays({
     helpContext,
     validation,
     desktop,
+    nativeLocked,
     setConfirmation,
     confirmResolver,
     setHelp,
@@ -72,7 +74,7 @@ export default function WorkbenchOverlays({
                 <button
                   key={choice}
                   className={choice === 'save' ? 'primary' : 'secondary'}
-                  disabled={choice === 'save' && (!!validation || !desktop)}
+                  disabled={choice === 'save' && (!!validation || nativeLocked || !desktop)}
                   onClick={() => {
                     setConfirmation(false);
                     confirmResolver.current?.(choice);
