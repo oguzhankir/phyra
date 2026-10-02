@@ -1,6 +1,6 @@
 use super::*;
 fn project() -> Value {
-    json!({"schemaVersion":3,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
+    json!({"schemaVersion":4,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
 }
 fn legacy_project() -> Value {
     let mut project = project();
@@ -21,7 +21,7 @@ fn unmeshed_project_round_trip() {
 #[test]
 fn malformed_version_rejected() {
     let mut value = project();
-    value["schemaVersion"] = json!(7);
+    value["schemaVersion"] = json!(5);
     assert!(validate_project(&value).is_err());
 }
 #[test]
@@ -65,7 +65,7 @@ fn legacy_schema_is_validated_before_defaults_are_added() {
     legacy["study"]["solver"] = json!({"kind":"pinn"});
     assert!(migrate_project(legacy).is_err());
     let mut unknown = legacy_project();
-    unknown["schemaVersion"] = json!(4);
+    unknown["schemaVersion"] = json!(5);
     assert!(migrate_project(unknown).is_err());
     let (unchanged, migrated) = migrate_project(project()).unwrap();
     assert_eq!(unchanged, project());
@@ -111,7 +111,7 @@ fn version_two_migration_keeps_cache_for_normal_worker_validation() {
     let opened = read_archive_details(&path, &restored).unwrap();
     assert_eq!(opened.project, project());
     assert!(opened.migrated);
-    assert_eq!(opened.source_version, 2);
+    assert_eq!(opened.project["schemaVersion"], 4);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -130,6 +130,34 @@ fn version_two_schema_is_checked_before_adding_boundary_sets() {
     let mut value = version_two_project();
     value["study"]["solver"]["pinn"]["steps"] = json!(0);
     assert!(migrate_project(value).is_err());
+}
+
+#[test]
+fn version_three_migration_preserves_named_selections_and_cache() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("v3 cache");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("manifest.json"), b"{}").unwrap();
+    fs::write(source.join("buffer.bin"), b"version three result bytes").unwrap();
+    let path = temporary.path().join("version 3.phyra");
+    let mut previous = project();
+    previous["schemaVersion"] = json!(3);
+    previous["namedSelections"] = json!([boundary_set()]);
+    write_archive(&path, &previous, Some(&source)).unwrap();
+
+    let restored = temporary.path().join("new cache");
+    let opened = read_archive_details(&path, &restored).unwrap();
+    let mut expected = previous;
+    expected["schemaVersion"] = json!(4);
+    assert_eq!(opened.project, expected);
+    assert!(opened.migrated);
+    assert_eq!(opened.project["schemaVersion"], 4);
+    assert!(!opened.dropped_cache);
+    assert_eq!(
+        fs::read(restored.join("buffer.bin")).unwrap(),
+        b"version three result bytes"
+    );
+    assert!(restored.join("manifest.json").exists());
 }
 
 fn boundary_set() -> Value {

@@ -27,7 +27,7 @@ class Method:
 
 METHODS = (
     Method("fem-solid-tetra4", "fem", "3d", "solid", "scipy", "solve", None),
-    Method("fem-plane-stress-tri3", "fem", "2d", "plane-stress", "scipy", "solve", None),
+    Method("fem-plane-stress-tri3", "fem", "2d", "plane-stress", "scikit-fem", "solve", None),
     Method(
         "pinn-plane-stress-displacement",
         "pinn",
@@ -45,6 +45,14 @@ def methods_for_operation(project: dict[str, Any], operation: str) -> tuple[Meth
     formulation = project["study"].get("formulation", "solid")
     if operation == "mesh":
         return ()
+    if operation in ("train", "compare") and (
+        project["geometry"]["kind"] == "profile"
+        or any(load["kind"] == "traction" for load in project["study"]["loads"])
+    ):
+        raise EngineError(
+            "unsupported-study",
+            "PINN training supports rectangular constant-traction studies only.",
+        )
     operations = ("solve", "train") if operation == "compare" else (operation,)
     methods = tuple(
         method
@@ -59,24 +67,6 @@ def methods_for_operation(project: dict[str, Any], operation: str) -> tuple[Meth
             "unsupported-study", "The requested method is not implemented for this study."
         )
     return methods
-
-
-def generate_study_mesh(project: dict[str, Any], progress: Progress | None = None) -> Mesh | Mesh2D:
-    from phyra_engine.studies.project import validate_project
-
-    validate_project(project)
-    if project["study"].get("dimension") == "2d":
-        from phyra_engine.meshing.plane_stress import generate_rectangle
-
-        if progress:
-            progress("generating-plane-stress-mesh", None)
-        geometry, study = project["geometry"], project["study"]
-        return generate_rectangle(
-            geometry["length"], geometry["width"], study["thickness"], study["mesh"]["size"]
-        )
-    from phyra_engine.meshing.solid import generate_mesh
-
-    return generate_mesh(project, progress)
 
 
 def execute_method(
@@ -139,6 +129,12 @@ def capabilities(devices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
                 "dimension": "2d",
                 "cellType": "triangle3",
                 "geometryKinds": ["box"],
+            },
+            {
+                "id": "gmsh-occ-profile-tri3",
+                "dimension": "2d",
+                "cellType": "triangle3",
+                "geometryKinds": ["profile"],
             },
         ],
         "methods": [

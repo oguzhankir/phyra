@@ -6,11 +6,10 @@ import {
   CircleHelp,
   FilePlus2,
   FolderOpen,
-  Moon,
-  Save,
-  Sun,
-  Undo2,
   Redo2,
+  Save,
+  Search,
+  Undo2,
 } from 'lucide-react';
 import phyraLogo from '../../../assets/phyra.svg';
 import type { Theme, ThemePreference } from './theme';
@@ -39,6 +38,7 @@ type Props = {
   redoLabel: string;
   onUndo: () => void;
   onRedo: () => void;
+  onCommands?: () => void;
 };
 
 export default function WorkbenchHeader(props: Props) {
@@ -174,19 +174,39 @@ export default function WorkbenchHeader(props: Props) {
             ))}
           </div>
         </details>
-        <button className="menu-help" onClick={props.onHelp}>
+        <button
+          className="menu-help"
+          title="Contextual help · F1"
+          aria-label="Open contextual help"
+          onClick={props.onHelp}
+        >
           Help
         </button>
       </div>
       <div className="project-title" title={props.path ?? props.name}>
-        <strong>{props.name}</strong>
-        {props.dirty && <span className="dirty-dot" aria-label="Unsaved changes" />}
-        <span>{props.path ? props.path.split(/[\\/]/).pop() : 'Unsaved local project'}</span>
+        <div className="project-name-row">
+          <strong>{props.name}</strong>
+          <span className={`project-save-status${props.dirty ? ' dirty' : ''}`}>
+            {props.dirty ? 'Unsaved changes' : props.path ? 'Saved' : 'Not saved'}
+          </span>
+        </div>
+        <span className="project-file-name">
+          {props.path ? props.path.split(/[\\/]/).pop() : 'Unsaved local project'}
+        </span>
       </div>
       <div className="header-end">
-        <span className="device-badge" title="Local execution device">
-          {props.device}
-        </span>
+        {props.onCommands && (
+          <button
+            className="command-trigger"
+            data-modal-focus-fallback
+            title="Find a command · Ctrl/⌘ K"
+            aria-label="Find a command"
+            onClick={props.onCommands}
+          >
+            <Search size={15} />
+            <span>Find…</span>
+          </button>
+        )}
         <div className="file-actions">
           <button
             title="New project · Ctrl/⌘ N"
@@ -195,6 +215,7 @@ export default function WorkbenchHeader(props: Props) {
             onClick={props.onNew}
           >
             <FilePlus2 size={17} />
+            <span>New</span>
           </button>
           <button
             title="Open project · Ctrl/⌘ O"
@@ -203,30 +224,22 @@ export default function WorkbenchHeader(props: Props) {
             onClick={props.onOpen}
           >
             <FolderOpen size={17} />
+            <span>Open</span>
           </button>
           <button
+            className="save-action"
             title="Save project · Ctrl/⌘ S"
             aria-label="Save project"
             disabled={!props.canSave}
             onClick={() => props.onSave()}
           >
             <Save size={17} />
+            <span>Save</span>
           </button>
         </div>
-        <button
-          title={`Switch to ${props.theme === 'light' ? 'dark' : 'light'} theme`}
-          aria-label={`Switch to ${props.theme === 'light' ? 'dark' : 'light'} theme`}
-          onClick={() => props.onTheme(props.theme === 'light' ? 'dark' : 'light')}
-        >
-          {props.theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
-        </button>
-        <button
-          title="Contextual help · F1"
-          aria-label="Open contextual help"
-          onClick={props.onHelp}
-        >
-          <CircleHelp size={18} />
-        </button>
+        <span className="device-badge" title="Local execution device">
+          {props.device}
+        </span>
       </div>
     </header>
   );

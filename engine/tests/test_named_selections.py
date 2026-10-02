@@ -9,7 +9,7 @@ import pytest
 
 from phyra_engine.errors import EngineError
 from phyra_engine.meshing.plane_stress import generate_rectangle
-from phyra_engine.meshing.solid import generate_mesh
+from phyra_engine.meshing.solid import generate_solid
 from phyra_engine.methods.classical.plane_stress import solve_mesh as solve_plane
 from phyra_engine.methods.classical.solid import solve_mesh as solve_solid
 from phyra_engine.results import validate_cached
@@ -43,6 +43,31 @@ def test_unused_orphaned_boundary_sets_do_not_change_authoritative_assignments()
     project["namedSelections"][0]["regions"] = ["y0"]
     assert validate_project(project) == project
     assert project["study"]["constraints"] == constraints
+
+
+def test_profile_boundary_sets_accept_stable_ids_and_preserve_orphans():
+    project = example("kirsch-quarter")
+    project["namedSelections"] = [
+        {
+            "id": "saved-profile-edge",
+            "name": "Earlier profile edge",
+            "geometryKind": "profile",
+            "dimension": "2d",
+            "regions": ["edge-from-prior-profile"],
+        }
+    ]
+    assert validate_project(project) == project
+
+
+def test_version_three_upgrade_preserves_sets_and_physical_digest():
+    prior = example("cantilever")
+    prior["schemaVersion"] = 3
+    prior["namedSelections"] = [selection()]
+    expected_fingerprint = fingerprint(prior)
+    upgraded = migrate_project(prior)
+    assert upgraded["schemaVersion"] == 4
+    assert upgraded["namedSelections"] == prior["namedSelections"]
+    assert fingerprint(upgraded) == expected_fingerprint
 
 
 @pytest.mark.parametrize(
@@ -129,7 +154,7 @@ def test_version_two_migration_preserves_exact_independent_canonical_digest():
     ).hexdigest()
     upgraded = migrate_project(prior)
     assert prior == prior_copy
-    assert upgraded["schemaVersion"] == 3
+    assert upgraded["schemaVersion"] == 4
     assert upgraded["namedSelections"] == []
     assert upgraded["study"] == prior["study"]
     assert fingerprint(prior) == fingerprint(upgraded) == expected
@@ -149,7 +174,7 @@ def test_version_two_is_validated_before_any_upgrade(defect):
     elif defect == "invalid-pinn":
         project["study"]["solver"]["pinn"]["steps"] = 0
     else:
-        project["schemaVersion"] = 4
+        project["schemaVersion"] = 5
     with pytest.raises(EngineError):
         migrate_project(project)
 
@@ -163,7 +188,7 @@ def test_real_version_two_fields_survive_metadata_upgrade_and_corruption_still_f
     del prior["namedSelections"]
     geometry, study = prior["geometry"], prior["study"]
     if study["dimension"] == "3d":
-        mesh = generate_mesh(prior)
+        mesh = generate_solid(prior["geometry"], study["mesh"]["size"])
         result = solve_solid(mesh, study)
         manifest = write_solid(tmp_path, prior, "prior-solve", "solve", mesh, result)
     else:

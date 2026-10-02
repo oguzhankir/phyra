@@ -99,6 +99,22 @@ export interface Manifest {
     inferenceSeconds: number;
     device: string;
   };
+  reference?: {
+    kind: 'kirsch-plane-stress';
+    source: string;
+    mapping: string;
+    quadratureOrder: 5;
+    displacement: ComparisonMetric;
+    stress: ComparisonMetric;
+    holeTraction: { rms: number; relativeRms: number | null; maxAbsolute: number };
+    parameters: {
+      radius: number;
+      center: [number, number];
+      tension: number;
+      young: number;
+      poisson: number;
+    };
+  };
   arrays: Record<string, ArrayDescriptor>;
   summary?: {
     maxDisplacement: number;

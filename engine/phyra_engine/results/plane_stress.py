@@ -15,8 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import gmsh  # type: ignore[import-untyped]
 import numpy as np
 import scipy  # type: ignore[import-untyped]
+import skfem  # type: ignore[import-untyped]
 
 from phyra_engine import __version__
 from phyra_engine.errors import EngineError
@@ -69,12 +71,20 @@ def layout(operation: str) -> dict[str, tuple[str, str, str, int | None]]:
     return fields
 
 
-def region_metadata(mesh: Mesh2D) -> list[dict[str, Any]]:
+def region_metadata(mesh: Mesh2D, geometry: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     lengths, _ = edge_geometry(mesh)
+    names = (
+        {
+            item["id"]: item["name"]
+            for item in geometry["profile"]["outer"] + geometry["profile"]["holes"]
+        }
+        if geometry and geometry["kind"] == "profile"
+        else {}
+    )
     return [
         {
             "id": region,
-            "name": region,
+            "name": names.get(region, region),
             "triangleCount": 0,
             "edgeCount": int(np.count_nonzero(mesh.edge_regions == i)),
             "area": float(lengths[mesh.edge_regions == i].sum() * mesh.thickness),
@@ -145,7 +155,7 @@ def write_output(
         "solver": "comparison" if pinn else "pinn" if operation == "train" else "fem",
         "device": (pinn or result or {}).get("training", {}).get("device", "cpu"),
         "startedAt": started_at or datetime.now(timezone.utc).isoformat(),
-        "regions": region_metadata(mesh),
+        "regions": region_metadata(mesh, project["geometry"]),
         "statistics": {
             "nodes": len(mesh.positions),
             "cells": len(mesh.cells),
@@ -172,11 +182,18 @@ def write_output(
             "python": platform.python_version(),
             "numpy": np.__version__,
             "scipy": scipy.__version__,
-            "gmsh": "unused-2d",
+            "gmsh": gmsh.__version__ if project["geometry"]["kind"] == "profile" else "unused-2d",
+            "scikit-fem": skfem.__version__,
         },
     }
     if result:
         manifest["summary"] = result["summary"]
+        if operation == "solve":
+            from phyra_engine.results.kirsch import reference_diagnostics
+
+            reference = reference_diagnostics(mesh, project["study"], result, project["geometry"])
+            if reference is not None:
+                manifest["reference"] = reference
     if duration_seconds is not None:
         manifest["durationSeconds"] = duration_seconds
     trained = pinn or (result if operation == "train" else None)
@@ -274,6 +291,8 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
     if operation == "compare":
         expected_keys.add("comparison")
         expected_keys.add("pinnSummary")
+    if "reference" in manifest:
+        expected_keys.add("reference")
     if "durationSeconds" in manifest:
         expected_keys.add("durationSeconds")
         if not number(manifest["durationSeconds"]):
@@ -376,7 +395,13 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
         arrays["cells"],
         arrays["boundaryEdges"],
         arrays["edgeRegions"],
-        PLANAR_REGIONS,
+        tuple(
+            item["id"]
+            for item in project["geometry"]["profile"]["outer"]
+            + project["geometry"]["profile"]["holes"]
+        )
+        if project["geometry"]["kind"] == "profile"
+        else PLANAR_REGIONS,
         project["study"]["thickness"],
     )
     validate_mesh(mesh)
@@ -385,15 +410,6 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
         for first, second in ((0, 1), (1, 2), (2, 0)):
             a, b = int(cell[first]), int(cell[second])
             oriented.setdefault((min(a, b), max(a, b)), []).append(1 if a < b else -1)
-    if any(len(signs) == 2 and sum(signs) != 0 for signs in oriented.values()) or not np.isclose(
-        cell_areas(mesh).sum(),
-        project["geometry"]["length"] * project["geometry"]["width"],
-        rtol=1e-12,
-        atol=0,
-    ):
-        raise EngineError(
-            "invalid-cache", "Triangle orientation or filled rectangle area is invalid."
-        )
     if (
         manifest.get("meshId") != mesh_id(mesh)
         or not np.array_equal(arrays["surface"], mesh.cells)
@@ -401,28 +417,50 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
         or np.any(arrays["surfaceRegions"])
     ):
         raise EngineError("invalid-cache", "2D mesh identity or display mapping is invalid.")
-    for axis, extent in ((0, project["geometry"]["length"]), (1, project["geometry"]["width"])):
-        if not np.isclose(mesh.positions[:, axis].min(), 0, atol=0) or not np.isclose(
-            mesh.positions[:, axis].max(), extent, rtol=1e-12, atol=0
+    if project["geometry"]["kind"] == "profile":
+        from phyra_engine.meshing.profile import validate_profile_mesh
+
+        validate_profile_mesh(mesh, project["geometry"]["profile"])
+        if any(len(signs) == 2 and sum(signs) != 0 for signs in oriented.values()):
+            raise EngineError("invalid-cache", "Profile triangle orientation is inconsistent.")
+    else:
+        if any(
+            len(signs) == 2 and sum(signs) != 0 for signs in oriented.values()
+        ) or not np.isclose(
+            cell_areas(mesh).sum(),
+            project["geometry"]["length"] * project["geometry"]["width"],
+            rtol=1e-12,
+            atol=0,
         ):
-            raise EngineError("invalid-cache", "2D mesh domain does not match geometry.")
-    # Region indices must correspond to physical edge positions, not arbitrary labels.
-    for index, region in enumerate(PLANAR_REGIONS):
-        axis = 0 if region[0] == "x" else 1
-        coordinate = (
-            0 if region[1] == "0" else project["geometry"]["length" if axis == 0 else "width"]
-        )
-        selected = mesh.edges[mesh.edge_regions == index]
-        if not len(selected) or not np.allclose(
-            mesh.positions[selected, axis], coordinate, rtol=1e-12, atol=0
-        ):
-            raise EngineError("invalid-cache", "2D boundary labels do not match edge positions.")
-        edge_length = np.linalg.norm(
-            np.diff(mesh.positions[selected, :2], axis=1)[:, 0], axis=1
-        ).sum()
-        expected_length = project["geometry"]["width" if axis == 0 else "length"]
-        if not np.isclose(edge_length, expected_length, rtol=1e-12, atol=0):
-            raise EngineError("invalid-cache", "Boundary edges do not cover the rectangular sides.")
+            raise EngineError(
+                "invalid-cache", "Triangle orientation or filled rectangle area is invalid."
+            )
+        for axis, extent in ((0, project["geometry"]["length"]), (1, project["geometry"]["width"])):
+            if not np.isclose(mesh.positions[:, axis].min(), 0, atol=0) or not np.isclose(
+                mesh.positions[:, axis].max(), extent, rtol=1e-12, atol=0
+            ):
+                raise EngineError("invalid-cache", "2D mesh domain does not match geometry.")
+        # Region indices must correspond to physical edge positions, not arbitrary labels.
+        for index, region in enumerate(PLANAR_REGIONS):
+            axis = 0 if region[0] == "x" else 1
+            coordinate = (
+                0 if region[1] == "0" else project["geometry"]["length" if axis == 0 else "width"]
+            )
+            selected = mesh.edges[mesh.edge_regions == index]
+            if not len(selected) or not np.allclose(
+                mesh.positions[selected, axis], coordinate, rtol=1e-12, atol=0
+            ):
+                raise EngineError(
+                    "invalid-cache", "2D boundary labels do not match edge positions."
+                )
+            edge_length = np.linalg.norm(
+                np.diff(mesh.positions[selected, :2], axis=1)[:, 0], axis=1
+            ).sum()
+            expected_length = project["geometry"]["width" if axis == 0 else "length"]
+            if not np.isclose(edge_length, expected_length, rtol=1e-12, atol=0):
+                raise EngineError(
+                    "invalid-cache", "Boundary edges do not cover the rectangular sides."
+                )
     regions = manifest["regions"]
     if (
         not isinstance(regions, list)
@@ -434,7 +472,7 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
             or not number(region.get("area"))
             for region in regions
         )
-        or regions != region_metadata(mesh)
+        or regions != region_metadata(mesh, project["geometry"])
         or not np.isclose(stats.get("minQuality", -1), quality(mesh).min(), rtol=1e-12, atol=0)
     ):
         raise EngineError("invalid-cache", "2D boundary or quality metadata mismatch.")
@@ -442,12 +480,14 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
     version_keys = {"engine", "python", "numpy", "scipy", "gmsh"} | (
         {"torch"} if operation in ("train", "compare") else set()
     )
+    if isinstance(versions, dict) and "scikit-fem" in versions:
+        version_keys.add("scikit-fem")
+    if project["geometry"]["kind"] == "profile" and "scikit-fem" not in version_keys:
+        raise EngineError("invalid-cache", "Profile results must identify the scikit-fem backend.")
     if (
         not isinstance(versions, dict)
         or set(versions) != version_keys
-        or any(
-            not text(versions.get(k), 100) for k in ("engine", "python", "numpy", "scipy", "gmsh")
-        )
+        or any(not text(versions.get(k), 100) for k in version_keys)
     ):
         raise EngineError("invalid-cache", "2D backend provenance is invalid.")
     training = (
@@ -462,6 +502,20 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
             arrays,
             manifest["summary"],
             training if operation == "train" else None,
+        )
+    from phyra_engine.results.kirsch import reference_diagnostics
+
+    expected_reference = (
+        reference_diagnostics(mesh, project["study"], arrays, project["geometry"])
+        if operation == "solve"
+        else None
+    )
+    if json.dumps(manifest.get("reference"), sort_keys=True, allow_nan=False) != json.dumps(
+        expected_reference, sort_keys=True, allow_nan=False
+    ):
+        raise EngineError(
+            "invalid-cache",
+            "Independent reference metrics disagree with physical fields or study conditions.",
         )
     if operation == "compare":
         if training is None:
@@ -497,6 +551,8 @@ def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict
                 and not number(metric["relativeL2"])
             ):
                 raise EngineError("invalid-cache", "Comparison metrics have invalid scalar types.")
+    if "reference" in manifest:
+        expected_keys.add("reference")
     if "durationSeconds" in manifest:
         minimum = manifest.get("summary", {}).get("elapsedSeconds", 0)
         if operation == "compare":

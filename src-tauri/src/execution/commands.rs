@@ -1,4 +1,5 @@
 use super::{
+    events::RunRequestId,
     state::{cancel_child, owned_directory, retain_job, EngineState},
     worker::{job_directory, remember_failure, worker},
 };
@@ -14,15 +15,25 @@ pub(crate) async fn run_job(
     app: tauri::AppHandle,
     operation: String,
     project: Value,
+    request_id: String,
 ) -> Result<Value, String> {
     if !matches!(operation.as_str(), "mesh" | "solve" | "train" | "compare") {
         return Err("Unsupported analysis operation".into());
     }
+    let request_id = RunRequestId::parse(request_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EngineState>();
         let directory = job_directory(&app)?;
         let id = uuid::Uuid::new_v4().to_string();
-        let result = worker(&app, &state, &operation, &project, &directory, &id);
+        let result = worker(
+            &app,
+            &state,
+            &operation,
+            &project,
+            &directory,
+            &id,
+            Some(&request_id),
+        );
         match result {
             Ok(manifest) => {
                 trace_verification("run-job-retaining-result");
@@ -53,6 +64,7 @@ pub(crate) async fn get_devices(app: tauri::AppHandle, project: Value) -> Result
             &project,
             &directory,
             &uuid::Uuid::new_v4().to_string(),
+            None,
         );
         if let Err(ref error) = result {
             remember_failure(&app, &directory, error);

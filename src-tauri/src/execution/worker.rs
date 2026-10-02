@@ -1,4 +1,5 @@
 use super::{
+    events::RunRequestId,
     state::{Active, EngineState},
     validation::{validate_capabilities, validate_devices, validate_metrics, MAX_METRICS},
 };
@@ -67,6 +68,7 @@ pub(crate) fn worker(
     project: &Value,
     directory: &Path,
     job_id: &str,
+    request_id: Option<&RunRequestId>,
 ) -> Result<Value, String> {
     trace_verification(&format!("worker-request:{operation}"));
     validate_project(project)?;
@@ -167,7 +169,9 @@ pub(crate) fn worker(
                         return Err("Invalid engine progress identity or value".into());
                     }
                     if !cancelled.load(Ordering::SeqCst) {
-                        let _ = app.emit("engine-progress", &event);
+                        if let Some(request_id) = request_id {
+                            let _ = app.emit("engine-progress", request_id.event(&event));
+                        }
                     }
                 }
                 Some("complete") => {
@@ -197,7 +201,9 @@ pub(crate) fn worker(
                         training_started.store(true, Ordering::SeqCst);
                     }
                     if !cancelled.load(Ordering::SeqCst) {
-                        let _ = app.emit("engine-metrics", &event);
+                        if let Some(request_id) = request_id {
+                            let _ = app.emit("engine-metrics", request_id.event(&event));
+                        }
                     }
                 }
                 Some("error") => {

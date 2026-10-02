@@ -21,6 +21,8 @@ export function NumberInput({
   unit,
   disabled = false,
   physical = true,
+  positive = false,
+  maximum = Infinity,
 }: {
   label: string;
   value: number;
@@ -28,13 +30,16 @@ export function NumberInput({
   unit?: string;
   disabled?: boolean;
   physical?: boolean;
+  positive?: boolean;
+  maximum?: number;
 }) {
   const id = useId();
   const reportValidity = useContext(NumericDraftContext);
   const [text, setText] = useState(String(value));
   const textRef = useRef(text);
   textRef.current = text;
-  const invalid = parseNumericDraft(text) === null;
+  const invalid =
+    parseNumericDraft(text) === null || (positive && !(Number(text) > 0)) || Number(text) > maximum;
   useEffect(() => {
     const parsed = parseNumericDraft(textRef.current);
     if (
@@ -66,8 +71,9 @@ export function NumberInput({
             textRef.current = draft;
             setText(draft);
             const parsed = parseNumericDraft(draft);
-            if (physical) reportValidity(id, parsed === null ? label : null);
-            if (parsed !== null) onChange(parsed);
+            const valid = parsed !== null && (!positive || parsed > 0) && parsed <= maximum;
+            if (physical) reportValidity(id, valid ? null : label);
+            if (valid) onChange(parsed!);
           }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
@@ -80,7 +86,11 @@ export function NumberInput({
         {unit && <span>{unit}</span>}
       </div>
       {invalid && (
-        <small className="draft-error">Complete the number, or press Escape to revert.</small>
+        <small className="draft-error">
+          {positive
+            ? `Enter a positive number${Number.isFinite(maximum) ? ` at most ${maximum}` : ''}, or press Escape to revert.`
+            : 'Complete the number, or press Escape to revert.'}
+        </small>
       )}
     </label>
   );

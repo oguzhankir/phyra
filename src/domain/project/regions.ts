@@ -4,7 +4,13 @@ export type RegionId = Project['study']['loads'][number]['regions'][number];
 export function regionNames(
   kind: Project['geometry']['kind'],
   dimension: '2d' | '3d' = '3d',
+  profile?: Project['geometry']['profile'],
 ): { id: RegionId; name: string }[] {
+  if (kind === 'profile' && dimension === '2d')
+    return [...(profile?.outer ?? []), ...(profile?.holes ?? [])].map(({ id, name }) => ({
+      id,
+      name,
+    }));
   if (dimension === '2d')
     return [
       { id: 'x0', name: 'Left edge · X−' },

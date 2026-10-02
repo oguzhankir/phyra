@@ -30,7 +30,9 @@ pub(crate) fn verification_enabled() -> bool {
 
 #[tauri::command]
 pub(crate) fn verification_configuration() -> Option<&'static str> {
-    if std::env::args().any(|argument| argument == "--verify-physicsml") {
+    if std::env::args().any(|argument| argument == "--verify-profile") {
+        Some("2d-profile")
+    } else if std::env::args().any(|argument| argument == "--verify-physicsml") {
         Some("2d-compare")
     } else if std::env::args().any(|argument| argument == "--verify-workflow") {
         Some("3d")
@@ -151,7 +153,15 @@ pub(crate) fn verify_owned_runs(
     let state = app.state::<EngineState>();
     trace_verification("verification-repeat-mesh");
     let mesh_id = uuid::Uuid::new_v4().to_string();
-    worker(app, &state, "mesh", project, repeated_dir.path(), &mesh_id)?;
+    worker(
+        app,
+        &state,
+        "mesh",
+        project,
+        repeated_dir.path(),
+        &mesh_id,
+        None,
+    )?;
     trace_verification("verification-repeat-solve");
     let solve_id = uuid::Uuid::new_v4().to_string();
     let repeated = worker(
@@ -161,6 +171,7 @@ pub(crate) fn verify_owned_runs(
         project,
         repeated_dir.path(),
         &solve_id,
+        None,
     )?;
     let repeated_ok = repeated["jobId"] != report["manifest"]["jobId"]
         && repeated["operation"] == "solve"
@@ -203,6 +214,7 @@ pub(crate) fn verify_owned_runs(
             &snapshot,
             &output,
             &uuid::Uuid::new_v4().to_string(),
+            None,
         )
     });
     let deadline = std::time::Instant::now()
@@ -285,6 +297,7 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
         &reopened,
         restored.path(),
         &uuid::Uuid::new_v4().to_string(),
+        None,
     )?;
     trace_verification("verification-compare-buffer");
     report["persistence"] = json!({"projectMatches":reopened == project,
@@ -292,6 +305,30 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
         "bufferMatches":read_bounded(&original.join("buffer.bin"),MAX_BLOB)?
             == read_bounded(&restored.path().join("buffer.bin"),MAX_BLOB)?,
         "pathHasSpacesAndUnicode":true});
+    let export_path = directory.join("verification results.csv");
+    let buffer = read_bounded(&restored.path().join("buffer.bin"), MAX_BLOB)?;
+    crate::results::export::write_result_csv(&export_path, &validated, &buffer)?;
+    let csv = fs::read_to_string(&export_path).map_err(|e| e.to_string())?;
+    report["export"] = json!({"physicalUnits":csv.contains("ux_m") && csv.contains("sxx_Pa"),
+        "provenance":csv.contains(validated["fingerprint"].as_str().ok_or("Missing fingerprint")?),
+        "independentReference":csv.contains("independentReference=")});
+    let mut changed = reopened.clone();
+    changed["study"]["material"]["young"] = json!(
+        project["study"]["material"]["young"]
+            .as_f64()
+            .ok_or("Missing modulus")?
+            * 1.1
+    );
+    report["staleResultRejected"] = json!(worker(
+        app,
+        &state,
+        "validate",
+        &changed,
+        restored.path(),
+        &uuid::Uuid::new_v4().to_string(),
+        None
+    )
+    .is_err());
     report["recovery"] =
         crate::project::recovery::verify_definition_recovery(&project, &directory)?;
     let capabilities_directory = tempfile::Builder::new()
@@ -305,6 +342,7 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
         &project,
         capabilities_directory.path(),
         &uuid::Uuid::new_v4().to_string(),
+        None,
     )?;
     report["engineCapabilities"] = capabilities["capabilities"].clone();
     capabilities_directory.close().map_err(|e| e.to_string())?;

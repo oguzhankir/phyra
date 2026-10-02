@@ -88,7 +88,7 @@ def constraint_dofs(mesh: Mesh, constraints: list[dict[str, Any]]) -> dict[int, 
     return prescribed
 
 
-def _rigid_rank(mesh: Mesh, fixed: np.ndarray) -> None:
+def validate_rigid_restraints(mesh: Mesh, fixed: np.ndarray) -> None:
     centered = mesh.positions - mesh.positions.mean(axis=0)
     length = np.linalg.norm(np.ptp(mesh.positions, axis=0))
     centered /= length

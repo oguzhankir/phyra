@@ -27,6 +27,7 @@ export type HelpArticleId =
   | 'solver'
   | 'fem-3d'
   | 'fem-2d'
+  | 'kirsch-quarter'
   | 'pinn'
   | 'devices'
   | 'comparison'
@@ -146,19 +147,20 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'From model to results',
         steps: [
-          'Open an example for a complete starting problem, or create a new project and add its supports and loads.',
-          'Set the study dimension, geometry and one isotropic material. Check the length units before entering values.',
-          'Select boundaries in the viewport or boundary list. Define support components and total force or pressure.',
-          'Choose a mesh size and generate the mesh. Inspect the element count and minimum quality.',
-          'Run Classical FEM. Inspect deformation, physical fields, reactions and balance before drawing conclusions.',
-          'Save the project. Export physical fields when you need authoritative SI values outside the workbench.',
+          'Choose an editable example from Example projects, or use New to start a project.',
+          'In Prepare, review Study definition, Geometry and Material. The right inspector edits the selected task; Next moves to the following task.',
+          'In Supports and Loads, select named boundaries and define their physical conditions. Check visible units before entering values.',
+          'Open Solve, choose a mesh size and use Generate mesh above the viewport. Inspect the element count and minimum quality.',
+          'Open Solution method and use Run FEM. The main action above the viewport follows the selected task.',
+          'In Inspect, choose a field from the viewport toolbar and review physical values and reference errors. Open details for equilibrium, assumptions and provenance; use Export fields for SI CSV data.',
+          'Use Save to retain the study and current results. Find… or Ctrl/⌘ K searches existing editors and actions; F1 opens the current screen’s help.',
         ],
         screenshots: [
           {
             src: '/help/solid-workbench.jpg',
-            alt: 'Current light workbench displaying a saved CPU cantilever FEM solution.',
+            alt: 'Preceding light workbench displaying a saved CPU cantilever FEM solution.',
             caption:
-              'Current browser workspace with a recorded CPU FEM reference. Deformation is amplified; computing new fields requires the desktop app.',
+              'Preceding workspace layout with a recorded CPU FEM reference. Deformation is amplified; computing new fields requires the desktop app.',
           },
         ],
       },
@@ -182,15 +184,16 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Read the workspace',
         paragraphs: [
-          'The model tree selects preparation tasks; the inspector edits their properties. Problems links diagnostics to the relevant input or guide. Run overview, training and comparison inspect the selected execution.',
+          'The left workflow separates Prepare, Solve and Inspect. Expand an existing stage to find its editors; the right inspector edits that selection while the central viewport shows the model or current fields.',
+          'Problems keeps actionable diagnostics visible without opening every interpretation warning. Run overview retains execution evidence; training and comparison views appear only for supported studies. Advanced settings and scientific details remain available in disclosures.',
           'Light and dark themes change presentation, not physical values, units or the contour mapping.',
         ],
         screenshots: [
           {
             src: '/help/dark-workbench.jpg',
-            alt: 'Current dark workbench displaying saved CPU plane-stress fields and stored training history.',
+            alt: 'Preceding dark workbench displaying saved CPU plane-stress fields and stored training history.',
             caption:
-              'Dark presentation of a saved CPU comparison. The history is recorded; no training is running in this browser view.',
+              'Preceding dark workspace layout with a saved CPU comparison. The history is recorded; no training is running in this browser view.',
           },
         ],
       },
@@ -203,13 +206,26 @@ export const helpArticles: readonly HelpArticle[] = [
     summary: 'Edit supported primitives and assign conditions to named geometric boundaries.',
     category: 'Prepare',
     kind: 'Guide',
-    keywords: ['box', 'cylinder', 'bracket', 'rectangle', 'face', 'edge', 'selection', 'dimension'],
+    keywords: [
+      'box',
+      'cylinder',
+      'bracket',
+      'rectangle',
+      'profile',
+      'arc',
+      'circle',
+      'hole',
+      'face',
+      'edge',
+      'selection',
+      'dimension',
+    ],
     sections: [
       {
         title: 'Supported domains',
         bullets: [
           '3D: a box, an X-axis cylinder, or a connected L bracket. Bracket thickness must be smaller than both in-plane dimensions.',
-          '2D: a rectangle in the X–Y plane. Physical thickness belongs to the study; it is not a third layer of solid elements.',
+          '2D: a rectangle or one closed counterclockwise profile of 2–64 straight edges/circular arcs and up to 16 enclosed circular holes in X–Y. Each arc is at most 180°. Physical thickness belongs to the study.',
           'A cylinder spans X = 0 to length, with its axis centered at Y = Z = 0.',
         ],
       },
@@ -218,7 +234,7 @@ export const helpArticles: readonly HelpArticle[] = [
         steps: [
           'Select a face in 3D or an edge in 2D, then inspect its boundary name. Use the boundary list if a face is hard to reach.',
           'Create or edit a support/load and check its assigned boundaries. One assignment may include several boundaries.',
-          'Review assignments after changing the primitive or study dimension: those changes clear incompatible conditions.',
+          'Profile IDs persist through remeshing. Editing or deleting an ID leaves its old assignment invalid: explicitly select a valid boundary and remove the missing assignment. Changing study dimension clears incompatible conditions.',
         ],
         note: {
           tone: 'info',
@@ -226,7 +242,7 @@ export const helpArticles: readonly HelpArticle[] = [
         },
       },
     ],
-    related: ['supports', 'loads', 'units'],
+    related: ['supports', 'loads', 'units', 'kirsch-quarter'],
   },
   {
     id: 'material',
@@ -286,7 +302,7 @@ export const helpArticles: readonly HelpArticle[] = [
           {
             label: '2D plane stress',
             value:
-              'In-plane displacement in a rectangle with explicit physical thickness. FEM and experimental PINN are available.',
+              'In-plane displacement in a rectangle or line/arc profile with explicit physical thickness. FEM supports both; experimental PINN supports rectangular force/pressure studies.',
           },
           {
             label: 'Linear static',
@@ -385,6 +401,14 @@ export const helpArticles: readonly HelpArticle[] = [
           text: '1 Pa = 1 N/m². Pressure remains in Pa when the length display switches to millimetres.',
         },
       },
+      {
+        title: 'Typed spatial vector traction · FEM',
+        paragraphs: [
+          'Traction is t = σ(X,Y)n in Pa at boundary integration points, with the outward material normal. The supported stress fields are affine symmetric stress and Kirsch circular-hole stress. These are typed numeric definitions; arbitrary expression syntax is not accepted.',
+          'For affine stress, each xx/yy/xy component is a + bX + cY. The constant a uses Pa, and the X/Y coefficients b/c use Pa/m. Coordinates remain SI metres when display units change. Integrated force uses the physical study thickness.',
+          'For Kirsch stress, edit the center, radius and remote X tension. The intended reference is outside the stated circle; matching the exact quarter geometry and symmetry/outer conditions enables independent analytical diagnostics. A different boundary assignment or geometry may make the reference inapplicable.',
+        ],
+      },
     ],
     related: ['supports', 'units', 'results'],
   },
@@ -409,6 +433,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Before solving',
         steps: [
           'Choose a positive target element size in the displayed length unit, then generate the mesh.',
+          'For profiles, enable Boundary refinement and choose a smaller boundary element size when curved features need additional resolution. Gmsh receives exact curves; first-order cells and boundary edges use chord approximations.',
           'Inspect the surface, node/cell counts and minimum quality. Confirm that boundaries and thin features are represented.',
           'Refine the size and repeat a solve to check a quantity that matters, such as displacement. A quality score alone does not establish accuracy.',
         ],
@@ -504,20 +529,84 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'What plane stress means',
         paragraphs: [
-          'The rectangle lies in X–Y. The model assumes σzz = τyz = τxz = 0 and solves Ux/Uy. Out-of-plane strain may still occur; plane stress is not plane strain.',
-          'Constant-strain triangles provide the FEM discretization. Thickness scales stiffness, edge-load area and strain energy. It is an explicit physical input, not a display setting.',
+          'The domain lies in X–Y. The model assumes σzz = τyz = τxz = 0 and solves Ux/Uy. Out-of-plane strain may still occur; plane stress is not plane strain.',
+          'First-order triangles assembled through scikit-fem provide the FEM discretization. Thickness scales stiffness, edge-load area and strain energy. It is an explicit physical input, not a display setting.',
         ],
       },
       {
         title: 'Set up and inspect',
         steps: [
           'Choose 2D plane stress and enter positive thickness.',
-          'Define X/Y support components and in-plane total force or pressure on rectangle edges.',
+          'Define X/Y support components and in-plane total force, pressure or typed spatial traction on named edges.',
           'Run FEM and inspect in-plane displacement, cell stress and reactions. Export uses common three-component displacement/six-component stress layouts with unused out-of-plane fields zero.',
         ],
       },
     ],
-    related: ['study', 'loads', 'comparison'],
+    related: ['study', 'loads', 'comparison', 'kirsch-quarter'],
+  },
+  {
+    id: 'kirsch-quarter',
+    title: 'Circular cutout · independent Kirsch check',
+    summary: 'Edit and solve a quarter plate through the ordinary profile and FEM workflow.',
+    category: 'Solve',
+    kind: 'Guide',
+    keywords: [
+      'Kirsch',
+      'hole',
+      'profile',
+      'arc',
+      'analytical',
+      'reference',
+      'convergence',
+      'Le-Duc',
+      'quarter',
+    ],
+    sections: [
+      {
+        title: 'Source and SI realization',
+        paragraphs: [
+          'Kirsch quarter plate · SI realization follows the circular-hole plane-stress example in Section 6.3 and Appendix B.2 of Le-Duc, Nguyen-Xuan and Lee (2026). The linked author implementation uses the second quadrant, X = −L to 0 and Y = 0 to L; the appendix gives the mirrored first quadrant.',
+          'The sources give R = 1, L = 4, E = 100000, ν = 0.3 and remote X tension = 0.5, but state neither units nor physical thickness. Phyra authors an SI realization with these numerical values in m/Pa and a chosen 0.1 m thickness. This is Phyra FEM checked against an analytical solution; it does not reproduce nEPINN training or its performance.',
+        ],
+        references: [
+          {
+            title:
+              'Normalized energy-based physics-informed neural network: Theory and applications to solid mechanics problems',
+            authors: 'Thang Le-Duc, H. Nguyen-Xuan and Jaehong Lee',
+            year: 2026,
+            url: 'https://doi.org/10.1016/j.finel.2026.104523',
+            scope:
+              'Section 6.3 and Appendix B.2 establish the circular-hole problem and reference. Units and physical thickness are unstated.',
+          },
+          {
+            title: 'Author circular-hole implementation · pinned 0889268',
+            authors: 'Thang Le-Duc',
+            url: 'https://github.com/ThangLe-duc/nEPINN/blob/0889268fbb3cb5cbbf92b4b9c7cf2c90f79fad75/Elasticity_2Dand3D/PlateWithHole.py',
+            scope:
+              'Second-quadrant coordinates, symmetry conditions and exact spatial outer traction; inspected for conventions, not copied or executed.',
+          },
+        ],
+      },
+      {
+        title: 'Edit, solve and inspect',
+        steps: [
+          'Open the Kirsch quarter example. Inspect the clockwise circular cutout arc in the counterclockwise outer loop. Bottom uy = 0 and vertical ux = 0 are symmetry conditions; the cutout is free.',
+          'Inspect Loads: the outer left and top edges use the exact spatial vector traction σn, not uniform tension on both edges. Review the stated center, radius and remote tension.',
+          'Generate a mesh, then run FEM. Inspect displacement/stress, reactions, force/moment balance and Independent Kirsch reference in Results.',
+          'Reduce target and boundary sizes and repeat. Compare area-weighted displacement/stress errors across at least three meshes. Free-hole traction from first-order element stress also needs refinement.',
+          'For a changed case, use Arc radius in Geometry and separately update Hole radius and Remote X tension in Loads. Preserve matching geometry, symmetry and outer conditions for the independent reference. Save, reopen and export the resulting study.',
+        ],
+      },
+      {
+        title: 'What the diagnostics mean',
+        paragraphs: [
+          'Displacement and stress are evaluated at identical seven-point triangle quadrature locations. Relative L2 errors integrate area; stress uses the tensor Frobenius norm. Maximum errors use m/Pa, while relative metrics are dimensionless. A zero analytical norm gives an undefined relative error rather than 0/0.',
+          'Free-hole traction RMS uses the finite-element boundary chord normals and is normalized by the absolute remote tension when nonzero. Linear triangular cells approximate the circle with chords; the model curves themselves remain exact.',
+          'Reference diagnostics appear only for the supported matching quarter geometry and boundary conditions. An arbitrary edited profile still runs ordinary FEM when valid, without claiming an analytical reference. A single mesh or low error does not establish general accuracy.',
+        ],
+      },
+    ],
+    related: ['geometry', 'loads', 'mesh', 'fem-2d', 'results', 'files'],
   },
   {
     id: 'pinn',
@@ -640,7 +729,7 @@ export const helpArticles: readonly HelpArticle[] = [
         screenshots: [
           {
             src: '/help/comparison-workbench.jpg',
-            alt: 'Current plane-stress comparison showing shared FEM fields and recorded FEM/PINN difference metrics.',
+            alt: 'Preceding plane-stress comparison showing shared FEM fields and recorded FEM/PINN difference metrics.',
             caption:
               'Saved CPU plane-stress comparison with FEM selected. Switch sources to inspect PINN and differences; these are recorded measurements.',
           },
@@ -772,8 +861,8 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Project files',
         paragraphs: [
           'Save or Save as creates a .phyra archive with the project definition and available compatible cached fields. Reopening validates metadata and binary arrays before displaying results.',
-          'Version 1 and 2 definitions are validated before migrating to version 3. Version 1 cached fields are discarded explicitly. Version 2 caches pass the normal input-fingerprint and scientific-field validation before retention; an invalid cache rejects opening rather than displaying untrusted fields.',
-          'Version 3 preserves named boundary sets. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
+          'Versions 1, 2 and 3 are validated before migrating to version 4. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
+          'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
       {
@@ -964,8 +1053,8 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Available now',
         bullets: [
-          'Homogeneous isotropic small-strain linear static elasticity: supported 3D primitives with FEM; rectangular 2D plane stress with FEM and experimental PINN.',
-          'Global component displacement supports, distributed total force and inward/outward pressure on supported boundaries.',
+          'Homogeneous isotropic small-strain linear static elasticity: supported 3D primitives and bounded line/arc/circular-hole profiles with FEM; rectangular 2D plane stress with FEM and experimental PINN.',
+          'Global component displacement supports, distributed total force and inward/outward pressure on supported boundaries; typed affine/Kirsch spatial traction for 2D FEM.',
           'Local offline execution, same-location comparison, physical fields, safe project persistence, CSV export and owned-worker cancellation.',
         ],
       },
@@ -1077,6 +1166,18 @@ export const helpArticles: readonly HelpArticle[] = [
             url: 'https://doi.org/10.1002/nme.2579',
             scope:
               'Primary description of the upstream mesher. Phyra exposes a bounded primitive workflow; the paper does not establish broader geometry or solver support.',
+          },
+        ],
+      },
+      {
+        title: 'Plane-stress FEM backend',
+        references: [
+          {
+            title: 'scikit-fem API documentation',
+            authors: 'scikit-fem contributors',
+            url: 'https://scikit-fem.readthedocs.io/en/latest/api.html',
+            scope:
+              'Maintained finite-element assembly library used by the narrow first-order plane-stress adapter. Phyra independently checks constitutive factors, traction integration and analytical convergence.',
           },
         ],
       },

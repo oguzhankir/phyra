@@ -1,4 +1,4 @@
-"""Plane-stress, homogeneous isotropic elasticity using constant-strain triangles.
+"""Plane-stress elasticity solved through the maintained scikit-fem P1 adapter.
 
 The domain lies in global xy, with physical thickness in metres. Strain order is
 [xx, yy, engineering xy]; stress order is [xx, yy, tensor xy]. Constant edge
@@ -10,7 +10,7 @@ import warnings
 from typing import Any
 
 import numpy as np
-from scipy.sparse import coo_matrix, csr_matrix, diags  # type: ignore[import-untyped]
+from scipy.sparse import csr_matrix, diags  # type: ignore[import-untyped]
 from scipy.sparse.linalg import MatrixRankWarning, spsolve  # type: ignore[import-untyped]
 
 from phyra_engine.errors import EngineError
@@ -18,18 +18,21 @@ from phyra_engine.execution.events import Progress
 from phyra_engine.materials.isotropic import plane_stress_matrix as constitutive_matrix
 from phyra_engine.meshing.plane_stress import validate_mesh
 from phyra_engine.meshing.types import Mesh2D
-from phyra_engine.results.diagnostics import summary
-from phyra_engine.results.fields import pack_stress, von_mises
-from phyra_engine.studies.plane_stress import (
+from phyra_engine.methods.classical.scikit_plane import assemble as backend_assemble
+from phyra_engine.methods.classical.scikit_plane import recover_stress
+from phyra_engine.physics.elasticity.plane_stress import (
     constraint_dofs,
     integrate_edge_loads,
     validate_constraints,
 )
+from phyra_engine.results.diagnostics import summary
+from phyra_engine.results.fields import pack_stress, von_mises
 
 
 def element_matrices(
     mesh: Mesh2D, young: float, poisson: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Independent CST regression oracle only; production uses scikit-fem."""
     p = mesh.positions[mesh.cells, :2]
     jacobian = np.stack((p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]), axis=2)
     areas = np.linalg.det(jacobian) / 2
@@ -57,18 +60,7 @@ def element_matrices(
 
 
 def assemble(mesh: Mesh2D, young: float, poisson: float) -> csr_matrix:
-    _, _, local = element_matrices(mesh, young, poisson)
-    dofs = (mesh.cells[:, :, None] * 2 + np.arange(2)).reshape(-1, 6)
-    return coo_matrix(
-        (
-            local.reshape(-1),
-            (
-                np.broadcast_to(dofs[:, :, None], local.shape).reshape(-1),
-                np.broadcast_to(dofs[:, None, :], local.shape).reshape(-1),
-            ),
-        ),
-        shape=(2 * len(mesh.positions), 2 * len(mesh.positions)),
-    ).tocsr()
+    return backend_assemble(mesh, young, poisson)
 
 
 def solve_system(
@@ -76,7 +68,7 @@ def solve_system(
 ) -> dict[str, Any]:
     start = time.perf_counter()
     validate_mesh(mesh)
-    material = constitutive_matrix(young, poisson)
+    constitutive_matrix(young, poisson)
     validate_constraints(mesh, prescribed)
     force = np.asarray(force, dtype=np.float64)
     if force.shape != (len(mesh.positions), 2) or not np.isfinite(force).all():
@@ -133,10 +125,7 @@ def solve_system(
         )
     reactions = np.zeros_like(flat)
     reactions[fixed] = residual[fixed]
-    strain, _, _ = element_matrices(mesh, young, poisson)
-    stress = np.einsum(
-        "ab,cbi,ci->ca", material, strain, flat.reshape(-1, 2)[mesh.cells].reshape(-1, 6)
-    )
+    stress = recover_stress(mesh, young, poisson, flat)
     displacement = flat.reshape(-1, 2)
     reaction_nodes = reactions.reshape(-1, 2)
     diagnostic = summary(

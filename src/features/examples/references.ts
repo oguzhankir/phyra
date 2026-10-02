@@ -128,7 +128,7 @@ export function validateReference(
   const project = projectValue as unknown as Project;
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 3 && project.study.dimension === dimension,
+    project.schemaVersion === 4 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(

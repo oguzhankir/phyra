@@ -10,6 +10,16 @@ fn selection_trim(value: &str) -> &str {
     })
 }
 
+fn profile_region_id(value: &str) -> bool {
+    let mut characters = value.chars();
+    characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && characters.all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
+}
+
 fn validate_version(project: &Value, version: u64) -> Result<(), String> {
     if project["schemaVersion"].as_u64() != Some(version) {
         return Err("Unsupported project schema version".into());
@@ -17,7 +27,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
     let source = match version {
         1 => include_str!("../../../contracts/project-v1.schema.json"),
         2 => include_str!("../../../contracts/project-v2.schema.json"),
-        3 => include_str!("../../../contracts/project.schema.json"),
+        3 => include_str!("../../../contracts/project-v3.schema.json"),
+        4 => include_str!("../../../contracts/project.schema.json"),
         _ => return Err("Unsupported project schema version".into()),
     };
     let schema: Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
@@ -25,7 +36,7 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .validate(project)
         .map_err(|e| format!("Invalid version {version} project: {e}"))?;
-    if version == 3 {
+    if version >= 3 {
         validate_named_selections(project)?;
     }
     Ok(())
@@ -34,7 +45,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
 fn validate_named_selections(project: &Value) -> Result<(), String> {
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
-    // The JSON Schema above has already checked collection, stamp and item types.
+    // The JSON Schema above checks collection, stamp and item types. Validate
+    // against the set's stamped topology, so orphaned sets remain recoverable.
     for selection in project["namedSelections"].as_array().unwrap() {
         let id = selection["id"].as_str().unwrap();
         let name = selection_trim(selection["name"].as_str().unwrap()).to_ascii_lowercase();
@@ -46,6 +58,17 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
         }
         let kind = selection["geometryKind"].as_str().unwrap();
         let dimension = selection["dimension"].as_str().unwrap();
+        if dimension == "2d" && kind == "profile" {
+            if selection["regions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|region| !profile_region_id(region.as_str().unwrap()))
+            {
+                return Err("A profile boundary set has an invalid boundary identifier".into());
+            }
+            continue;
+        }
         let allowed: &[&str] = match (dimension, kind) {
             ("2d", "box") => &["x0", "x1", "y0", "y1"],
             ("3d", "box") => &["x0", "x1", "y0", "y1", "z0", "z1"],
@@ -61,14 +84,12 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
         {
             return Err("A boundary set refers to an unavailable stamped boundary".into());
         }
-        // Compare to the set's stamped topology, never the active project:
-        // orphaned preparation metadata remains recoverable after a kind edit.
     }
     Ok(())
 }
 
 pub(crate) fn validate_project(project: &Value) -> Result<(), String> {
-    validate_version(project, 3)
+    validate_version(project, 4)
 }
 
 pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), String> {
@@ -76,7 +97,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     validate_version(&project, version)?;
-    if version == 3 {
+    if version == 4 {
         return Ok((project, false));
     }
     if version == 1 {
@@ -88,8 +109,10 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
             "learningRate":0.001,"steps":1000,"interiorPoints":128,
             "boundaryPoints":32,"seed":42,"device":"auto"}});
     }
-    project["schemaVersion"] = json!(3);
-    project["namedSelections"] = json!([]);
+    if version < 3 {
+        project["namedSelections"] = json!([]);
+    }
+    project["schemaVersion"] = json!(4);
     validate_project(&project)?;
     Ok((project, true))
 }

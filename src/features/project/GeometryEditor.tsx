@@ -2,6 +2,8 @@ import type { Project } from '../../domain/contracts/types';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
 
 import type { ProjectInspectorModel } from './model';
+import ProfileEditor from './ProfileEditor';
+import { changeGeometryKind } from '../../domain/project/profile';
 export default function GeometryEditor({ workbench }: { workbench: ProjectInspectorModel }) {
   const {
     is2D,
@@ -20,7 +22,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
   } = workbench;
   return (
     <>
-      <Group title={is2D ? 'Rectangular domain' : 'Solid definition'}>
+      <Group title={is2D ? 'Plane domain' : 'Solid definition'}>
         <label className="field-label">
           <span>{is2D ? 'Domain' : 'Primitive'}</span>
           <select
@@ -34,9 +36,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
               if (kind === project.geometry.kind) return;
               const count = project.study.constraints.length + project.study.loads.length;
               edit((next) => {
-                next.geometry.kind = kind;
-                next.study.constraints = [];
-                next.study.loads = [];
+                changeGeometryKind(next, event.target.value as Project['geometry']['kind']);
               });
               setSelected([]);
               setConstraintId(null);
@@ -47,6 +47,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
             }}
           >
             <option value="box">{is2D ? 'Rectangular domain' : 'Rectangular solid'}</option>
+            {is2D && <option value="profile">Line / arc profile with circular holes</option>}
             {!is2D && (
               <>
                 <option value="cylinder">Cylinder · X axis</option>
@@ -55,33 +56,35 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
             )}
           </select>
         </label>
-        {(
-          [
-            'length',
-            ...(is2D
-              ? ['width']
-              : project.geometry.kind === 'cylinder'
-                ? ['radius']
-                : [
-                    'width',
-                    'height',
-                    ...(project.geometry.kind === 'bracket' ? ['thickness'] : []),
-                  ]),
-          ] as (keyof Omit<Project['geometry'], 'kind'>)[]
-        ).map((dimension) => (
-          <NumberInput
-            key={dimension}
-            label={dimension.charAt(0).toUpperCase() + dimension.slice(1)}
-            value={project.geometry[dimension] * factor}
-            unit={project.displayUnits}
-            onChange={(value) =>
-              edit((next) => {
-                next.geometry[dimension] = value / factor;
-              })
-            }
-          />
-        ))}
+        {project.geometry.kind !== 'profile' &&
+          (
+            [
+              'length',
+              ...(is2D
+                ? ['width']
+                : project.geometry.kind === 'cylinder'
+                  ? ['radius']
+                  : [
+                      'width',
+                      'height',
+                      ...(project.geometry.kind === 'bracket' ? ['thickness'] : []),
+                    ]),
+            ] as ('length' | 'width' | 'height' | 'radius' | 'thickness')[]
+          ).map((dimension) => (
+            <NumberInput
+              key={dimension}
+              label={dimension.charAt(0).toUpperCase() + dimension.slice(1)}
+              value={project.geometry[dimension] * factor}
+              unit={project.displayUnits}
+              onChange={(value) =>
+                edit((next) => {
+                  next.geometry[dimension] = value / factor;
+                })
+              }
+            />
+          ))}
       </Group>
+      {project.geometry.kind === 'profile' && <ProfileEditor workbench={workbench} />}
       <Group title="Display units">
         <div className="segmented">
           {(['mm', 'm'] as const).map((unit) => (
@@ -118,12 +121,15 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
         </div>
       </Group>
       <p className="property-hint">
-        {is2D
-          ? 'Rectangle spans X = 0 to length and Y = 0 to width. Physical thickness belongs to the study.'
-          : project.geometry.kind === 'cylinder'
-            ? 'Cylinder spans X = 0 to length, centered on Y = Z = 0.'
-            : 'Geometry starts at the global origin. Brackets extend in X and Y, with height in Z.'}{' '}
-        Changing primitive clears its boundary assignments.
+        {project.geometry.kind === 'profile'
+          ? 'Profile coordinates use global X/Y. Physical thickness belongs to the study. Circular arcs remain exact in the mesher; the preview samples them for display.'
+          : is2D
+            ? 'Rectangle spans X = 0 to length and Y = 0 to width. Physical thickness belongs to the study.'
+            : project.geometry.kind === 'cylinder'
+              ? 'Cylinder spans X = 0 to length, centered on Y = Z = 0.'
+              : 'Geometry starts at the global origin. Brackets extend in X and Y, with height in Z.'}{' '}
+        Changing or deleting boundary IDs leaves assignments requiring explicit repair. Incompatible
+        primitive changes retain condition values but clear boundary selections.
       </p>
     </>
   );

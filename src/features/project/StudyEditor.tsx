@@ -64,9 +64,11 @@ export default function StudyEditor({ workbench }: { workbench: ProjectInspector
           {isPinn ? 'Configure experimental PINN' : 'Configure finite element method'}
         </button>
         <p className="property-hint">
-          {is2D
-            ? 'Use FEM and PINN on the same physical definition, then compare at shared evaluation locations.'
-            : 'The 3D study uses finite elements. The experimental PINN method supports 2D plane stress.'}
+          {is2D && project.geometry.kind === 'profile'
+            ? 'Profiles use the plane-stress FEM backend. Inspect analytical diagnostics when a verified reference is applicable.'
+            : is2D
+              ? 'Use FEM and PINN on the same physical definition, then compare at shared evaluation locations.'
+              : 'The 3D study uses finite elements. The experimental PINN method supports 2D plane stress.'}
         </p>
       </Group>
     </>

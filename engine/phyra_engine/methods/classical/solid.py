@@ -20,7 +20,11 @@ from phyra_engine.execution.events import Progress
 from phyra_engine.materials.isotropic import solid_matrix as constitutive_matrix
 from phyra_engine.meshing.solid import validate_mesh
 from phyra_engine.meshing.types import Mesh
-from phyra_engine.studies.solid import _rigid_rank, constraint_dofs, integrate_surface_loads
+from phyra_engine.physics.elasticity.solid import (
+    constraint_dofs,
+    integrate_surface_loads,
+    validate_rigid_restraints,
+)
 
 
 def element_matrices(
@@ -106,7 +110,7 @@ def solve_system(
     ):
         raise EngineError("invalid-constraint", "Prescribed DOFs or values are invalid.")
     fixed = np.array(sorted(prescribed), dtype=np.int64)
-    _rigid_rank(mesh, fixed)
+    validate_rigid_restraints(mesh, fixed)
     free = np.setdiff1d(np.arange(ndof), fixed, assume_unique=True)
     stiffness = assemble(mesh, young, poisson)
     displacement: np.ndarray = np.zeros(ndof, dtype=np.float64)

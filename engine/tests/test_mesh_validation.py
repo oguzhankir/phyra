@@ -7,16 +7,17 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
-from phyra_engine.meshing.solid import generate_mesh, tetra_volumes, validate_mesh
+from phyra_engine.meshing.solid import tetra_volumes, validate_mesh
 from phyra_engine.methods.classical.solid import solve_mesh
+from phyra_engine.physics.elasticity.solid import constraint_dofs, integrate_surface_loads
+from phyra_engine.studies.mesh import generate_study_mesh
 from phyra_engine.studies.project import fingerprint, validate_project
-from phyra_engine.studies.solid import constraint_dofs, integrate_surface_loads
 
 
 @pytest.mark.parametrize("kind", ["box", "cylinder", "bracket"])
 def test_actual_primitive_meshing_and_solve(project, kind):
     project["geometry"]["kind"] = kind
-    mesh = generate_mesh(project)
+    mesh = generate_study_mesh(project)
     validate_mesh(mesh)
     geometry = project["geometry"]
     volume = tetra_volumes(mesh.positions, mesh.cells).sum()

@@ -40,7 +40,7 @@ export function useVerificationWorkflow({
   const verificationStarted = useRef(false);
   const verificationSent = useRef(false);
   const [verificationConfiguration, setVerificationConfiguration] = useState<
-    '3d' | '2d-compare' | null
+    '3d' | '2d-compare' | '2d-profile' | null
   >(null);
   const verificationReports = useRef<Record<string, Record<string, unknown>>>({});
   const verificationDisplacement = useRef<Record<string, unknown> | null>(null);
@@ -55,7 +55,11 @@ export function useVerificationWorkflow({
             message: `frontend verification configuration: ${configuration}`,
           });
           const next = makeProject(
-            configuration === '2d-compare' ? 'plane-stress-tension' : 'cantilever',
+            configuration === '2d-profile'
+              ? 'kirsch-quarter'
+              : configuration === '2d-compare'
+                ? 'plane-stress-tension'
+                : 'cantilever',
           );
           if (configuration === '2d-compare') {
             next.study.solver.kind = 'pinn';

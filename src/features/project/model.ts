@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type {
   Constraint,
   Devices,
@@ -53,7 +53,6 @@ export interface ProjectInspectorModel {
   addConstraint: () => void;
   constraint: Constraint | undefined;
   editConstraint: (change: (item: Constraint) => void) => void;
-  boundaryEditor: (item: Constraint | Load, change: (regions: RegionId[]) => void) => ReactNode;
   addLoad: () => void;
   load: Load | undefined;
   editLoad: (change: (item: Load) => void) => void;

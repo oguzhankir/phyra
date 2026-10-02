@@ -15,12 +15,11 @@ Phyra is an open-source engineering analysis desktop workbench combining classic
 
 **Explore:** [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
-The walkthrough uses genuine current application screens, saved CPU reference results and a live capture of the 3D result viewport. Its deformation playback visualizes a static field; it is not a dynamic simulation. The video separates implemented mechanics from planned roadmap work; running a new analysis requires the desktop app.
+The checked-in video and screenshots show a preceding interface iteration inspecting genuine saved CPU results. The current workspace groups tasks into Prepare → Solve → Inspect, with contextual actions and searchable commands; final media recapture is deferred. Deformation playback visualizes a static field, not a dynamic simulation. Computing a new solution requires the desktop app.
 
 ## What you can do today
 
-- **Prepare and solve:** edit box, cylinder and connected bracket primitives or a 2D rectangle; assign material, component supports, total force and inward pressure; generate a mesh and run classical FEM.
-- **Prepare boundaries:** use replace/add/toggle selection and save named boundary sets for reuse in support/load editors. Assignments copy the selected boundaries; later set edits do not move existing conditions.
+- **Prepare and solve:** edit box, cylinder and connected bracket primitives or a 2D rectangle/profile with exact straight edges, circular arcs and circular holes; assign material, component supports, total force, pressure or typed spatial traction; generate a mesh and run classical FEM.
 - **Train from physics:** solve rectangular plane-stress elasticity with a real PyTorch PINN, using equilibrium and boundary conditions without FEM training labels. Inspect training settings, live PDE/boundary losses, device and precision.
 - **Compare and inspect:** switch FEM, PINN, absolute and relative differences; probe authoritative values; inspect stress/displacement, reactions and balance. Use standard camera views, fit/reset, boundary isolation and undeformed node/preview-vertex distance measurement.
 - **Understand the method:** open offline Workbench help or contextual screen help for workflow, assumptions, physical conditions, mesh quality, interpretation and limitations.
@@ -30,15 +29,15 @@ Undo/redo preserves up to 80 definition edits within a 16 MiB session budget. Ph
 
 ![Current Phyra primitive preparation and named boundary sets](public/help/preparation-workbench.jpg)
 
-Current interface · primitive preparation and copied boundary sets; constrained sketching and CAD import remain future work.
+Preceding interface layout · primitive preparation and copied boundary sets; constrained sketching and CAD import remain future work.
 
-![Current Phyra light workspace inspecting a saved CPU structural solution](public/help/solid-workbench.jpg)
+![Preceding Phyra light workspace inspecting a saved CPU structural solution](public/help/solid-workbench.jpg)
 
-Current interface · saved CPU 3D FEM reference · amplified static deformation.
+Preceding interface layout · saved CPU 3D FEM reference · amplified static deformation.
 
-![Current Phyra plane-stress interface inspecting recorded FEM/PINN comparison](public/help/comparison-workbench.jpg)
+![Preceding Phyra plane-stress interface inspecting recorded FEM/PINN comparison](public/help/comparison-workbench.jpg)
 
-Current interface · saved CPU FEM/PINN comparison · recorded measurements, not live training.
+Preceding interface layout · saved CPU FEM/PINN comparison · recorded measurements, not live training.
 
 ## Run locally
 
@@ -57,17 +56,21 @@ npm run dev
 
 For a browser preview after `npm ci`, run `npm run dev:web` and open the local URL. **Inspect 3D reference** and **Inspect 2D comparison** load real saved CPU results, including fields, recorded training history and measured comparison. Changes to physical inputs make those results stale.
 
-For a first desktop study, choose **3D cantilever beam**, review Geometry → Material → Supports/Loads → Mesh → Solver, and run FEM. For Physics ML, choose **2D plane-stress tension**, inspect thickness and supports, then use **Compare FEM / PINN**. Choose **Help** or press **F1** for the current screen’s offline guide.
+For a first desktop study, choose **3D cantilever beam** from Example projects. **Prepare** contains the study, geometry, material, supports and loads; **Solve** contains mesh and method settings; **Inspect** contains current fields and physical checks. The main action above the viewport follows the selected task. For Physics ML, choose **2D plane-stress tension**, inspect thickness and supports, then use **Compare FEM + PINN** in Solution method. **Find…** or **Ctrl/⌘ K** searches available editors and actions. Choose **Help** or press **F1** for the current screen’s offline guide.
 
 ## Scientific scope
 
-The implemented physics is homogeneous, isotropic, small-strain **linear static elasticity**. 3D uses first-order tetrahedra; rectangular 2D plane stress uses constant-strain triangles and explicit physical thickness. Internal geometry, properties and exports use SI; display-unit changes do not modify the model.
+The implemented physics is homogeneous, isotropic, small-strain **linear static elasticity**. 3D uses first-order tetrahedra; 2D plane stress uses first-order triangles assembled through [scikit-fem](https://scikit-fem.readthedocs.io/en/latest/api.html), with explicit physical thickness. Profiles contain one closed counterclockwise outer loop of up to 64 straight edges/circular arcs (each at most 180°) and up to 16 enclosed circles. Gmsh receives exact curves; the linear FEM mesh represents curved boundaries with chords. Internal geometry, properties and exports use SI; display-unit changes do not modify the model.
+
+Choose **Kirsch quarter plate · SI realization** for the editable second-quadrant plate with a circular cutout, symmetry supports and the exact spatial outer traction σn. Its setup is checked against Section 6.3 and Appendix B.2 of [Le-Duc, Nguyen-Xuan and Lee (2026)](https://doi.org/10.1016/j.finel.2026.104523) and the [linked author implementation at `0889268`](https://github.com/ThangLe-duc/nEPINN/blob/0889268fbb3cb5cbbf92b4b9c7cf2c90f79fad75/Elasticity_2Dand3D/PlateWithHole.py). The author's code uses the second quadrant; the appendix describes the mirrored first quadrant. The numerical defaults are R = 1, L = 4, E = 100000, ν = 0.3 and remote X tension = 0.5. **Neither source states units or physical thickness:** Phyra authors an SI realization in m/Pa with a chosen 0.1 m thickness. This FEM workflow does not reproduce nEPINN training or its performance claims.
+
+The eligible quarter-plate result reports independently evaluated Kirsch displacement/stress errors at identical triangle quadrature locations, area-weighted relative L2 norms and free-hole traction diagnostics. A zero reference norm makes the relative metric undefined. Change the arc radius in Geometry, then update the traction radius/tension in Loads; retain symmetry and outer assignments to keep the analytical comparison applicable. Vary mesh and boundary sizes, solve again and assess overall convergence. General line/arc profiles and circular holes use the same editor, mesher, solver, save/reopen and SI export path; arbitrary edits may remove the analytical reference. PINN training remains limited to rectangular force/pressure studies.
 
 The PINN is **experimental**. Comparison evaluates displacement at the same nodes and stress at the same cell centroids as FEM, reporting unweighted relative L2, maximum absolute differences and measured timings. Undefined zero-reference relative values are explicitly omitted. New runs also measure normalized residuals at independently sampled points after training; those diagnostics are not field-error bounds. Low training loss alone does not establish accuracy or equilibrium; use independent references, balance and mesh convergence.
 
-Idealized corners/restraints may produce stress singularities, and first-order tetrahedra can be stiff in bending. Poisson ratios above 0.45 are rejected. Deformation playback scales a static field; it is not dynamics. Distance measurement uses undeformed mesh nodes or primitive-preview vertices, rather than exact CAD edge/face distances. Projects retain settings, seeds, metrics, fields and provenance, but do not resume trained weights.
+Idealized corners/restraints may produce stress singularities, and first-order tetrahedra can be stiff in bending. Poisson ratios above 0.45 are rejected. Deformation playback scales a static field; it is not dynamics. Distance measurement uses undeformed mesh nodes or preview vertices, not exact CAD edge/face distances. Projects retain settings, seeds, metrics, fields and provenance, but do not resume trained weights. Profile boundary IDs persist through remeshing; deleted or renamed IDs leave assignments invalid until explicitly repaired.
 
-Project version 3 persists up to 100 named boundary sets, stamped with their primitive type and study dimension. A type/dimension change preserves the sets for explicit repair. Version 1/2 archives are validated before migration: version 1 caches are discarded with a notice; version 2 fields can survive normal ownership, fingerprint and field validation. Named sets provide copied assignments, rather than associative CAD references.
+Project schema version 4 persists profiles, typed traction inputs and up to 100 named boundary sets. Sets retain their geometry/dimension stamp for explicit repair and copy into assignments; they are not associative CAD references. Versions 1, 2 and 3 are validated before migration. Version 1 caches are discarded; older primitive-study caches pass the normal worker ownership, fingerprint and field checks before reuse. New profile and traction inputs receive a distinct physical fingerprint.
 
 Desktop recovery preserves valid project definitions after an editing pause; invalid numeric drafts pause recovery. Older valid journals migrate in memory while their original bytes remain intact. Restoring creates an unsaved project without cached fields or trained weights. Recompute and save it explicitly; recovery does not overwrite the original project file.
 
@@ -83,13 +86,13 @@ The current PINN uses a neural displacement field and automatic differentiation 
 
 Independent analytical/manufactured references live in [engine tests](engine/tests); typed scientific/project tests live beside [domain logic](src/domain), with interface tests beside [frontend features](src/features); [native tests](src-tauri/src/tests) cover safe files and worker lifecycle.
 
-**Current runtime evidence:** [scientific and packaged verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed on macOS 15 Apple Silicon and Windows Server 2022 x64. The run covers the current preparation and project-version changes, actual FEM/PINN rendering and comparison, persistence, cancellation and native recovery. That production code is unchanged after integration with the current repository documentation. Representative-user usability remains open.
+**Prior platform baseline:** [scientific and packaged verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed on macOS 15 Apple Silicon and Windows Server 2022 x64. It covers that earlier snapshot's FEM/PINN rendering, persistence, cancellation and recovery; it does not verify this PR's later profile, architecture or interface changes. Representative-user usability remains open.
 
 Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and the current product walkthrough are available; public installers require the redistribution work below.
 
-Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](ROADMAP.md) and [contribution guide](CONTRIBUTING.md).
+Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](ROADMAP.md), the [contribution guide](CONTRIBUTING.md) and its [implementation ownership and extension guide](CONTRIBUTING.md#finding-and-extending-the-implementation). Automated dependency checks enforce those boundaries.
 
-Built with Tauri 2, React, TypeScript, Three.js, Gmsh, SciPy and PyTorch. Licensed [GPL-3.0-or-later](LICENSE); required upstream notices and target-specific dependency/Corresponding Source obligations are in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt).
+Built with Tauri 2, React, TypeScript, Three.js, Gmsh, scikit-fem, SciPy and PyTorch. Licensed [GPL-3.0-or-later](LICENSE); required upstream notices and target-specific dependency/Corresponding Source obligations are in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt).
 
 ## Citation
 

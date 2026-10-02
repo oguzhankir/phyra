@@ -3,6 +3,7 @@ import { assignedRegions } from '../../domain/project/regions';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
 
 import type { ProjectInspectorModel } from './model';
+import BoundaryAssignments from './BoundaryAssignments';
 export default function SupportEditor({ workbench }: { workbench: ProjectInspectorModel }) {
   const {
     addConstraint,
@@ -11,7 +12,8 @@ export default function SupportEditor({ workbench }: { workbench: ProjectInspect
     is2D,
     factor,
     project,
-    boundaryEditor,
+    regions,
+    selected,
     setError,
     edit,
     setConstraintId,
@@ -116,15 +118,20 @@ export default function SupportEditor({ workbench }: { workbench: ProjectInspect
       {constraint && (
         <>
           <Group title="Assigned boundaries">
-            {boundaryEditor(constraint, (value) => {
-              if (!value.length) {
-                setError('A support needs at least one boundary.');
-                return;
-              }
-              editConstraint((item) => {
-                item.regions = assignedRegions(value, 'x0');
-              });
-            })}
+            <BoundaryAssignments
+              assigned={constraint.regions}
+              regions={regions}
+              selected={selected}
+              onChange={(value) => {
+                if (!value.length) {
+                  setError('A support needs at least one boundary.');
+                  return;
+                }
+                editConstraint((item) => {
+                  item.regions = assignedRegions(value, 'x0');
+                });
+              }}
+            />
           </Group>
           <button
             className="danger full"

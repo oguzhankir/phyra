@@ -519,6 +519,106 @@ def main() -> None:
             f"{manifest['statistics']['cells']} cells, residual={diagnostic['relativeResidual']:.3g}."
         )
 
+        profile = json.loads(
+            (ROOT / "examples" / "kirsch-quarter.json").read_text(encoding="utf-8")
+        )
+        output = Path(directory) / "profile"
+        manifest, _ = completed("mesh", profile, output, "bundle-profile-mesh")
+        require(
+            manifest["dimension"] == "2d"
+            and manifest["versions"]["gmsh"] != "unused-2d",
+            "Profile did not use the exact Gmsh domain route.",
+        )
+        manifest, _ = completed("solve", profile, output, "bundle-profile")
+        arrays = read_arrays(manifest, output)
+        require(
+            manifest["reference"]["kind"] == "kirsch-plane-stress",
+            "Missing independent reference.",
+        )
+        require(
+            all(
+                manifest["summary"][key] < 1e-8
+                for key in (
+                    "relativeResidual",
+                    "relativeForceBalance",
+                    "relativeMomentBalance",
+                )
+            ),
+            "Bundled profile violates equilibrium.",
+        )
+        require(
+            manifest["versions"].get("scikit-fem") == "12.0.2",
+            "Missing pinned assembly backend.",
+        )
+        region_ids = [region["id"] for region in manifest["regions"]]
+        for edge, region in zip(
+            arrays["boundaryEdges"], arrays["edgeRegions"], strict=True
+        ):
+            for node in edge:
+                if region_ids[region] == "x0":
+                    require(
+                        arrays["displacement"][node][0] == 0,
+                        "X symmetry support moved.",
+                    )
+                if region_ids[region] == "y0":
+                    require(
+                        arrays["displacement"][node][1] == 0,
+                        "Y symmetry support moved.",
+                    )
+        # Independent resultant from exact Kirsch tractions on the finite left/top
+        # boundaries. This formula does not use the engine reference evaluator.
+        L = profile["geometry"]["length"]
+        parameters = profile["study"]["loads"][0]["traction"]
+        R, T = parameters["radius"], parameters["tension"]
+        thickness = profile["study"]["thickness"]
+        expected_force = [
+            -thickness * T * (L - 0.5 * R**2 / L - 0.5 * R**4 / L**3),
+            -thickness * T * 0.5 * (R**2 / L - R**4 / L**3),
+            0.0,
+        ]
+        require(
+            all(
+                math.isclose(a, b, rel_tol=1e-7, abs_tol=abs(T * thickness * L) * 1e-9)
+                for a, b in zip(
+                    manifest["summary"]["totalForce"], expected_force, strict=True
+                )
+            ),
+            "Finite boundary traction resultant has the wrong sign or magnitude.",
+        )
+        expected_moment = (
+            thickness * T * ((L**2 - R**2) / 2 + 1.5 * R**2 * (1 - R**2 / L**2))
+        )
+        reaction_moment = sum(
+            p[0] * r[1] - p[1] * r[0]
+            for p, r in zip(arrays["positions"], arrays["reactions"], strict=True)
+        )
+        require(
+            math.isclose(-reaction_moment, expected_moment, rel_tol=1e-7),
+            "Applied boundary moment is not balanced by independently checked reactions.",
+        )
+        reopened, _ = completed("validate", profile, output, "bundle-profile")
+        require(
+            reopened == manifest, "Profile cache reopening changed physical metadata."
+        )
+        changed = json.loads(json.dumps(profile))
+        changed["study"]["loads"][0]["traction"]["tension"] *= 0.5
+        code, messages = invoke("validate", changed, output, "bundle-profile")
+        require(
+            code != 0 and messages[-1].get("code") == "stale-cache",
+            "Accepted changed profile load cache.",
+        )
+        code, messages = invoke(
+            "train", profile, Path(directory) / "profile-train", "unsupported-profile"
+        )
+        require(
+            code != 0 and messages[-1].get("code") == "unsupported-study",
+            "Profile incorrectly offered PINN.",
+        )
+        print(
+            f"Bundled exact profile mesh/solve/reference/cache passed: {manifest['statistics']['cells']} triangles; "
+            f"force={manifest['summary']['relativeForceBalance']:.3g}, moment={manifest['summary']['relativeMomentBalance']:.3g}."
+        )
+
         plane = json.loads(
             (ROOT / "examples" / "plane-stress-tension.json").read_text(
                 encoding="utf-8"
@@ -584,7 +684,8 @@ def main() -> None:
             method = registered[method_id]
             require(
                 method["kind"] == "fem"
-                and method["framework"] == "scipy"
+                and method["framework"]
+                == ("scikit-fem" if method_id == "fem-plane-stress-tri3" else "scipy")
                 and method["operation"] == "solve"
                 and method["configuration"] is None
                 and len(method["devices"]) == 1

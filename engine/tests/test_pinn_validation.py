@@ -17,6 +17,9 @@ from phyra_engine.errors import EngineError
 from phyra_engine.materials.isotropic import plane_stress_matrix
 from phyra_engine.meshing.plane_stress import generate_rectangle
 from phyra_engine.methods.physicsml import plane_stress as method
+from phyra_engine.methods.physicsml import training, validation
+from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
+from phyra_engine.methods.physicsml.normalization import normalization
 
 
 def configuration(**overrides):
@@ -68,11 +71,18 @@ def evaluate(model, config=None, length_scale=1.0, modulus_scale=1.0):
     physics = study()
     physics["material"]["young"] *= modulus_scale
     physics["loads"][0]["vector"][0] *= modulus_scale * length_scale**2
-    scales = method.normalization(mesh, physics)
+    scales = normalization(mesh, physics)
     young = physics["material"]["young"]
     material = torch.tensor(plane_stress_matrix(young, physics["material"]["poisson"]) / young)
     return method.evaluate_held_out(
-        model, mesh, physics, config or configuration(), scales, material, "cpu", torch.float64
+        model,
+        mesh,
+        physics,
+        TrainingConfiguration.from_mapping(config or configuration()),
+        scales,
+        material,
+        "cpu",
+        torch.float64,
     )
 
 
@@ -127,7 +137,7 @@ def test_nonfinite_held_out_fields_are_rejected():
 def test_held_out_points_never_supply_optimizer_gradients(monkeypatch):
     config = configuration()
     mesh = generate_rectangle(0.4, 0.1, 0.02, 0.05)
-    original_sample, original_losses = method._sample_points, method._losses
+    original_sample, original_losses = method.sample_points, training.residual_losses
     original_step, original_validation = torch.optim.Adam.step, method.evaluate_held_out
     batches, backwards, steps = [], [], []
 
@@ -139,7 +149,7 @@ def test_held_out_points_never_supply_optimizer_gradients(monkeypatch):
     def losses(model, material, points):
         result = original_losses(model, material, points)
         batch = next(index for index, value in enumerate(batches) if value is points)
-        result["total"].register_hook(lambda gradient: backwards.append(batch))
+        result.total.register_hook(lambda gradient: backwards.append(batch))
         return result
 
     def step(optimizer, *args, **kwargs):
@@ -147,7 +157,7 @@ def test_held_out_points_never_supply_optimizer_gradients(monkeypatch):
         steps.append(1)
         return result
 
-    def validation(model, *args, **kwargs):
+    def validate_after_training(model, *args, **kwargs):
         assert len(steps) == config["steps"]
         before = [parameter.detach().clone() for parameter in model.parameters()]
         assert all(parameter.grad is None for parameter in model.parameters())
@@ -157,12 +167,14 @@ def test_held_out_points_never_supply_optimizer_gradients(monkeypatch):
             torch.testing.assert_close(actual, expected, rtol=0, atol=0)
         return result
 
-    monkeypatch.setattr(method, "_sample_points", sample)
-    monkeypatch.setattr(method, "_losses", losses)
+    monkeypatch.setattr(method, "sample_points", sample)
+    monkeypatch.setattr(validation, "sample_points", sample)
+    monkeypatch.setattr(training, "residual_losses", losses)
+    monkeypatch.setattr(validation, "residual_losses", losses)
     monkeypatch.setattr(torch.optim.Adam, "step", step)
-    monkeypatch.setattr(method, "evaluate_held_out", validation)
+    monkeypatch.setattr(method, "evaluate_held_out", validate_after_training)
     result = method.train(mesh, study(), config)
     assert len(batches) == 2 and backwards == [0] * config["steps"]
-    assert not torch.equal(batches[0][0], batches[1][0])
-    assert not torch.equal(batches[0][1], batches[1][1])
+    assert not torch.equal(batches[0].interior, batches[1].interior)
+    assert not torch.equal(batches[0].boundary, batches[1].boundary)
     assert result["training"]["validation"]["seed"] == config["seed"] ^ 0x5EED5EED

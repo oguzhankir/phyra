@@ -6,16 +6,21 @@ import path from 'node:path';
 const arguments_ = process.argv.slice(2);
 const only3d = arguments_.includes('--3d-only');
 const onlyPhysicsMl = arguments_.includes('--physicsml-only');
-if (only3d && onlyPhysicsMl) throw new Error('Choose one verification mode, or omit both flags');
+const onlyProfile = arguments_.includes('--profile-only');
+if ([only3d, onlyPhysicsMl, onlyProfile].filter(Boolean).length > 1)
+  throw new Error('Choose one verification mode, or omit both flags');
 const paths = arguments_.filter((argument) => !argument.startsWith('--'));
 if (
   paths.length > 1 ||
   arguments_.some(
     (argument) =>
-      argument.startsWith('--') && !['--3d-only', '--physicsml-only'].includes(argument),
+      argument.startsWith('--') &&
+      !['--3d-only', '--physicsml-only', '--profile-only'].includes(argument),
   )
 )
-  throw new Error('Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only]');
+  throw new Error(
+    'Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only|--profile-only]',
+  );
 const executable = path.resolve(
   paths[0] ??
     (process.platform === 'win32'
@@ -142,11 +147,16 @@ function assertPhysicsMl(report) {
 
 async function verify(mode) {
   const physicsMl = mode === '2d-compare';
+  const profile = mode === '2d-profile';
   const timeoutMs = physicsMl ? 270000 : 90000;
-  const child = spawn(executable, [physicsMl ? '--verify-physicsml' : '--verify-workflow'], {
-    cwd: tmpdir(),
-    env: environment,
-  });
+  const child = spawn(
+    executable,
+    [profile ? '--verify-profile' : physicsMl ? '--verify-physicsml' : '--verify-workflow'],
+    {
+      cwd: tmpdir(),
+      env: environment,
+    },
+  );
   let output = '';
   let diagnostic = '';
   let timedOut = false;
@@ -166,7 +176,7 @@ async function verify(mode) {
     child.on('error', reject);
     child.on('exit', resolve);
   }).finally(() => clearTimeout(timer));
-  const prefix = physicsMl ? 'desktop-physicsml' : 'desktop';
+  const prefix = profile ? 'desktop-profile' : physicsMl ? 'desktop-physicsml' : 'desktop';
   await writeFile(`artifacts/${prefix}-runtime.log`, `${output}\n${diagnostic}`);
   const location = output.match(/PHYRA_VERIFICATION (.+)/)?.[1]?.trim();
   if (!location)
@@ -187,7 +197,10 @@ async function verify(mode) {
     !report.persistence?.bufferMatches ||
     !report.workerStopped ||
     !report.repeatedRun ||
-    !report.cancellation
+    !report.cancellation ||
+    !report.staleResultRejected ||
+    !report.export?.physicalUnits ||
+    !report.export?.provenance
   )
     throw new Error('Native persistence or owned-worker verification failed');
   if (
@@ -214,12 +227,19 @@ async function verify(mode) {
     report.manifest.summary.maxVonMises,
     'Stress maximum',
   );
+  if (
+    profile &&
+    (report.project.geometry.kind !== 'profile' ||
+      !report.manifest.reference ||
+      !report.export.independentReference)
+  )
+    throw new Error('Profile geometry, independent reference or export was not verified');
   if (physicsMl) assertPhysicsMl(report);
   else if (report.manifest.operation !== 'solve')
     throw new Error('Classical verification did not return a solve');
   if (report.renderer.viewportPng?.startsWith('data:image/png;base64,')) {
     await writeFile(
-      `artifacts/packaged-${physicsMl ? 'physicsml-' : ''}viewport.png`,
+      `artifacts/packaged-${profile ? 'profile-' : physicsMl ? 'physicsml-' : ''}viewport.png`,
       Buffer.from(report.renderer.viewportPng.split(',')[1], 'base64'),
     );
     delete report.renderer.viewportPng;
@@ -231,5 +251,6 @@ async function verify(mode) {
 }
 
 await mkdir('artifacts', { recursive: true });
-if (!onlyPhysicsMl) await verify('3d');
-if (!only3d) await verify('2d-compare');
+if (!onlyPhysicsMl && !onlyProfile) await verify('3d');
+if (!only3d && !onlyProfile) await verify('2d-compare');
+if (!only3d && !onlyPhysicsMl) await verify('2d-profile');

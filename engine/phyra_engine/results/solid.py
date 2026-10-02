@@ -24,10 +24,10 @@ from phyra_engine.execution.limits import (
 from phyra_engine.geometry.regions import SOLID_REGIONS
 from phyra_engine.meshing.solid import mesh_id, quality, validate_mesh
 from phyra_engine.meshing.types import Mesh
+from phyra_engine.physics.elasticity.solid import integrate_surface_loads
 from phyra_engine.results import validate_cached
 from phyra_engine.results.fields import STRESS_COMPONENTS
 from phyra_engine.studies.project import _finite_tree, fingerprint, validate_project
-from phyra_engine.studies.solid import integrate_surface_loads
 
 LAYOUT: dict[str, tuple[str, str, str, int | None]] = {
     "positions": ("float64", "node", "m", 3),
