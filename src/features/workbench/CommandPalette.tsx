@@ -50,6 +50,7 @@ export default function CommandPalette({
         role="dialog"
         aria-modal="true"
         aria-labelledby="command-title"
+        aria-describedby="command-description"
         onKeyDown={(event) => {
           if (
             (event.metaKey || event.ctrlKey) &&
@@ -61,44 +62,49 @@ export default function CommandPalette({
         }}
       >
         <div className="command-heading">
-          <h2 id="command-title">Find an action or editor</h2>
+          <h2 id="command-title">Search actions</h2>
           <button aria-label="Close command search" onClick={onClose}>
             <X size={17} />
           </button>
         </div>
+        <p id="command-description" className="command-description">
+          Jump to an editor or run a project action.
+        </p>
         <div className="command-input">
-          <Search size={18} />
-          <input
-            role="combobox"
-            aria-label="Search commands"
-            aria-expanded="true"
-            aria-controls="command-results"
-            aria-activedescendant={
-              matches[selected] ? `command-${matches[selected].id}` : undefined
-            }
-            autoComplete="off"
-            placeholder="Geometry, loads, mesh, save…"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && matches[selected]) {
+          <div className="command-search-field">
+            <Search size={17} aria-hidden="true" />
+            <input
+              role="combobox"
+              aria-label="Search actions and editors"
+              aria-expanded="true"
+              aria-controls="command-results"
+              aria-activedescendant={
+                matches[selected] ? `command-${matches[selected].id}` : undefined
+              }
+              autoComplete="off"
+              placeholder="Geometry, loads, mesh, save…"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(0);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && matches[selected]) {
+                  event.preventDefault();
+                  choose(matches[selected]);
+                }
+                if (!['ArrowDown', 'ArrowUp'].includes(event.key) || !matches.length) return;
                 event.preventDefault();
-                choose(matches[selected]);
-              }
-              if (!['ArrowDown', 'ArrowUp'].includes(event.key) || !matches.length) return;
-              event.preventDefault();
-              const direction = event.key === 'ArrowDown' ? 1 : -1;
-              let index = selected;
-              for (let count = 0; count < matches.length; count++) {
-                index = (index + direction + matches.length) % matches.length;
-                if (!matches[index].disabled) break;
-              }
-              setActive(index);
-            }}
-          />
+                const direction = event.key === 'ArrowDown' ? 1 : -1;
+                let index = selected;
+                for (let count = 0; count < matches.length; count++) {
+                  index = (index + direction + matches.length) % matches.length;
+                  if (!matches[index].disabled) break;
+                }
+                setActive(index);
+              }}
+            />
+          </div>
         </div>
         <div
           id="command-results"

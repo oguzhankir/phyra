@@ -1,4 +1,4 @@
-import { CircleHelp, LockKeyhole } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { sectionTitles } from '../workbench/navigation';
 import GeometryEditor from './GeometryEditor';
 import NamedSelectionEditor from './NamedSelectionEditor';
@@ -18,7 +18,7 @@ export default function PropertyInspector({
   workbench: ProjectInspectorModel;
   panelId?: string;
 }) {
-  const { rightWidth, section, showHelp, locked, project, busy } = workbench;
+  const { rightWidth, section, locked, project, busy } = workbench;
   return (
     <aside id={panelId} className="properties-panel" style={{ width: rightWidth }}>
       <div className="panel-heading">
@@ -27,14 +27,6 @@ export default function PropertyInspector({
             ? 'Result details'
             : `Edit ${sectionTitles[section].toLowerCase()}`}
         </span>
-        <button
-          className="property-help"
-          aria-label={`Help with ${sectionTitles[section].toLowerCase()}`}
-          title="Help with this editor"
-          onClick={() => showHelp()}
-        >
-          <CircleHelp size={16} />
-        </button>
       </div>
       <div className="properties-scroll">
         <fieldset disabled={locked} key={`${project.id}:${project.displayUnits}`}>

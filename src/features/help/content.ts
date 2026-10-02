@@ -1259,10 +1259,10 @@ All weights are 1. Traction is penalized only on free components; the displaceme
       {
         title: 'Connect and select a model',
         steps: [
-          'Open the assistant with Ctrl/⌘ J or its workbench action, then open Connection.',
+          'Open Chat with the speech-bubble icon or Ctrl/⌘ J, then open Models & connections.',
           'Choose Gemini, OpenAI, Anthropic, an OpenAI-compatible HTTPS endpoint, or a user-managed Ollama/local loopback endpoint. Remote connections use your own provider key.',
-          'Use Store key securely, then Discover models and choose an actual model ID returned by that endpoint. Use Save connection to apply the choice. Discovery does not prove every listed model supports this text-stream request.',
-          'Review the displayed provider, model and endpoint. Ask a documentation question, or explicitly include the active study snapshot. Review the outgoing context and enable the remote-send checkbox before sending to a remote provider.',
+          'Choose a featured model, paste your key and Connect. The app checks the models reported by that account before applying a first connection. Additional reported models are selectable from a list; no model ID text entry is needed. Use the composer model selector for subsequent model changes. Discovery does not prove every listed model supports this text-stream request.',
+          'Choose Help only or This study in the composer and inspect Context. The first remote send asks you to approve the conversation, provider origin and data scope. Continued messages reuse that approval; changing the recipient or expanding from help to study needs approval again.',
         ],
         paragraphs: [
           'The implemented transport supports streaming text: Gemini streamGenerateContent, OpenAI Responses, Anthropic Messages, and OpenAI-compatible Chat Completions for compatible/Ollama endpoints. This assistant does not invoke model tools, browse the web, edit a definition, start numerical work or export fields. Model limits and usage are shown only when the provider supplies them; pricing and cost estimates are unknown.',
@@ -1286,7 +1286,7 @@ All weights are 1. Traction is penalized only on free components; the displaceme
         paragraphs: [
           'Conversation history is stored separately from .phyra archives in the application’s local assistant storage, in version 1 format. The bounds are 160 messages and 2 MiB per conversation, 100 conversations and 32 MiB total history. History may contain private study definitions and summaries you chose to attach; it is not encrypted project backup.',
           'The app saves the question before contacting a provider. If this initial write fails, the question stays in the composer and no remote request starts. If the response cannot be saved, its text stays in the panel with Retry save. Repair credential authorization or local storage, then retry. Restore saved copy requires confirmation before discarding unsaved response changes; a failed restore keeps the text. A conversation opened in two document tabs shares its latest text. A response reaching the local history limit stops with its partial text marked cancelled.',
-          'Provider connections persist across application restarts. Connection → Disconnect removes the active provider key and model selection after confirmation, preserving local conversations and projects. Removing a stored key does not revoke it at the provider. On macOS, changed ad hoc development builds can require renewed Keychain authorization; a stable signing identity is part of the packaged-product setup.',
+          'Provider connections persist across application restarts. Models & connections → Disconnect removes the active provider key and model selection after confirmation, preserving local conversations and projects. Removing a stored key does not revoke it at the provider. On macOS, changed ad hoc development builds can require renewed Keychain authorization; a stable signing identity is part of the packaged-product setup.',
           'Stop cancels the native provider stream and preserves the visible partial response with its cancellation status. A provider may already have processed submitted input; cancellation does not establish a billing refund. Delete a conversation through the history control when it is no longer wanted.',
           'Offline help and all numerical analysis remain available without a provider account or key. The browser preview exposes offline help; provider connections and native credential storage require the desktop app.',
         ],
@@ -1316,9 +1316,9 @@ All weights are 1. Traction is penalized only on free components; the displaceme
       {
         title: 'Choose the scope and register a client',
         steps: [
-          'Open Local MCP access in the assistant. Select Offline documentation, Active project definition and/or Active run summary.',
-          'Enable selected scopes. Copy the generated JSON client configuration into a local MCP client that supports stdio; the configuration uses the application-selected executable and session arguments.',
-          'Restart the client for a new session. Inspect the visible access audit for allowed and denied requests. Revoke access in the application to stop access to the selected scopes.',
+          'Open Integrations in the chat header. Phyra MCP offers Documentation access or Current project access, which includes help, the active definition and run summary.',
+          'Enable MCP for the selected access level. Copy configuration into a local MCP client that supports stdio; the configuration uses the application-selected executable and session arguments.',
+          'Restart the client for a new session. Open Access log to inspect allowed and denied requests. Disconnect in Phyra to revoke that access.',
         ],
         paragraphs: [
           'The implemented server is pinned to MCP protocol 2025-11-25. It exposes versioned capability/help/project/run inspection and resources, with project/revision and run provenance where the granted scope permits them. Access follows the active project tab; the client should inspect each returned identity before using a snapshot.',

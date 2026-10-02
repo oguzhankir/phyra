@@ -241,7 +241,7 @@ Maintain the support matrix by method × operation × framework/runtime × platf
 
 AI assistance is part of the product direction, not a future optional extra. It should help users understand the product and operate supported workflows without becoming an authority on physical correctness.
 
-The current core retrieves versioned offline help and optionally attaches the active SI study and available run/result summaries. Gemini, OpenAI Responses, Anthropic Messages and compatible/Ollama adapters stream text; model discovery uses endpoint-returned IDs. Native OS credentials are isolated by provider and endpoint origin. Remote sending requires explicit context consent; local version 1 transcripts retain original context and provider/model/endpoint provenance. Numerical execution stays local, and the assistant has no mutation, solve/export or browsing tools. Adapters and fixture tests do not establish live operation of every provider/model or packaged platform.
+The current core retrieves versioned offline help and optionally attaches the active SI study and available run/result summaries. Gemini, OpenAI Responses, Anthropic Messages and compatible/Ollama adapters stream text; model selection offers featured official catalog entries and account-discovered choices. Native OS credentials are isolated by provider and endpoint origin. Remote sending requires explicit conversation/provider-origin/data-scope consent; local version 1 transcripts retain original context and provider/model/endpoint provenance. Numerical execution stays local, and the assistant has no mutation, solve/export or browsing tools. Adapters and fixture tests do not establish live operation of every provider/model or packaged platform.
 
 ### BYOK provider architecture
 

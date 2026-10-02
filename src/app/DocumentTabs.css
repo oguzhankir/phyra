@@ -24,3 +24,18 @@
   padding: 0 12px;
   white-space: nowrap;
 }
+
+.app-shell {
+  --assistant-width: 420px;
+}
+@media (min-width: 1080px) {
+  .app-shell.with-assistant .project-document-workspace,
+  .app-shell.with-assistant .project-start-tab {
+    margin-right: var(--assistant-width);
+  }
+}
+
+.app-shell.with-assistant .properties-panel,
+.app-shell.with-assistant [aria-label='Resize properties panel'] {
+  display: none;
+}

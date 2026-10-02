@@ -6,6 +6,11 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
+- Redesigned Chat with an icon launcher, composer model picker, explicit context chips and conversation-scoped sharing approval instead of repeated checkboxes. Models & connections offers official featured models, account-discovered selections and one connection action; no model-ID text entry is required.
+- Integrations separates local MCP management from chat, with Documentation/Current project access cards, copyable client configuration, disconnection and an access log.
+- Isolated assistant session transactions and presentation contracts support independent development while preserving exact context, cancellation, stream ordering and history failure recovery.
+- Search actions now explains editor navigation and project actions. Help/F1 is the single general help entry, and help/action search use restrained keyboard focus styling.
+
 - Explicit provider disconnection removes its saved key and active model selection while preserving local conversations and projects. Saved keys remain available across application restarts.
 - macOS packaging accepts an installed `APPLE_SIGNING_IDENTITY`, signs embedded native code before its containing bundle, and refuses an unavailable identity instead of silently substituting ad hoc signing.
 - Home screen for creating a named 2D or 3D project, opening a local project and starting from an editable example.

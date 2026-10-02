@@ -48,7 +48,7 @@ it('identifies an unsaved transcript, offers retry, and prevents replacing it wi
   expect(html).toContain('Restore saved copy');
   expect(html).not.toContain('Discard changes and restore');
   expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="New assistant conversation"/);
-  expect(html).toContain('Connection lets you repair provider credential access.');
+  expect(html).toContain('Retry saving before starting another conversation.');
 });
 
 it('removes the failure notice after saving and permits a new conversation', () => {
@@ -56,4 +56,13 @@ it('removes the failure notice after saving and permits a new conversation', () 
   expect(html).not.toContain('Conversation not saved');
   expect(html).not.toContain('Retry save');
   expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="New assistant conversation"/);
+});
+
+it('keeps context choice explicit without repeated checkbox controls', () => {
+  const html = markup(session(false));
+  expect(html).toContain('Help only');
+  expect(html).toContain('This study');
+  expect(html).not.toContain('type="checkbox"');
+  expect(html).toContain('Models and providers');
+  expect(html).not.toContain('Local MCP access');
 });

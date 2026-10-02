@@ -65,7 +65,7 @@ type Props = {
   onOpen: () => Promise<boolean>;
   windowClosing: boolean;
   modalBlocked?: boolean;
-  onAssistantOpen?: () => void;
+  onAssistantOpen?: (question?: string, includeStudy?: boolean) => void;
   onRecoveryRestored: () => void;
   onRecoveryFailed: (message: string) => void;
 };
@@ -417,11 +417,6 @@ export default function ProjectDocumentWorkspace({
                 <p className="work-subtitle">{sectionDescriptions[section]}</p>
               </div>
               <div className="run-actions">
-                {onAssistantOpen && (
-                  <button className="secondary" onClick={onAssistantOpen}>
-                    Ask assistant
-                  </button>
-                )}
                 {section === 'solver' && supportsPinn(project) && !busy && (
                   <button
                     className="secondary"
@@ -602,7 +597,17 @@ export default function ProjectDocumentWorkspace({
                 <div className="contour-legend">
                   <strong>{field.label}</strong>
                   {inspection && onAssistantOpen && (
-                    <button className="text-button" onClick={onAssistantOpen}>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        onAssistantOpen(
+                          inspection.probe
+                            ? 'Explain the selected probe value, its units and limitations using this exact result.'
+                            : 'Explain the selected result field, its range and limitations using this exact result.',
+                          true,
+                        )
+                      }
+                    >
                       {inspection.probe ? 'Ask about this probe' : 'Ask about this field'}
                     </button>
                   )}

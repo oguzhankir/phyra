@@ -35,13 +35,15 @@ import './DocumentTabs.css';
 export interface AppProps {
   onActiveDocument?: (snapshot: ProjectDocumentSnapshot | null) => void;
   assistantPanel?: ReactNode;
-  onAssistantOpen?: () => void;
+  assistantOpen?: boolean;
+  onAssistantOpen?: (question?: string, includeStudy?: boolean) => void;
   overlayModalOpen?: boolean;
 }
 
 export default function App({
   onActiveDocument,
   assistantPanel,
+  assistantOpen = false,
   onAssistantOpen,
   overlayModalOpen = false,
 }: AppProps = {}) {
@@ -330,7 +332,9 @@ export default function App({
   };
 
   return (
-    <div className={`app-shell${state.activeId === null ? ' home-open' : ''}`}>
+    <div
+      className={`app-shell${state.activeId === null ? ' home-open' : ''}${assistantOpen ? ' with-assistant' : ''}`}
+    >
       <WorkbenchHeader
         hasProject={!!active}
         canClose={canCloseDocument(active)}

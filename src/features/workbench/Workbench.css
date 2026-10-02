@@ -166,12 +166,6 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.start-sidebar-help .text-button {
-  padding: 3px 0;
-  text-align: left;
-  justify-content: flex-start;
-  font-size: 11px;
-}
 .start-content {
   min-width: 0;
 }
@@ -662,10 +656,6 @@
   border-color: var(--line);
   color: var(--muted);
 }
-.property-help {
-  padding: 4px;
-  color: var(--muted);
-}
 .model-tree {
   overflow-y: auto;
   flex: 1;
@@ -877,18 +867,6 @@
   align-items: center;
   justify-content: flex-end;
   flex-shrink: 0;
-}
-.primary {
-  background: var(--accent);
-  color: var(--on-accent);
-  border: 1px solid var(--accent);
-  font-weight: 600;
-  min-height: 28px;
-}
-.primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  color: var(--on-accent);
 }
 .secondary {
   background: var(--surface);
@@ -1247,6 +1225,18 @@
   padding: 4px 8px;
   font-size: 11px;
 }
+.command-trigger kbd {
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+}
+.assistant-launcher {
+  min-width: 32px;
+  min-height: 32px;
+}
 .workflow-stages {
   display: flex;
   flex-direction: column;
@@ -1421,6 +1411,13 @@
   font-size: 15px;
   letter-spacing: 0;
 }
+.command-dialog > .command-description {
+  margin: 0;
+  padding: 0 18px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .command-input {
   display: flex;
   align-items: center;
@@ -1429,9 +1426,34 @@
   color: var(--muted);
   border-bottom: 1px solid var(--line);
 }
-.command-input input {
+.command-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--input);
+}
+.command-search-field > svg {
+  flex-shrink: 0;
+}
+.command-search-field input {
+  min-width: 0;
   min-height: 38px;
-  font-size: 14px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+}
+.command-search-field:has(input:focus-visible) {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.command-search-field input:focus-visible {
+  outline: none;
 }
 .command-results {
   padding: 8px;

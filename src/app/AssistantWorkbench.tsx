@@ -1,10 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  AssistantMcpAudit,
-  AssistantMcpConfiguration,
-  AssistantMcpScope,
-  AssistantSnapshot,
-} from '../domain/assistant/types';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import type { AssistantSnapshot } from '../domain/assistant/types';
 import App from './App';
 import type { ProjectDocumentSnapshot } from './projectDocuments';
 const AssistantPanel = lazy(() => import('../features/assistant/AssistantPanel'));
@@ -12,11 +7,7 @@ import AssistantMcpPanel from '../features/assistant/AssistantMcpPanel';
 import { helpDocument } from '../features/assistant/context';
 import HelpPanel from '../features/help/HelpPanel';
 import { helpArticles, type HelpArticleId } from '../features/help/content';
-import {
-  configureAssistantMcp,
-  getAssistantMcpAudit,
-  publishAssistantSnapshot,
-} from '../platform/desktop/assistant';
+import { useAssistantMcp } from '../features/assistant/session/useAssistantMcp';
 import { useModalFocus } from '../shared/ui/useModalFocus';
 import { assistantStudyContext } from './assistantStudyContext';
 import { useAssistantSession } from './useAssistantSession';
@@ -25,22 +16,36 @@ export default function AssistantWorkbench() {
   const desktop = '__TAURI_INTERNALS__' in window;
   const [active, setActive] = useState<ProjectDocumentSnapshot | null>(null);
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<{
+    id: string;
+    documentId: string | null;
+    question: string;
+    includeStudy: boolean;
+  } | null>(null);
   const [assistantLoaded, setAssistantLoaded] = useState(false);
   useEffect(() => {
     if (open) setAssistantLoaded(true);
   }, [open]);
   const [settingsModal, setSettingsModal] = useState(false);
   const [source, setSource] = useState<HelpArticleId | null>(null);
-  const [mcp, setMcp] = useState<AssistantMcpConfiguration | null>(null);
-  const [mcpBusy, setMcpBusy] = useState(false);
-  const [mcpError, setMcpError] = useState<string | null>(null);
-  const [audit, setAudit] = useState<AssistantMcpAudit[]>([]);
   const session = useAssistantSession(
     active?.documentId ?? 'home',
     active?.project.id ?? null,
     desktop && assistantLoaded,
   );
-  const openAssistant = useCallback(() => setOpen(true), []);
+  const openAssistant = useCallback(
+    (question?: string, includeStudy = false) => {
+      if (typeof question === 'string')
+        setDraft({
+          id: crypto.randomUUID(),
+          documentId: active?.documentId ?? null,
+          question,
+          includeStudy,
+        });
+      setOpen(true);
+    },
+    [active?.documentId],
+  );
   const study = useMemo(() => assistantStudyContext(active), [active]);
   const snapshot = useMemo<AssistantSnapshot>(
     () => ({
@@ -80,10 +85,7 @@ export default function AssistantWorkbench() {
     }),
     [active, study, session.sessionId],
   );
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
-  const mcpRef = useRef(mcp);
-  mcpRef.current = mcp;
+  const mcp = useAssistantMcp(snapshot, desktop);
   useModalFocus(!!source, () => setSource(null), 'assistant-source');
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -106,45 +108,12 @@ export default function AssistantWorkbench() {
       setSource(null);
     }
   }, [active?.confirmation, active?.help]);
-  useEffect(() => {
-    if (!desktop || !mcp?.enabled) return;
-    const publish = () =>
-      void publishAssistantSnapshot(snapshotRef.current).catch((failure) =>
-        setMcpError(
-          typeof failure === 'string' ? failure : 'The MCP snapshot could not be refreshed.',
-        ),
-      );
-    publish();
-    const timer = window.setInterval(publish, 30000);
-    return () => window.clearInterval(timer);
-  }, [desktop, mcp?.enabled, snapshot]);
-  async function configure(scopes: AssistantMcpScope[]) {
-    setMcpBusy(true);
-    setMcpError(null);
-    try {
-      // Revocation must work even if a snapshot is invalid or storage/keychain is unavailable.
-      if (scopes.length) await publishAssistantSnapshot(snapshotRef.current);
-      const value = await configureAssistantMcp(session.sessionId, scopes);
-      setMcp(value);
-      setAudit([]);
-    } catch (failure) {
-      setMcpError(typeof failure === 'string' ? failure : 'MCP access could not be configured.');
-    } finally {
-      setMcpBusy(false);
-    }
-  }
-  function readAudit() {
-    void getAssistantMcpAudit(session.sessionId)
-      .then(setAudit)
-      .catch((failure) =>
-        setMcpError(typeof failure === 'string' ? failure : 'The MCP audit is unavailable.'),
-      );
-  }
   function cite(id: string) {
     if (helpArticles.some((article) => article.id === id)) setSource(id as HelpArticleId);
   }
   return (
     <App
+      assistantOpen={open}
       overlayModalOpen={settingsModal || !!source}
       onActiveDocument={setActive}
       onAssistantOpen={openAssistant}
@@ -156,6 +125,7 @@ export default function AssistantWorkbench() {
                 open={open}
                 desktop={desktop}
                 study={study}
+                draft={draft}
                 session={session}
                 onClose={() => setOpen(false)}
                 onSource={cite}
@@ -163,13 +133,13 @@ export default function AssistantWorkbench() {
                 mcpPanel={
                   desktop ? (
                     <AssistantMcpPanel
-                      configuration={mcp}
-                      audit={audit}
-                      busy={mcpBusy}
-                      error={mcpError}
+                      configuration={mcp.configuration}
+                      audit={mcp.audit}
+                      busy={mcp.busy}
+                      error={mcp.error}
                       activeName={active?.project.name ?? null}
-                      onConfigure={(scopes) => void configure(scopes)}
-                      onAudit={readAudit}
+                      onConfigure={(scopes) => void mcp.configure(scopes)}
+                      onAudit={() => void mcp.readAudit()}
                     />
                   ) : undefined
                 }

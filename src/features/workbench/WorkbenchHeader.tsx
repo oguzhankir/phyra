@@ -3,9 +3,9 @@ import { useEffect, useRef } from 'react';
 import {
   Check,
   ChevronDown,
-  CircleHelp,
   FilePlus2,
   FolderOpen,
+  MessageCircle,
   Redo2,
   Save,
   Search,
@@ -123,10 +123,6 @@ export default function WorkbenchHeader(props: Props) {
               <span className="menu-icon" />
               Export physical fields…
             </button>
-            <button onClick={() => action(props.onFilesHelp)}>
-              <CircleHelp size={15} />
-              Project file help
-            </button>
           </div>
         </details>
         <details
@@ -182,33 +178,35 @@ export default function WorkbenchHeader(props: Props) {
         </details>
         <button
           className="menu-help"
-          title="Contextual help · F1"
-          aria-label="Open contextual help"
+          title="Workbench help · F1"
+          aria-label="Open workbench help"
           onClick={props.onHelp}
         >
           Help
         </button>
       </div>
       <div className="header-end">
-        {props.onAssistantOpen && (
-          <button
-            className="command-trigger"
-            aria-label="Open AI assistant"
-            onClick={props.onAssistantOpen}
-          >
-            Assistant
-          </button>
-        )}
         {props.onCommands && (
           <button
             className="command-trigger"
             data-modal-focus-fallback
-            title="Find a command · Ctrl/⌘ K"
-            aria-label="Find a command"
+            title="Search actions and editors · Ctrl/⌘ K"
+            aria-label="Search actions and editors"
             onClick={props.onCommands}
           >
             <Search size={15} />
-            <span>Commands</span>
+            <span>Search actions</span>
+            <kbd>⌘/Ctrl K</kbd>
+          </button>
+        )}
+        {props.onAssistantOpen && (
+          <button
+            className="assistant-launcher"
+            title="Open chat · Ctrl/⌘ J"
+            aria-label="Open AI assistant"
+            onClick={() => props.onAssistantOpen?.()}
+          >
+            <MessageCircle size={18} aria-hidden="true" />
           </button>
         )}
       </div>

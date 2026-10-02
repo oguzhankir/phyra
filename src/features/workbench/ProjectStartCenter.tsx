@@ -158,9 +158,7 @@ export default function ProjectStartCenter(props: Props) {
             <GraduationCap size={18} />
             <strong>First time here?</strong>
             <p>Start with an example, then follow Prepare → Solve → Inspect.</p>
-            <button className="text-button" onClick={props.onHelp}>
-              Open getting started guide <ArrowRight size={13} />
-            </button>
+            <p>Find guides and formulations in Help · F1.</p>
           </div>
         </aside>
         <section className="start-content">
