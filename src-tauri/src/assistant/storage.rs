@@ -248,6 +248,38 @@ pub fn delete_credential(settings: &Settings) -> Result<(), String> {
         Err(_) => Err("The OS credential store could not delete this provider credential".into()),
     }
 }
+pub fn disconnect(directory: &Path, expected: &Settings) -> Result<Configuration, String> {
+    disconnect_with(directory, expected, delete_credential)
+}
+fn disconnect_with(
+    directory: &Path,
+    expected: &Settings,
+    remove: impl FnOnce(&Settings) -> Result<(), String>,
+) -> Result<Configuration, String> {
+    let mut settings = read_settings(directory)?;
+    validate_settings(expected, false)?;
+    if settings.provider != expected.provider
+        || settings.endpoint != expected.endpoint
+        || settings.local != expected.local
+        || settings.model != expected.model
+    {
+        return Err(
+            "The active connection changed. Reopen Connection before disconnecting.".into(),
+        );
+    }
+    if !settings.local {
+        remove(&settings)?;
+    }
+    settings.model.clear();
+    write_settings(directory, settings.clone()).map_err(|_| {
+        "Credential removed, but connection settings could not be updated. Retry disconnect."
+            .to_string()
+    })?;
+    Ok(Configuration {
+        settings,
+        credential_present: false,
+    })
+}
 pub fn reject_credentials(value: &str, secret: Option<&str>) -> Result<(), String> {
     if secret.is_some_and(|s| !s.is_empty() && value.contains(s)) {
         return Err("Provider credentials cannot be included in assistant content".into());
@@ -542,6 +574,60 @@ mod tests {
         }
     }
     #[test]
+    fn disconnect_removes_only_the_current_key_and_clears_the_persisted_model() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = fixture_compatible("https://fixture.example/v1");
+        write_settings(directory.path(), settings.clone()).unwrap();
+        let history = fixture_conversation();
+        write_conversation(directory.path(), &history).unwrap();
+        let previous = fs::read(
+            owned_path(&history_directory(directory.path()).unwrap(), &history.id).unwrap(),
+        )
+        .unwrap();
+        let value = disconnect_with(directory.path(), &settings, |selected| {
+            assert_eq!(selected.endpoint, settings.endpoint);
+            assert_eq!(selected.model, settings.model);
+            Ok(())
+        })
+        .unwrap();
+        assert!(value.settings.model.is_empty());
+        assert!(!value.credential_present);
+        assert!(read_settings(directory.path()).unwrap().model.is_empty());
+        assert_eq!(
+            fs::read(
+                owned_path(&history_directory(directory.path()).unwrap(), &history.id).unwrap()
+            )
+            .unwrap(),
+            previous
+        );
+    }
+    #[test]
+    fn failed_key_removal_keeps_connection_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = fixture_compatible("https://fixture.example/v1");
+        write_settings(directory.path(), settings.clone()).unwrap();
+        let previous = fs::read(directory.path().join("settings.json")).unwrap();
+        assert!(disconnect_with(directory.path(), &settings, |_| Err(
+            "Fixture OS failure".into()
+        ))
+        .is_err());
+        assert_eq!(
+            fs::read(directory.path().join("settings.json")).unwrap(),
+            previous
+        );
+    }
+    #[test]
+    fn local_disconnect_does_not_access_the_os_credential_store() {
+        let directory = tempfile::tempdir().unwrap();
+        write_settings(directory.path(), fixture_local()).unwrap();
+        let value = disconnect_with(directory.path(), &fixture_local(), |_| {
+            panic!("Local endpoints have no managed key")
+        })
+        .unwrap();
+        assert!(value.settings.model.is_empty());
+        assert!(value.settings.local);
+    }
+    #[test]
     fn rejects_paths_and_credentials() {
         let dir = tempfile::tempdir().unwrap();
         assert!(owned_path(dir.path(), "../settings").is_err());
@@ -550,6 +636,18 @@ mod tests {
         );
         assert!(reject_credentials("sk-fake-fixture-1234567890", None).is_err());
         assert!(reject_credentials("Stress in Pa", None).is_ok());
+    }
+    #[test]
+    fn a_stale_disconnect_cannot_remove_a_new_connection() {
+        let directory = tempfile::tempdir().unwrap();
+        write_settings(directory.path(), fixture_local()).unwrap();
+        assert!(disconnect_with(
+            directory.path(),
+            &fixture_compatible("https://fixture.example/v1"),
+            |_| panic!("A stale confirmation cannot remove a different key")
+        )
+        .is_err());
+        assert_eq!(read_settings(directory.path()).unwrap().model, "fixture");
     }
     #[test]
     fn compatible_credentials_are_bound_to_canonical_provider_origin() {

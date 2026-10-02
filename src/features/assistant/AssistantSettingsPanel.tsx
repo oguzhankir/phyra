@@ -9,12 +9,23 @@ import {
 } from '../../domain/assistant/types';
 import {
   deleteAssistantCredential,
+  disconnectAssistant,
+  getAssistantCredentialStatus,
   listAssistantModels,
   saveAssistantSettings,
   storeAssistantCredential,
 } from '../../platform/desktop/assistant';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import { ProviderLogo, providerNames } from './providers';
+
+function sharesCredential(left: AssistantSettings, right: AssistantSettings): boolean {
+  if (left.provider !== right.provider || left.local || right.local) return false;
+  try {
+    return new URL(left.endpoint).origin === new URL(right.endpoint).origin;
+  } catch {
+    return false;
+  }
+}
 
 export default function AssistantSettingsPanel({
   configuration,
@@ -36,6 +47,7 @@ export default function AssistantSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<AssistantSettings | null>(null);
   const custom = settings.provider === 'compatible' || settings.provider === 'ollama';
   useModalFocus(true, () => {
     if (!busy) onClose();
@@ -48,13 +60,25 @@ export default function AssistantSettingsPanel({
           ? failure.message
           : 'The connection could not be configured.',
     );
-  function provider(value: AssistantProvider) {
-    setSettings({ ...ASSISTANT_DEFAULTS[value] });
+  async function provider(value: AssistantProvider) {
+    const selected =
+      configuration?.settings.provider === value
+        ? { ...configuration.settings }
+        : { ...ASSISTANT_DEFAULTS[value] };
+    setSettings(selected);
     setModels([]);
     setCredential('');
     setCredentialPresent(false);
     setError(null);
     setNotice(null);
+    setBusy(true);
+    try {
+      setCredentialPresent(await getAssistantCredentialStatus(selected));
+    } catch (failure) {
+      fail(failure);
+    } finally {
+      setBusy(false);
+    }
   }
   async function saveKey() {
     setBusy(true);
@@ -89,12 +113,15 @@ export default function AssistantSettingsPanel({
     setBusy(true);
     setError(null);
     try {
+      if (!settings.local && credential.trim())
+        await storeAssistantCredential(settings, credential.trim());
       const value = await saveAssistantSettings(settings);
       onSaved(value.settings, value.credentialPresent);
       onClose();
     } catch (failure) {
       fail(failure);
     } finally {
+      setCredential('');
       setBusy(false);
     }
   }
@@ -127,7 +154,7 @@ export default function AssistantSettingsPanel({
               key={id}
               disabled={busy}
               aria-pressed={settings.provider === id}
-              onClick={() => provider(id)}
+              onClick={() => void provider(id)}
             >
               <ProviderLogo provider={id} />
               <span>{providerNames[id]}</span>
@@ -151,6 +178,7 @@ export default function AssistantSettingsPanel({
                 /* Native validation explains an incomplete URL. */
               }
               setSettings({ ...settings, endpoint, local });
+              setCredential('');
               setCredentialPresent(false);
               setModels([]);
               setNotice(null);
@@ -168,13 +196,17 @@ export default function AssistantSettingsPanel({
                   : 'Store your key to connect'}
             </span>
           </div>
+          <p className="assistant-settings-note">
+            Saved securely on this device until you remove the key or disconnect the provider.
+            Closing Phyra does not disconnect it.
+          </p>
           <label>
             API key
             <input
               type="password"
               aria-label="Assistant API key"
               value={credential}
-              disabled={busy}
+              disabled={busy || settings.local}
               autoComplete="off"
               spellCheck={false}
               placeholder="Enter a key; it will not be shown again"
@@ -184,7 +216,7 @@ export default function AssistantSettingsPanel({
           <div className="assistant-setting-actions">
             <button
               type="button"
-              disabled={busy || !credential.trim()}
+              disabled={busy || settings.local || !credential.trim()}
               onClick={() => void saveKey()}
             >
               Store key securely
@@ -198,6 +230,10 @@ export default function AssistantSettingsPanel({
                 className="text-button"
                 disabled={busy}
                 onClick={async () => {
+                  if (configuration && sharesCredential(configuration.settings, settings)) {
+                    setDisconnecting({ ...configuration.settings });
+                    return;
+                  }
                   setBusy(true);
                   try {
                     await deleteAssistantCredential(settings);
@@ -210,7 +246,7 @@ export default function AssistantSettingsPanel({
                   }
                 }}
               >
-                Remove key
+                Remove saved key
               </button>
             )}
           </div>
@@ -258,6 +294,15 @@ export default function AssistantSettingsPanel({
           </p>
         )}
         <footer>
+          {configuration?.settings.model && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setDisconnecting({ ...configuration.settings })}
+            >
+              Disconnect {providerNames[configuration.settings.provider]}
+            </button>
+          )}
           <button type="button" disabled={busy} onClick={onClose}>
             Cancel
           </button>
@@ -270,6 +315,38 @@ export default function AssistantSettingsPanel({
             {busy ? 'Working…' : 'Save connection'}
           </button>
         </footer>
+        {disconnecting && (
+          <section aria-label="Confirm provider disconnection">
+            <p>
+              {disconnecting.local ? 'Disconnect ' : 'Remove the saved key and disconnect '}
+              {providerNames[disconnecting.provider]}? Local conversations and projects will be
+              kept.
+              {!disconnecting.local && ' This does not revoke the key at the provider.'}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  const value = await disconnectAssistant(disconnecting);
+                  onSaved(value.settings, value.credentialPresent);
+                  onClose();
+                } catch (failure) {
+                  fail(failure);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {disconnecting.local ? 'Disconnect' : 'Disconnect and remove saved key'}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setDisconnecting(null)}>
+              Keep connection
+            </button>
+          </section>
+        )}
       </section>
     </div>
   );

@@ -34,6 +34,12 @@ export function storeAssistantCredential(
 export function deleteAssistantCredential(settings: AssistantSettings): Promise<void> {
   return invoke('assistant_delete_credential', { settings });
 }
+export function disconnectAssistant(settings: AssistantSettings): Promise<AssistantConfiguration> {
+  return invoke('assistant_disconnect', { settings });
+}
+export function getAssistantCredentialStatus(settings: AssistantSettings): Promise<boolean> {
+  return invoke('assistant_credential_present', { settings });
+}
 export function listAssistantModels(settings: AssistantSettings): Promise<AssistantModel[]> {
   return invoke('assistant_list_models', { settings });
 }

@@ -73,6 +73,34 @@ pub async fn assistant_delete_credential(
     .await
 }
 #[tauri::command]
+pub async fn assistant_disconnect(
+    app: tauri::AppHandle,
+    state: State<'_, AssistantState>,
+    settings: Settings,
+) -> Result<Configuration, String> {
+    // Do not remove a credential while discovery or a response owns it.
+    let _permit = state
+        .network
+        .try_acquire_many(2)
+        .map_err(|_| "Assistant connections are busy; stop the request before disconnecting")?;
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        let directory = storage::directory(&app)?;
+        storage::disconnect(&directory, &settings)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn assistant_credential_present(
+    state: State<'_, AssistantState>,
+    settings: Settings,
+) -> Result<bool, String> {
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        providers::validate_settings(&settings, false)?;
+        storage::credential_present(&settings)
+    })
+    .await
+}
+#[tauri::command]
 pub async fn assistant_list_models(
     state: State<'_, AssistantState>,
     settings: Settings,

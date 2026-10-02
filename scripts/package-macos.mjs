@@ -156,11 +156,77 @@ export async function restoreEngineLinks() {
   return { application, bundledEngine, links: restoredLinks };
 }
 
+export async function signMacOSApplication() {
+  await ownedDirectory(application);
+  const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
+  if (identity && identity !== '-') {
+    const { stdout } = await executeFile('/usr/bin/security', [
+      'find-identity',
+      '-v',
+      '-p',
+      'codesigning',
+    ]);
+    const identities = Array.from(stdout.matchAll(/\)\s+([A-Fa-f0-9]{40})\s+"([^"]+)"/g));
+    const matched = identities.filter((entry) => entry[1] === identity || entry[2] === identity);
+    if (matched.length !== 1)
+      throw new Error(
+        'APPLE_SIGNING_IDENTITY must identify one valid installed code-signing certificate.',
+      );
+    const fingerprint = matched[0][1];
+    const binaries = [],
+      frameworks = [];
+    async function visit(directory) {
+      for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        const filename = path.join(directory, entry.name);
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) {
+          await visit(filename);
+          if (entry.name.endsWith('.framework')) frameworks.push(filename);
+        } else if (entry.isFile()) {
+          const file = await fs.open(filename, 'r');
+          try {
+            const header = Buffer.alloc(4);
+            const { bytesRead } = await file.read(header, 0, 4, 0);
+            // Mach-O and universal Mach-O; do not infer executable code from filenames.
+            if (
+              bytesRead === 4 &&
+              [
+                0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca, 0xcafebabf,
+                0xbfbafeca,
+              ].includes(header.readUInt32BE())
+            )
+              binaries.push(filename);
+          } finally {
+            await file.close();
+          }
+        }
+      }
+    }
+    await visit(application);
+    // Sign owned embedded code before its containing bundle. Never use --deep to sign.
+    for (const target of [...binaries, ...frameworks, application])
+      await run('/usr/bin/codesign', [
+        '--force',
+        '--sign',
+        fingerprint,
+        '--timestamp=none',
+        target,
+      ]);
+    console.log(
+      'Signed the application and embedded native code with the configured identity. Notarization is separate.',
+    );
+  } else {
+    await run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', application]);
+    console.log(
+      'Development ad hoc signature: Keychain trust may need renewal after each changed build.',
+    );
+  }
+  await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', application]);
+}
+
 export async function packageMacOS() {
   await restoreEngineLinks();
-  // Development ad hoc sealing validates the restored bundle; this is not Developer ID signing.
-  await run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', application]);
-  await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', application]);
+  await signMacOSApplication();
   const config = JSON.parse(
     await fs.readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'),
   );

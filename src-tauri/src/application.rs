@@ -70,6 +70,8 @@ pub(crate) fn run() {
             assistant::commands::assistant_save_settings,
             assistant::commands::assistant_store_credential,
             assistant::commands::assistant_delete_credential,
+            assistant::commands::assistant_disconnect,
+            assistant::commands::assistant_credential_present,
             assistant::commands::assistant_list_models,
             assistant::commands::assistant_stream,
             assistant::commands::assistant_cancel,
