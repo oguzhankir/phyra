@@ -14,6 +14,8 @@ import type {
   AssistantMcpAudit,
 } from '../../domain/assistant/types';
 
+const snapshotSequences = new Map<string, number>();
+
 export function getAssistantSettings(): Promise<AssistantConfiguration> {
   return invoke('assistant_get_settings');
 }
@@ -64,7 +66,11 @@ export function deleteAssistantConversation(id: string): Promise<void> {
   return invoke('assistant_delete_conversation', { id });
 }
 export function publishAssistantSnapshot(snapshot: AssistantSnapshot): Promise<void> {
-  return invoke('assistant_publish_snapshot', { snapshot });
+  const publicationSequence = (snapshotSequences.get(snapshot.sessionId) ?? 0) + 1;
+  if (!Number.isSafeInteger(publicationSequence))
+    return Promise.reject('Assistant snapshot publication limit reached; restart Phyra.');
+  snapshotSequences.set(snapshot.sessionId, publicationSequence);
+  return invoke('assistant_publish_snapshot', { snapshot, publicationSequence });
 }
 export function configureAssistantMcp(
   sessionId: string,
@@ -76,6 +82,7 @@ export function getAssistantMcpAudit(sessionId: string): Promise<AssistantMcpAud
   return invoke('assistant_mcp_audit', { sessionId });
 }
 export function releaseAssistantSession(sessionId: string): Promise<void> {
+  snapshotSequences.delete(sessionId);
   return invoke('assistant_release_session', { sessionId });
 }
 export function openAssistantReference(url: string): Promise<void> {

@@ -275,7 +275,9 @@ export function useAssistantSession(owner: string, projectId: string | null, des
     }
   }
   function configured(settings: AssistantSettings, credentialPresent: boolean) {
+    ++settingsGeneration.current;
     setConfiguration({ settings, credentialPresent });
+    setError(null);
   }
   return {
     sessionId,

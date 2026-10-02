@@ -16,7 +16,7 @@ use types::{Scope, Snapshot};
 
 pub struct AssistantState {
     streams: Mutex<Streams>,
-    storage_lock: Mutex<()>,
+    storage_lock: Arc<Mutex<()>>,
     snapshots: Mutex<HashMap<String, Published>>,
     network: tokio::sync::Semaphore,
 }
@@ -24,7 +24,7 @@ impl Default for AssistantState {
     fn default() -> Self {
         Self {
             streams: Mutex::new(Streams::default()),
-            storage_lock: Mutex::new(()),
+            storage_lock: Arc::new(Mutex::new(())),
             snapshots: Mutex::new(HashMap::new()),
             network: tokio::sync::Semaphore::new(2),
         }
@@ -46,6 +46,27 @@ struct Published {
     scopes: Vec<Scope>,
     token: String,
     directory: PathBuf,
+    last_publication: u64,
+}
+fn publication_sequence(value: u64) -> Result<(), String> {
+    if value == 0 || value > 9_007_199_254_740_991 {
+        return Err("Invalid MCP publication sequence".into());
+    }
+    Ok(())
+}
+impl Published {
+    fn adopt(&mut self, snapshot: Snapshot, sequence: u64) -> Result<bool, String> {
+        publication_sequence(sequence)?;
+        if sequence <= self.last_publication {
+            return Ok(false);
+        }
+        if !self.scopes.is_empty() {
+            mcp::write_consent(&self.directory, &snapshot, &self.token, &self.scopes)?;
+        }
+        self.snapshot = snapshot;
+        self.last_publication = sequence;
+        Ok(true)
+    }
 }
 impl Streams {
     fn begin(&mut self, request: &str, session: &str) -> Result<Arc<Cancellation>, String> {
@@ -132,6 +153,71 @@ pub fn stop_owned(state: &AssistantState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn out_of_order_publication_cannot_replace_newer_snapshot_or_consent_lease() {
+        use types::Help;
+        let directory = tempfile::tempdir().unwrap();
+        let session = uuid::Uuid::new_v4().to_string();
+        let snapshot = |text: &str| Snapshot {
+            session_id: session.clone(),
+            project_id: None,
+            revision: None,
+            project: None,
+            run: None,
+            help: vec![Help {
+                id: "overview".into(),
+                title: "Overview".into(),
+                content: text.into(),
+            }],
+            capabilities: vec![],
+        };
+        let mut published = Published {
+            snapshot: snapshot("Initial"),
+            scopes: vec![Scope::Help],
+            token: uuid::Uuid::new_v4().to_string(),
+            directory: directory.path().to_path_buf(),
+            last_publication: 0,
+        };
+        published
+            .adopt(snapshot("Newer accepted snapshot"), 2)
+            .unwrap();
+        let path =
+            storage::owned_path(&mcp::mcp_directory(directory.path()).unwrap(), &session).unwrap();
+        let lease = storage::read_owned_bytes(&path, 1024 * 1024).unwrap();
+        for sequence in [0, 9_007_199_254_740_992] {
+            assert!(published
+                .adopt(snapshot("Older rejected snapshot"), sequence)
+                .is_err());
+            assert_eq!(published.last_publication, 2);
+            assert_eq!(
+                published.snapshot.help[0].content,
+                "Newer accepted snapshot"
+            );
+            assert_eq!(
+                storage::read_owned_bytes(&path, 1024 * 1024).unwrap(),
+                lease
+            );
+        }
+        for sequence in [1, 2] {
+            assert!(!published
+                .adopt(snapshot("Older ignored snapshot"), sequence)
+                .unwrap());
+            assert_eq!(published.last_publication, 2);
+            assert_eq!(
+                published.snapshot.help[0].content,
+                "Newer accepted snapshot"
+            );
+            assert_eq!(
+                storage::read_owned_bytes(&path, 1024 * 1024).unwrap(),
+                lease
+            );
+        }
+        published
+            .adopt(snapshot("Next accepted snapshot"), 3)
+            .unwrap();
+        assert_eq!(published.last_publication, 3);
+        assert_eq!(published.snapshot.help[0].content, "Next accepted snapshot");
+    }
     #[test]
     fn event_cancellation_and_request_ids_have_session_ownership() {
         let mut streams = Streams::default();

@@ -158,8 +158,17 @@ async fn bounded_json(mut response: reqwest::Response) -> Result<Value, String> 
 }
 pub async fn list_models(settings: &Settings) -> Result<Vec<Model>, String> {
     validate_settings(settings, false)?;
-    let secret = storage::credential(settings)?;
+    let secret = provider_credential(settings).await?;
     list_models_with_credential(settings, secret.as_deref().map(|s| s.as_str())).await
+}
+async fn provider_credential(settings: &Settings) -> Result<Option<Zeroizing<String>>, String> {
+    if settings.local {
+        return Ok(None);
+    }
+    let settings = settings.clone();
+    tokio::task::spawn_blocking(move || storage::credential(&settings))
+        .await
+        .map_err(|_| "The native credential lookup could not complete")?
 }
 async fn list_models_with_credential(
     settings: &Settings,
@@ -357,7 +366,11 @@ pub async fn stream(
     if !request.settings.local && !request.allow_remote {
         return Err("Approve the displayed context before sending to this remote provider".into());
     }
-    let secret: Option<Zeroizing<String>> = storage::credential(&request.settings)?;
+    let secret = tokio::select! {
+        biased;
+        _ = cancel.wait() => return Ok((String::new(), Usage::default(), true)),
+        secret = provider_credential(&request.settings) => secret?,
+    };
     let credential = secret.as_deref().map(|s| s.as_str());
     storage::reject_credentials(&request.system, credential)?;
     storage::reject_credentials(&request.context.text, credential)?;

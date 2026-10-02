@@ -38,7 +38,7 @@ export default function AssistantWorkbench() {
   const session = useAssistantSession(
     active?.documentId ?? 'home',
     active?.project.id ?? null,
-    desktop,
+    desktop && assistantLoaded,
   );
   const openAssistant = useCallback(() => setOpen(true), []);
   const study = useMemo(() => assistantStudyContext(active), [active]);
