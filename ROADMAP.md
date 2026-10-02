@@ -1,531 +1,374 @@
 # Phyra — Product Vision and Roadmap
 
-**Reviewed:** 30 September 2026
+**Reviewed:** 2 October 2026
 
-This is the single product roadmap for Phyra. It records the implemented foundation, the intended engineering scope, and the evidence required to expand that scope. Future capabilities are proposals, not availability claims. Horizons depend on maintainers, research results, funding, licensing and platform evidence; they are not delivery dates.
+This is Phyra's single product roadmap. It describes the current foundation, the product destination, and the evidence required before capabilities are presented as supported. It is organized by reusable engineering capabilities and dependency order, not by intermediate release promises or delivery dates.
 
-**Contents**
+The roadmap describes a capable local-first mechanical engineering workbench: users can create and edit useful 2D and 3D mechanical geometry, define real engineering studies, solve selected structural and thermal problems with established numerical methods, reproduce representative Physics ML research workflows, and use an AI assistant under their control. The target is broad and coherent, not a claim that every possible CAD or solver function is finished.
 
-1. [Product vision](#1-product-vision)
+## Contents
+
+1. [Product direction](#1-product-direction)
 2. [Verified starting point](#2-verified-starting-point)
-3. [Development programme](#3-development-programme)
-4. [Geometry, CAD and meshing](#4-engineering-preparation-geometry-cad-and-meshing)
-5. [Physics and physical conditions](#5-physics-and-physical-condition-coverage)
-6. [Physics ML methods](#6-physics-ml-method-strategy)
-7. [Engineering assistant and BYOK](#7-engineering-assistant-byok-and-agent-workflows)
-8. [Professional interface and explanation](#8-professional-interface-explanation-and-presentation)
-9. [Acceptance gates](#9-scientific-and-product-acceptance-gates)
-10. [Architecture, platforms and scale](#10-architecture-platforms-and-scale)
-11. [Community and ownership](#11-community-and-sustainable-ownership)
-12. [First execution priorities](#12-first-execution-priorities)
-13. [Risks and revision policy](#13-risks-decisions-and-revision-policy)
+3. [Capability status and product contract](#3-capability-status-and-product-contract)
+4. [Development sequence](#4-development-sequence)
+5. [CAD, geometry and meshing](#5-cad-geometry-and-meshing)
+6. [Classical analysis and physical definitions](#6-classical-analysis-and-physical-definitions)
+7. [Physics ML and paper-inspired research](#7-physics-ml-and-paper-inspired-research)
+8. [AI assistant, BYOK and agent workflows](#8-ai-assistant-byok-and-agent-workflows)
+9. [Results, documentation and product experience](#9-results-documentation-and-product-experience)
+10. [Architecture and local devices](#10-architecture-and-local-devices)
+11. [Acceptance gates](#11-acceptance-gates)
+12. [Further product areas](#12-further-product-areas)
+13. [Research anchors](#13-research-anchors)
 
-## 1. Product vision
+## 1. Product direction
 
-**Phyra will help engineers and researchers prepare complete physical problems, solve and investigate PDEs through validated Physics ML methods, and work with an intelligent assistant that can explain, inspect and improve their studies under their control.**
+Phyra combines four things that should reinforce one another:
 
-The long-term ambition is a professional engineering workbench with capable geometry, assemblies, materials, loads, boundary conditions, meshing and scientific postprocessing. Users should be able to describe a real engineering problem without reducing it to the few cases convenient for a neural network demonstration.
+- **Mechanical CAD and preparation:** create, import, edit and inspect analysis-ready geometry; assign materials and physical conditions to stable regions; control the mesh.
+- **Classical numerical analysis:** provide trusted, inspectable reference solutions across useful 2D and 3D solid-mechanics workflows, with selected thermal workflows.
+- **Physics ML research:** train, evaluate and apply physics-informed, operator, mesh/graph and hybrid methods on the same problem definitions and reference data.
+- **An AI workbench assistant:** explain Phyra and its methods, answer questions from the active study and results, and help users carry out bounded workflows through approved tools.
 
-The principal differentiation is the combination of engineering preparation with Physics ML: learning solution operators, identifying unknown parameters, accelerating repeated studies, building physics-consistent hybrid methods, and supporting informed design decisions. Classical methods remain essential for independent references, dataset generation, correction and fallback. The desktop is the engineering workbench; the long-term engine is an execution layer for bounded numerical methods and externally supplied models, rather than a requirement to reimplement every neural architecture. The roadmap does not assume that Phyra can quickly reproduce the accumulated solver breadth of mature engineering suites.
+The workbench should feel complete across supported workflows, rather than like a collection of solver demonstrations. A user should be able to go from sketch or imported part, through materials, conditions and meshing, to a validated result and a clear explanation of its limits.
 
-Two AI layers have distinct responsibilities:
+### Product principles
 
-| Layer                 | Responsibility                                                                                                     | Evidence of success                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Numerical Physics ML  | Approximate or help solve a defined physical problem; learn reusable mappings; estimate parameters and uncertainty | Independent physical references, field and quantity-of-interest errors, conservation, applicability and measured cost |
-| Engineering assistant | Explain the product, inspect studies, propose changes and coordinate permitted numerical tools                     | Grounded answers, correct units, reviewable changes, enforced permissions and traceable tool results                  |
+1. **Prepare the engineering problem first.** Geometry, materials, loads, boundary conditions, mesh and result interpretation are product capabilities, not incidental inputs to a neural network.
+2. **Separate definition from solution.** A project may store a well-formed problem definition even if no current solver can solve it. The interface must say what is missing and prevent a misleading run.
+3. **Use established methods where they fit.** Prefer maintained CAD, meshing and numerical libraries with a clear license and platform story. Phyra should own the product contracts, integration, validation and user workflow; avoid building a bespoke general-purpose solver when a suitable library exists.
+4. **Select research by reusable value.** Reproduce papers as end-to-end cases, then keep the shared geometry, physics, data and method capabilities. Do not fork the application or add one-off UI for each paper.
+5. **Make evidence visible.** Every supported method has assumptions, applicability limits, references, errors and failure behavior. Training loss alone is not accuracy evidence.
+6. **Keep the desktop useful locally.** Core CAD and numerical workflows work without a Phyra account, hosted solver or model API key. BYOK AI features are optional and disclose when information leaves the machine.
+7. **Keep extensions possible without speculative infrastructure.** Preserve project, study, execution, field and model boundaries. Add a stable extension contract when real integrations prove what it needs to support.
 
-An assistant's fluent answer cannot certify a numerical solution. A small training loss cannot establish engineering accuracy. Both layers must reveal their assumptions and limits.
+### Product boundary
 
-### Five product principles
+The core product focuses on mechanical CAD, solid mechanics, selected heat transfer, research-grade Physics ML experimentation and a user-controlled AI assistant. It does not promise every industrial formulation or every CAD discipline. Each advertised feature must correspond to a declared and validated capability, not a checkbox in an editor.
 
-1. **Complete problem preparation.** Geometry, material assignments, constraints and physical conditions are first-class capabilities. Their scope must grow alongside the numerical methods.
-2. **Physics ML with a purpose.** Choose methods for the problem family and intended benefit. Per-problem training, reusable operators and hybrid acceleration are different products with different costs.
-3. **Evidence before promotion.** A research prototype becomes a supported feature only after scientific, workflow and target-platform validation.
-4. **Engineering clarity.** The interface should help users understand what is being modeled, why a method applies, and whether a result is current and trustworthy.
-5. **Open, local and composable.** Local analysis remains useful without an account or API key. Research integrations and optional remote compute should extend the workbench through explicit contracts.
-
-### The experience this roadmap aims to enable
-
-**A mechanical design study:** an engineer imports a STEP assembly, repairs a small gap, preserves named mounting surfaces, assigns materials and connections, and defines multiple load cases. Phyra explains available formulations and missing capabilities. A validated Physics ML model accelerates a bounded design family; independent checks and classical correction remain available. A geometry edit that breaks a boundary assignment produces an explicit repair task.
-
-**A cooling-system investigation:** an engineer prepares solid and fluid domains, defines heat sources and inlet/outlet conditions, and evaluates temperature and pressure drop. The assistant helps diagnose missing conditions and coordinates a bounded parameter sweep. The numerical methods report energy and mass balance, model applicability and uncertainty. Conjugate heat transfer becomes available only after its component solvers and conservative coupling are validated.
-
-**A research-to-product contribution:** a researcher adds a weak-form or geometry-aware method against an existing benchmark contract. Other contributors reproduce its accuracy, failure cases and cost on supported hardware. Users can inspect its method card and examples before choosing it. A published paper alone does not change its product status.
+The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM and unrelated authoring disciplines are outside the product direction. Broader fluid mechanics and coupled multiphysics are later expansion areas; keep the desktop and engine structured to explore them without making them prerequisites for supported mechanical workflows.
 
 ## 2. Verified starting point
 
-“Completed” below means implemented and verified within the stated scope. It does not mean comprehensive industrial coverage. “Experimental” means a real numerical implementation whose engineering applicability remains restricted. “Partial” means an existing foundation still has a material product or verification gap. Everything in later sections is planned or research unless explicitly listed here.
+“Completed” means implemented and verified within the scope shown. “Experimental” means a real implementation exists but has restricted applicability or incomplete evidence. “Partial” means verified support covers only part of the capability, with remaining limits stated in the table. Capabilities listed as Planned or Planned / research are future work; capabilities absent from this table have not been assessed here.
+
+| Capability | Current status | Verified scope and remaining limit |
+|---|---|---|
+| Desktop and local execution | Completed, limited | Tauri 2, React/TypeScript and Three.js; isolated Python workers, cancellation, cleanup and run ownership |
+| Geometry-to-results workflow | Completed, limited | Parametric box, cylinder and connected bracket solids; rectangular 2D domains; no general sketcher or imported CAD |
+| 3D classical elasticity | Completed, limited | Homogeneous isotropic, small-strain linear static solids with first-order tetrahedra |
+| 2D classical elasticity | Completed, limited | Rectangular plane stress with constant-strain triangles and physical thickness |
+| Supports and loads | Completed, limited | Component restraints, prescribed displacement, total force and inward pressure on supported boundaries |
+| Elasticity PINN | Experimental | Real PyTorch/autograd plane-stress residuals and boundary terms on a rectangle; measured seeded training; no general geometry or field-error guarantee |
+| FEM/PINN comparison | Completed, limited | Same nodes and cell centroids, relative L2 and maximum differences, comparison fields |
+| Results | Completed, limited | Displacement/stress fields, probes, units, deformation and undeformed overlay; animation scales a static result and is not dynamics |
+| Persistence and recovery | Completed, bounded | Versioned .phyra archives, schema migration, stale-result rejection, recovery journals and SI CSV export |
+| Boundary selections and edit history | Completed, bounded | Copied named boundary sets, explicit repair, bounded definition undo/redo; no associative CAD references |
+| Device coverage | Partial | CPU reference and measured Apple MPS PINN path on available hardware; CUDA remains unverified |
+| Desktop distribution | Partial | Hosted package/workflow evidence on macOS 15 Apple Silicon and Windows Server 2022 x64; minimum-version, clean consumer installation and production distribution evidence remain open |
+| CAD authoring and neutral import | Planned | No constrained sketcher, feature history, general B-rep editing or neutral CAD import |
+| Broader classical physics and materials | Planned | No general 2D domain support, multiple-material regions, thermal, nonlinear, dynamic or contact solver |
+| Reusable Physics ML models | Planned / research | No validated operator, mesh/graph or geometry-conditioned product workflow |
+| BYOK assistant and MCP | Planned | No provider adapter, in-product assistant, agent actions or MCP server |
 
-| Capability                                      | Status                                 | Verified scope and remaining limit                                                                                                                                                                                                           |
-| ----------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Desktop and owned numerical workers             | Completed                              | Tauri 2, React/TypeScript and Three.js; isolated local Python jobs, cancellation and cleanup                                                                                                                                                 |
-| Basic geometry-to-results workflow              | Completed, limited                     | Parametric box, cylinder and connected bracket solids; rectangular 2D domains; no general sketcher or imported CAD                                                                                                                           |
-| 3D classical elasticity FEM                     | Completed, limited                     | Homogeneous isotropic, small-strain linear static solids with first-order tetrahedra                                                                                                                                                         |
-| True 2D classical elasticity FEM                | Completed, limited                     | Rectangular plane stress, constant-strain triangles and physical thickness                                                                                                                                                                   |
-| Basic supports and loading                      | Completed, limited                     | Component restraints, nonzero prescribed displacement, total force and inward pressure on supported boundaries                                                                                                                               |
-| 2D elasticity PINN                              | Experimental, implemented              | Rectangle-only plane stress; real PyTorch/autograd PDE/boundary terms, seeded training and measured losses; new independent-point residual diagnostics without a field-error guarantee                                                       |
-| FEM/PINN comparison                             | Completed, limited                     | Same nodes and cell centroids; unweighted relative L2 and maximum differences; absolute/relative comparison fields                                                                                                                           |
-| Result inspection                               | Completed, limited                     | Displacement/stress fields, probes, units, deformation and undeformed overlay; animation scales a static solution and is not dynamics                                                                                                        |
-| Run ownership and persistence                   | Completed                              | Input fingerprints, stale-result rejection, run metadata, safe versioned `.phyra` archives, migration and SI CSV exports                                                                                                                     |
-| Browser result preview                          | Completed, limited                     | Inspect actual saved CPU FEM/2D comparison fields, recorded history and provenance; new computations and native project files require the desktop app                                                                                        |
-| Primitive preparation controls                  | Completed, limited                     | Replace/add/toggle selection, standard cameras, fit/reset and boundary isolation; distance between undeformed mesh nodes or primitive-preview vertices; no exact CAD measurement |
-| Copied named boundary sets                      | Completed, limited                     | Up to 100 persisted sets with primitive/dimension stamps; explicit orphan repair; support/load copies remain independent of later set edits; no associative CAD links |
-| Session definition undo/redo                    | Completed, bounded                     | Up to 80 transactions within 16 MiB; physical undo/redo advances the current revision and cannot reactivate old fields; replacements reset session history |
-| Definition-only recovery                        | Completed, limited                     | Debounced validated dirty definitions, invalid-draft pausing and restore/discard; hosted packaged checks verify native journal isolation and reload ownership. Restored projects have no original file association, result arrays or weights |
-| Training persistence                            | Partial                                | Settings, seeds, measurements and results persist; trained weights and resumable checkpoints do not                                                                                                                                          |
-| Device support                                  | Partial                                | CPU float64 reference; measured MPS float32 capability on available hardware; CUDA execution remains unverified and Windows setup defaults to CPU                                                                                            |
-| macOS distribution                              | Partial                                | Apple Silicon package and actual workflows verified locally and on hosted macOS 15; minimum macOS 14, manual consumer installation/dialogs/uninstall and production signing/notarization remain open                                         |
-| Windows distribution                            | Partial                                | Hosted Windows Server 2022 x64 package and actual rendering, FEM/PINN, persistence and cancellation verified; manual consumer installation/dialogs/uninstall, hardware coverage and production distribution trust remain open                |
-| Professional workflow, identity and help        | Implemented; usability validation open | Workflow navigation, model tree/inspector, neutral light/charcoal themes, finalized vector identity, offline searchable/contextual method and task guides                                                                                    |
-| CAD import, assemblies and advanced preparation | Planned                                | No neutral/native CAD import, general sketching, multiple materials/bodies, contact or advanced mesh families                                                                                                                                |
-| Broader physics, operators and uncertainty      | Planned / research                     | No thermal, fluid, nonlinear, dynamic, electromagnetic or acoustic solver; no learned operators or calibrated uncertainty                                                                                                                    |
-| BYOK chat and engineering agents                | Planned                                | No provider adapters, API-key storage, in-product chat or tool-using assistant                                                                                                                                                               |
+Baseline evidence is in the [independent engine references](engine/tests), [frontend domain and feature tests](src/domain), [native lifecycle and persistence tests](src-tauri/src/tests), and [packaged workflow verifier](scripts/test-desktop.mjs). Hosted verification at [commit 3498f34](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed 168 frontend, 234 quick Python, 3 slow numerical and 38 macOS / 37 Windows native tests. Packaged FEM/PINN, rendering, save/reopen, cancellation, recovery and device workflows were exercised on the hosted macOS and Windows targets. This does not establish representative-user usability, minimum macOS 14 execution, manual consumer installation or untested GPU support.
 
-Baseline evidence is in the numerical and workflow implementation, [independent engine references](engine/tests), [frontend domain/feature tests](src/domain), [native lifecycle/persistence tests](src-tauri/src/tests) and [packaged workflow verifier](scripts/test-desktop.mjs). **Current runtime evidence:** [verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed 168 frontend, 234 quick Python, 3 slow numerical and 38 macOS/37 Windows native tests. Both macOS 15 Apple Silicon and Windows Server 2022 x64 passed packaging and actual FEM/PINN, rendering, save/reopen, cancellation, recovery and method/device workflows. This covers the current preparation and project-version implementation, whose production code is unchanged after integrating the current repository documentation. It does not establish representative-user usability, minimum macOS 14 execution or manual consumer installation.
+The current project archive schema is version 3. Existing v1/v2 data is validated against frozen schemas before migration. Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit. Raising limits is not a scalability milestone; memory, rendering, persistence and numerical behavior must be measured together.
 
-Project version 3 adds copied boundary-set metadata. Legacy definitions are validated against frozen v1/v2 schemas before migration: v1 caches are discarded, while v2 caches can remain only after normal ownership, physical-fingerprint and field validation. The physical digest retains its v2 representation because named sets do not change the equations or assignments. Older recovery journals migrate in memory, preserving the original bytes during discovery/read.
+## 3. Capability status and product contract
 
-Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit, plus 100 named sets and an 80-transaction/16 MiB edit-history budget. Scaling beyond them requires measured memory, rendering, persistence and numerical behavior. Increasing a constant is not a scalability milestone.
+The engine and interface must report capability status for the complete combination selected by a user:
 
-## 3. Development programme
+- analysis family and formulation;
+- geometry dimension, representation and mesh family;
+- material law, orientation, regions and interfaces;
+- load, boundary, initial and contact conditions;
+- solver or Physics ML method;
+- operation: define, mesh, solve, train, infer, compare or export;
+- device, precision and runtime;
+- validation level and supported parameter range.
 
-Work proceeds across parallel tracks: product experience, engineering preparation, numerical methods, AI assistance, and platform/community infrastructure. A phase describes a demonstrable product outcome, not a requirement to finish every earlier wishlist item. Individual physics capabilities retain their own dependencies and acceptance gates.
+Use these user-facing states consistently:
 
-| Horizon                                                | Intended outcome                                                                                                     | Main phases                                                |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Near term; roughly the next year if adequately staffed | A comprehensible, dependable desktop workbench; honest capabilities; first complete imported-part workflow           | P1 and the first P2 slice; bounded P3 research in parallel |
-| Medium term; roughly 1–3 years                         | Substantial engineering preparation, selected thermal/fluid problems, inverse studies and reusable Physics ML models | P2–P4, delivered by validated problem family               |
-| Long term; roughly 3–5+ years                          | Geometry-aware learning, richer materials/connections, advanced workflows and selected coupled problems              | P4–P5 and a sustainable contributor ecosystem              |
-| Continuing research horizon                            | Wider industrial preparation coverage and new physical/method families where evidence supports them                  | P6; revised as the field evolves                           |
+| State | Meaning |
+|---|---|
+| **Supported and validated** | The full workflow runs and has named verification cases, applicable limits and packaged workflow evidence. |
+| **Experimental** | A real workflow runs, but its verified scope or reliability is restricted and shown before use. |
+| **Definition only** | Geometry and physical inputs can be stored, but a required mesh, method or solver is unavailable. The project can be saved; execution is blocked with an actionable explanation. |
+| **Unavailable** | The project cannot yet represent the requested capability. |
 
-### P0 — Establish the local scientific foundation
+Definition, meshing, solving, training, inference and validation are distinct capabilities. A boundary editor must not imply that every solver supports that boundary condition. A complex imported shape must not imply that a particular method can solve it.
 
-**Status: completed within the limited baseline; PINN remains experimental.**
+Extend the existing engine capability contract rather than maintaining separate, conflicting UI and solver catalogues. Every paper-inspired case should have a compact machine-readable definition for geometry, units, materials, conditions, mesh policy, method settings, seeds, references, metrics, hardware and source/license provenance.
 
-The existing geometry → mesh → FEM/PINN → comparison → save/reopen loop is the starting point. Preserve its independent references, units, cancellation and result ownership throughout later work. Broader physics, representative-user usability and consumer distribution are not part of this completion claim.
+## 4. Development sequence
 
-### P1 — Make the current product understandable and dependable
+The work advances through dependent product outcomes; there are no release-by-release promises in this document. CAD-kernel evaluation, selected-paper research, PhysicsNeMo evaluation and the offline documentation assistant can begin in parallel. Solver integrations and agent actions should only enter the product after their shared data and permission contracts are understood.
 
-**Status: partially delivered in v0.1.0. Minimum-version, consumer distribution and representative-user validation remain open.**
+| Order | Product outcome | Required evidence before the next dependent step |
+|---|---|---|
+| 1. Stabilize the problem model | Maintain project/study/run/result boundaries, units, geometry identity, capability status and safe schema evolution. Evaluate CAD-kernel and sketch-constraint candidates with small working prototypes. | Save/reopen and migration tests; identity behavior across edit/remesh; platform and license review for candidates. |
+| 2. Deliver mechanical CAD and meshing | Add constrained 2D sketching, parametric feature history, selected 3D modeling, neutral import and analysis-ready mesh controls. | Valid geometry and stable selections through edit, import, remesh, save and reopen. |
+| 3. Build the classical analysis foundation | Generalize 2D and 3D solid mechanics, common materials and boundary conditions; add further study families separately. | Independent analytic/manufactured references, equilibrium checks, mesh/time convergence and failure tests per formulation. |
+| 4. Reproduce selected research workflows | Use shared CAD, material, mesh and solver features to recreate representative literature cases; add Physics ML methods on the same problem/field contract. | Reproducible case packs, held-out cases, disclosed deviations, error and cost comparison with the reference path. |
+| 5. Deliver AI-assisted engineering | Add BYOK documentation and study assistants, approved native workflow tools, computer-use affordances and MCP access. | Grounded-answer evaluation, credential/data-flow tests, tool authorization, stale-input checks, undo and cancellation. |
+| 6. Harden the workbench | Complete results, reporting, offline help, package workflows, GPU capability reporting, compatibility and user validation. | Representative users complete declared tasks; each promoted capability passes packaged desktop and scientific gates. |
 
-The first launch slice delivers the workspace, scientific palette, identity, offline Workbench help, contextual F1 help and an inspectable browser reference preview using actual CPU solution data. README and help screenshots show the current interface inspecting saved CPU references; the unchanged video records the preceding interface and final recapture is deferred. New computations remain native desktop jobs. Current UI features are organized under `src/features/`; application lifecycle, domain rules, native bridge and reusable controls have separate ownership. This is implementation evidence, not a claim of the usability acceptance rate below.
+A paper is a source of problem definitions and evidence, not a product specification by itself. A selected paper may expose a missing reusable feature; implement that feature only after confirming its broader role in Phyra and its validation path. The target is a library of reproducible workflows built from shared product capabilities, not a stack of paper-specific solvers.
 
-- **Delivered, bounded to current studies:** workflow navigation, a grouped model tree, clear study/result context, replace/add/toggle boundary selection and actionable input/stale-result diagnostics. More granular entity filters and command search remain future improvements.
-- **Delivered for current capabilities:** offline method cards, runnable examples and contextual explanations of every currently available input, screen, limitation and result.
-- **Delivered:** establish the neutral light theme, restrained dark theme and professional identity described in section 8.
-- **Delivered on hosted targets:** macOS 15 Apple Silicon and Windows Server 2022 x64 packaged workflows. Verify minimum macOS 14 and manual consumer installation/dialogs/uninstall on both targets; resolve distribution obligations before public binaries.
-- **Deferred beyond the first launch:** introduce optional BYOK, native provider adapters and read-only, study-grounded chat. This release implements no assistant or provider integration; numerical analysis remains usable offline.
-- Improve existing PINN evaluation, nondimensionalization and multi-seed reporting before widening its advertised applicability.
+## 5. CAD, geometry and meshing
 
-**Exit gate:** representative new users can configure, solve, interpret and reopen an existing supported study without critical unit, boundary-selection or stale-result mistakes. Both primary platforms complete packaged solve/cancel/save/reopen workflows. Help accurately describes the running release.
+Phyra should become a strong mechanical CAD workbench for the geometries and assemblies used in its supported analyses. CAD authoring must be useful independently of whether a selected solver can solve the resulting study.
 
-**Later assistant extension gate:** numerical values shown by the assistant are traceable to identified tool results; a declared grounded-answer/adversarial evaluation passes published failure criteria. Credential isolation and leak tests pass.
+| Area | Target capability | Acceptance boundary |
+|---|---|---|
+| Constrained sketching | Lines, arcs, circles, slots and closed profiles; dimensions; coincidence, horizontal/vertical, parallel, perpendicular, tangent, equal, concentric, symmetry and related constraints. | Show under-, fully- and over-constrained status. Explain conflicts. Reopen and recompute the same constrained profile deterministically. |
+| Parametric model history | Extrude, revolve, sweep, loft, Boolean operations, holes, patterns, mirror, fillet, chamfer, shell/thicken and datum geometry. | Edits propagate through a visible dependency tree. Failed recomputation preserves the last valid shape and identifies the failing feature. |
+| Bodies and assemblies | Multiple bodies, reusable part instances, placements, coordinate systems, suppression/visibility and selected assembly constraints. | Preserve body/instance identity and material assignment. Keep bonded, tied and contact behavior explicit rather than inferring physical connections from visual overlap. |
+| Import and export | STEP for solid exchange; IGES where useful; DXF for supported 2D entities; STL/OBJ for faceted surfaces; native Phyra projects. | Test a versioned file corpus for units, body count, validity, orientation and metadata. A faceted mesh is never presented as editable B-rep history. |
+| Repair and defeaturing | Heal/stitch, simplify and remove selected small features; preserve the source geometry. | Show tolerances and geometric changes. Reject or request confirmation when volume, area or topology changes exceed declared bounds. |
+| Named selections | Point/edge/face/body sets and geometric queries that can be attached to materials and conditions. | Preserve identity through edits/remeshing when unambiguous. A split, merge or uncertain remap creates a visible repair task; never move a load silently. |
+| CAD inspection | Tree/inspector, hide/isolate, coordinate placement, exact length/angle/radius/area/volume measurements, mass properties and section inspection. | Measurements state their reference entity, coordinate frame and units; camera/selection changes do not mutate engineering data. |
+| Drawing and review | Basic orthographic/section views, dimensions and annotations for supported parts, with PDF/DXF export where reliable. | Reopenable views match the authoritative model; drawings are clearly distinct from solver results and are not a substitute for a validated analysis. |
+| Meshing | Global/local sizing, curvature/proximity controls, local refinement, supported triangle/quad/tet/hex/prism families, quality inspection and convergence studies. | Expose only controls supported by the selected mesher/domain. Report failed regions and element quality, preserve physical groups, and validate higher-order families before admitting them. |
 
-### P2 — Complete the first imported engineering problem
+Select the CAD kernel and sketch-constraint approach through prototypes that cover edit stability, import robustness, platform support, licensing/redistribution and application packaging. Keep the geometry definition separate from the mesh so changing a discretization does not erase design intent or physical assignments. Do not commit to a CAD library because it handles one demo part.
 
-**Status: the limited primitive-preparation slice is completed; the imported-part outcome remains planned. Depends on stable geometry identity, units and capability contracts.**
+The target is analysis-oriented mechanical CAD. Do not add unrelated authoring disciplines to the product scope. A CAD feature is complete only when geometry can be created or imported, edited, inspected, saved and reopened in a normal workflow.
 
-The delivered slice combines model-tree/inspector selection, copied persisted boundary sets, explicit topology/dimension repair, bounded definition undo/redo, standard camera tools and undeformed node/preview-vertex measurement. These controls prepare the existing primitives; they do not establish a CAD kernel, constrained sketcher, associative topology or imported-part capability. Current [domain tests](src/domain/project), [viewport tests](src/features/viewport) and [native archive/recovery tests](src-tauri/src) cover the corresponding boundaries; the current runtime also passes hosted packaged workflows on both primary targets.
+## 6. Classical analysis and physical definitions
 
-- Select a CAD-kernel integration and a separate sketch-constraint approach through working prototypes and redistribution review.
-- Deliver STEP-first part import, inspectable healing, geometric named selections and reliable remeshing; add basic constrained sketching and extend definition history to validated CAD feature history.
-- Introduce parts, instances and body-specific materials without silently merging assemblies. Extend linear elasticity to documented general domains and selected formulations.
-- Add load cases, local coordinate systems and selected structural conditions from the coverage catalogue.
-- Add supported mesh families/order only with numerical and field validation; expose mesh-quality diagnostics and convergence studies.
-- Extend result tools with sections, paths, integrals and controlled comparison. Allow the assistant to propose typed model changes and execute specifically authorized bounded tools.
+The product direction goes beyond one rectangular elasticity example. Phyra should support a well-defined selection of common 2D/3D structural studies and selected heat-transfer studies, using established numerical libraries where appropriate. Treat each formulation as its own capability with its own scope and reference cases. The portfolio should include complete workflows for general 2D plane-stress/plane-strain and 3D linear static solid mechanics, multiple material regions, common structural loads and supports, mesh refinement/convergence, and the result quantities engineers need to inspect. It should also provide representative, independently validated workflows across modal/buckling, harmonic or transient response, geometric/material nonlinearity, contact, and selected fracture/damage cases; the capability matrix must state which formulation and material models are actually covered. For heat transfer, target steady/transient conduction, convection, surface-to-ambient radiation, and at least one sequential thermoelastic case. A capability may remain experimental when its evidence is incomplete; the current rectangle-only workflow must not be presented as the full analysis scope.
 
-**Exit gate:** a reference imported part can be modified, assigned physical conditions, remeshed, solved and reopened on both platforms. Unit conversion, geometry validity and force/moment balance pass independent checks. Ambiguous geometry references block solving until repaired. Unsupported combinations are rejected before execution.
+### Structural analysis families
 
-### P3 — Deliver validated Physics ML for selected PDE families
+| Family | Product definition and solver target |
+|---|---|
+| Dimensional formulations | General 2D plane stress and plane strain; selected axisymmetric, truss, beam and shell formulations; 3D solid mechanics. Do not apply rotational degrees of freedom to formulations that do not have them. |
+| Linear static | Displacement, strain, stress, reactions and strain energy on general supported 2D profiles and 3D parts/assemblies; load cases and compatible linear combinations. |
+| Modal and linear buckling | Eigenproblem-specific setup, boundary conditions, mode normalization, prestress definition and mode visualization. |
+| Harmonic and transient response | Frequency/time definitions, density, damping, initial state and time integration; report whether a result is quasi-static, modal, harmonic or genuinely time-dependent. |
+| Geometric and material nonlinearity | Incremental solution, convergence diagnostics and state ownership. Promote large displacement, plasticity, hyperelasticity or viscoelasticity only as separately validated formulations. |
+| Connections and contact | Bonded/tied constraints first; then contact pairs with gap, normal behavior and separately selected friction law. Do not infer contact from a shared CAD boundary. |
+| Advanced failure | Selected fracture/damage and fatigue formulations only with regularization, material parameters, history state and mesh-sensitive validation. A stress threshold is not a life or fracture prediction. |
 
-**Status: planned, with research evaluations.**
+### Materials, loads and boundary conditions
 
-- Mature the existing PINN on several independent elasticity references; compare strong-form, variational/weak-form and adaptive sampling approaches.
-- Add steady heat conduction first, then transient conduction with independent energy and time-convergence checks. Pilot conductivity/source identification from measurements.
-- Establish Stokes and bounded laminar incompressible-flow cases with a stable velocity–pressure formulation, appropriate pressure reference and mass balance. Validate inf-sup compatibility or justified stabilization in the reference discretization.
-- Add measurement import, noise models, parameter bounds and identifiability checks for small inverse studies.
-- Evaluate differentiable classical components and learned initial guesses/corrections. Keep conventional numerical correction available where appropriate.
-- Introduce safe model checkpoints and experiment provenance; separate “train this problem” from “apply an existing model.”
+Build complete paths that cover geometry assignment, mesh transfer, project persistence and solver support:
 
-**Exit gate:** each released problem family publishes its equations, conditions, references, error measures, failures, supported devices and applicability. Numerical benefits are demonstrated beyond a low training loss. Thermal and fluid branches can advance independently; unsupported regimes remain unavailable.
+- Isotropic linear elasticity first, then multiple material regions and explicit material coordinate frames.
+- Orthotropic/transversely isotropic elasticity and selected layered-composite cases with orientation, ply data, interface ownership and shell/solid assumptions.
+- Temperature-dependent and spatially varying material laws only with explicit interpolation and integration semantics.
+- Separate hyperelastic, plastic, viscoelastic, damage and learned constitutive contracts. Path-dependent variables belong to the execution/integration-point state and require correct restart behavior.
+- Component-wise prescribed displacement, symmetry, roller/normal constraints, periodic and multipoint constraints when supported by the method.
+- Total force versus traction, pressure, body force/gravity, moments, edge/point loads, thermal strain and selected pretension/follower conditions where the formulation supports them.
+- Local coordinate systems, units, load cases and combinations. A linear combination is valid only when the underlying problem is linear and the conditions remain compatible.
 
-### P4 — Make Physics ML reusable across engineering studies
+A material editor or boundary-condition control may exist before all solvers support that feature. In that case save the definition, mark it definition-only, state the missing formulation and block unsupported execution.
 
-**Status: planned. Depends on reliable datasets and P3 family-level evidence.**
+### Heat transfer and radiation
 
-- Build reproducible parameter-study generation, licensed dataset manifests and simulation-level train/validation/test splits.
-- Pilot FNO/DeepONet on bounded parameter families, followed by mesh/graph and geometry-aware operators where representations are validated.
-- Provide training, validation, inference and model-selection workflows with explicit compatibility checks for geometry, conditions, materials and parameter ranges.
-- Add calibrated uncertainty, applicability detection, reference correction and active-learning loops.
-- Deliver budgeted assistant workflows for parameter sweeps, comparison, diagnosis and optimization candidate generation.
-- Publish end-to-end cost and reuse break-even measurements against optimized classical baselines.
+Add heat conduction as a separate, reference-tested family: steady and transient conduction, conductivity, heat capacity/density, internal sources, prescribed temperature, heat flux and initial temperature. Add convection and nonlinear surface-to-ambient radiation with explicit units, absolute temperature and sign convention after the required solver path is validated.
 
-**Exit gate:** models demonstrate useful accuracy and benefit on held-out physical instances. Geometry generalization is tested separately from new parameter values. Out-of-scope requests abstain or use an available reference route; they do not silently return plausible fields.
+Distinguish three different physical models:
 
-### P5 — Expand to advanced engineering and coupled systems
+1. **Surface-to-ambient radiation:** a nonlinear surface boundary flux proportional to emissivity and the difference between fourth powers of absolute temperatures.
+2. **Surface-to-surface radiation:** enclosure geometry and view-factor/radiosity treatment with energy exchange between surfaces.
+3. **Participating-media radiation:** radiative transfer through an absorbing, emitting or scattering medium.
 
-**Status: planned / research, by problem family.**
+An editable “radiation” field must never imply support for all three. Sequential thermoelasticity follows validated structural and thermal components; coupled interface transfer needs its own energy check.
 
-- Extend structural formulations, dynamics, material behavior, connections and contact through their individual validation gates.
-- Expand thermal/fluid preparation and supported regimes; evaluate learned closures and multiscale methods against appropriate references.
-- Introduce thermal–structural coupling first where suitable, then conjugate heat transfer and fluid–structure interaction after component and interface validation.
-- Add selected electrostatic and acoustic problems before full electromagnetic/wave families; support complex fields and frequency studies explicitly.
-- Evaluate shape/topology optimization, sensitivity, reduced models and calibrated material surrogates on declared domains.
-- Support larger studies, optional workstation/cluster execution and independently developed method integrations.
+### Numerical library and result requirements
 
-**Exit gate:** coupled studies preserve interface flux/work and demonstrate stable mesh/time refinement. Contact and history-dependent materials pass dedicated references. Every advanced workflow is usable from preparation through interpretation, not merely callable from a research script.
+Prefer established, maintained libraries for meshing, sparse assembly and solution when they meet Phyra's problem contracts, license requirements and supported platforms. Use a typed backend adapter and preserve an independent reference route where feasible. Do not assume that a library supports a formulation because it exposes a similarly named API.
 
-### P6 — Grow a durable open engineering ecosystem
+For every advertised analysis, validate equations and conventions, reactions and conservation, mesh/time convergence, physical quantities of interest, nonlinear failure behavior and supported hardware. Result fields must retain node/cell/integration-point association. Smoothing and projection are explicit operations; never silently average discontinuous material fields or hide singular behavior.
 
-**Status: long-term direction and research portfolio.**
+## 7. Physics ML and paper-inspired research
 
-Extend preparation coverage systematically toward the needs of mature multidisciplinary analysis workflows. Develop domain maintainers, reproducible benchmark collections, stable extension interfaces and a clear experimental-feature lifecycle. Evaluate difficult regimes such as turbulent/compressible/multiphase flow, fracture, fatigue, composites, manufacturing processes and full electromagnetic systems when domain expertise and evidence exist.
+The literature review across representative 2021–2026 solid-mechanics work points to a product capability portfolio, not one new model:
 
-The ambition is broad coverage without a permanent catalogue of unfinished modules. A method may remain experimental, be replaced, or be retired if its accuracy, robustness, usability or cost does not justify product support.
+| Research pattern | Reusable Phyra capabilities |
+|---|---|
+| Perforated/notched plates and mixed boundaries | Constrained 2D profiles, holes/loops, durable boundary labels, local refinement, plane stress/strain and analytical comparisons. |
+| Heterogeneous and inverse elasticity | Multiple material regions, spatial coefficients where justified, measurement import, identifiability checks and held-out recovery tests. |
+| 3D brackets, frames, lattices and irregular meshes | Neutral solid import, stable body/face identity, volume meshing, local refinement and mesh-aware result fields. |
+| Energy and variational mechanics methods | Correct potential/weak forms, quadrature, essential boundary treatment, nondimensionalization and independent FEM comparison. |
+| Geometry-conditioned and operator models | Parameterized case generation, consistent mesh/graph/point-cloud features, train/validation/test splits by physical instance and unseen-geometry tests. |
+| Contact, plasticity and fracture studies | Specialized stateful solver contracts, contact/interface representation, load histories, regularization and dedicated reference cases. |
+| Thermoelastic studies | Validated conduction, thermal expansion/material data, coupling definition and temperature/displacement comparison. |
 
-## 4. Engineering preparation: geometry, CAD and meshing
+### Method families to evaluate and expose
 
-Mature workbenches combine geometry preparation, many physical formulations and postprocessing; this breadth informs the target, rather than implying current parity. The [SIMULIA multidisciplinary portfolio](https://www.3ds.com/products/simulia/3dexperience-simulia) illustrates this scope. CAD foundations must distinguish a modeling kernel from sketch constraints, feature history, assemblies and a complete user workflow; see [FreeCAD's feature overview](https://www.freecad.org/features.php) and [OCCT's technical overview](https://occt3d.com/dev/doc/overview/html/index.html).
+| Method family | Intended use | Evidence before promotion |
+|---|---|---|
+| Strong-form PINNs | Per-problem forward and inverse solutions | Autograd derivative checks, scaling, boundary enforcement, independent-point residuals, multiple seeds and field/QoI errors against physical references. |
+| Energy/variational PINNs | Mechanics problems with a valid energy/weak formulation | Correct quadrature and essential conditions; compare integration error and optimization error separately. |
+| Domain-decomposed/mixed methods | Heterogeneous, multiscale or mixed-field cases | Interface continuity/flux checks, subdomain error and measured communication/compute costs. |
+| FNO/DeepONet and related operators | Repeated solution families with structured inputs or query mappings | Data-generation cost, simulation-level held-out tests and measured break-even versus a competent reference. |
+| Mesh/graph and geometry-aware operators | Changing domains, irregular meshes, lattices and varying topology | Hold out complete geometries/meshes; preserve boundaries/interfaces; test thin features and disconnected bodies. |
+| Hybrid FE–ML | Learned initial guesses, corrections, reduced models or selected coupled fields | Independent reference route, valid correction behavior, robustness outside the training examples and end-to-end cost. |
+| Inverse and learned constitutive methods | Material/parameter identification or a constitutive law inside an actual solver | Identifiability, unseen load paths, tangent/stability checks and data rights. |
 
-### Geometry and interoperability catalogue
+The ML contract must be independent of a specific architecture: problem definition, mesh/samples, boundary and material labels, tensor fields, training/inference requests, checkpoints and provenance. A model contributes a real adapter to that contract; a generic plugin label or notebook is not product integration. Users should be able to run comparable experiments with representative strong-form PINN, energy/variational, operator-learning and mesh/graph methods on suitable shared cases, and add further architectures through the adapter contract. The UI lists only integrations that Phyra can actually load, run, validate and report; integration does not imply that every method is scientifically supported for every problem.
 
-The current CAD-07 preparation slice is limited to copied boundary groups on supported primitives. Remeshing preserves those region identifiers; primitive/dimension changes keep incompatible sets visible for explicit repair. General point/edge/face/body queries, reimport mappings and associative condition updates remain planned.
+### Replicate research without adding paper-specific features
 
-| ID     | Intended capability                                                                                                                 | Acceptance boundary                                                                                                                                              |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CAD-01 | Lines, arcs, circles, polylines; dimensions; coincident, parallel, perpendicular, tangent and concentric sketch constraints         | Show under/fully/over-constrained states; explain conflicts; dimensions, undo/redo and reopen reproduce geometry                                                 |
-| CAD-02 | Extrude, revolve, sweep, loft; Boolean operations; holes, patterns, fillets, chamfers and datum systems                             | Validated B-rep operations and dependency history; failed edits preserve the previous model                                                                      |
-| CAD-03 | Parts, instances, placements, assemblies, suppression and body assignments                                                          | Instance identity survives transformations; separate, bonded and contact behavior is explicit                                                                    |
-| CAD-04 | STEP first; IGES for appropriate legacy exchange; STL/OBJ as discrete surfaces; DXF for supported 2D entities                       | Test units, shape validity, body count and metadata; faceted data is not presented as editable solid history                                                     |
-| CAD-05 | Parasolid and native CAD adapters; drawing exchange including evaluated DWG routes; connectors for established mechanical CAD tools | Format/version/platform/licensing matrix and actual file corpus; independent import, linked update and bidirectional parameter editing are separate capabilities |
-| CAD-06 | Healing, stitching, small-feature removal, simplification; later midsurfaces and idealization                                       | Show tolerances and geometry changes; preserve the original; do not silently accept major volume/area changes                                                    |
-| CAD-07 | Named point/edge/face/body selections, geometric queries and reimport mappings                                                      | Remesh preserves valid selections; split/merge ambiguity produces orphan/repair diagnostics, never silently moved conditions                                     |
-| CAD-08 | Fluid-volume extraction, enclosure/far-field creation and domain partitioning                                                       | Watertightness, connectivity, orientation and solid/fluid/interface ownership are verified                                                                       |
+Build a curated set of runnable case packs that cover representative patterns from the reviewed literature. Initial candidates include:
 
-Neutral geometry exchange does not promise original feature history, assembly mates or every metadata field. Native CAD and live connectors may need licensed translators, an installed source application or platform-specific components. Evaluate access and redistribution separately; an isolated worker does not by itself establish GPL compatibility. These distinctions are documented in [supported CAD format/platform tables](https://www.comsol.com/support/learning-center/article/supported-file-formats-76161), [CAD repair and associative import workflows](https://www.comsol.com/cad-import-module) and the [Parasolid component offering](https://www.siemens.com/en-us/products/plm-components/parasolid/).
+- a circular-hole plate with a carefully matched Kirsch reference and mesh-convergence study;
+- notched or mixed-boundary 2D elasticity;
+- a heterogeneous/inverse material case;
+- selected 3D bracket, frame or lattice geometry on irregular meshes;
+- a mesh/geometry-aware operator-learning family with held-out geometries;
+- one separately validated contact, fracture or thermoelastic case where the required classical path exists.
 
-### Discretization catalogue
+Each case pack records the paper and the exact scope reproduced, geometry and units, materials, loads/conditions, mesh/data policy, method configuration, seeds, reference fields and quantities of interest, errors/tolerances, failures, hardware and source/data license. State deviations from the paper. Do not claim a full replication from a matching picture or one parameter setting.
 
-| ID      | Intended capability                                                                                      | Acceptance boundary                                                                                                                 |
-| ------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| MESH-01 | Global/local sizing, curvature/proximity refinement, edge divisions and structured/unstructured controls | Preview intended controls; report quality and failed regions; preserve physical groups                                              |
-| MESH-02 | Triangle/quad/tet/hex/prism/pyramid and appropriate higher-order families                                | Version cell blocks and node ordering; accept only families supported by the chosen formulation and result pipeline                 |
-| MESH-03 | Swept meshes, transitions and fluid boundary layers                                                      | State supported domains; verify layer thickness/growth, wall resolution, signed Jacobians, inversions and higher-order cell quality |
-| MESH-04 | Error-driven h/p refinement and convergence studies                                                      | Use a justified estimator and target quantity; preserve field-transfer provenance and demonstrate error reduction                   |
-| MESH-05 | Collocation, quadrature, boundary samples and operator query representations                             | Associate samples with geometry/conditions; check integration and coverage independently of training                                |
+Generate training, validation and test data by independent physical instances. Test unseen geometry separately from unseen material/load parameters and unseen points on a known solution. Report data generation, preprocessing, training, validation, inference, memory and reference costs. Physics ML is promoted only when it has a justified use; a selected classical method may remain more accurate, robust or faster for a given case.
 
-The mesher's capability is not solver support. In particular, Gmsh's `BoundaryLayer` size field is a 2D facility; general 3D layers require separately validated extrusion/decomposition routes. See the [Gmsh reference manual](https://gmsh.info/doc/texinfo/gmsh.html). A mesh-free learning method still needs reliable geometry, normals, interfaces, integration and physical-condition ownership.
+### PhysicsNeMo and local accelerator evaluation
 
-## 5. Physics and physical-condition coverage
+NVIDIA PhysicsNeMo is an optional research/runtime adapter candidate, not Phyra's CAD system or default solver. Its maintained documentation provides mesh/graph representations and a structural-mechanics MeshGraphNet example; this makes it a concrete basis for evaluating irregular-mesh workflows. Integrate through Phyra's neutral study/data/field contract and pin a tested upstream release. Compare accuracy, data handling, dependencies, licensing, platform/device support, cancellation and total cost. Do not pull large framework or CUDA dependencies into the default desktop install.
 
-The long-term objective is comprehensive preparation within each declared physics family. Track coverage through a finite, versioned matrix rather than claiming “all boundary conditions.” Each entry specifies equation/formulation, entity dimension, degrees of freedom, coordinate frame, units, time dependence, material/contact compatibility, numerical method, output fields and reference tests. An input widget or schema field is not support evidence.
+Maintain the support matrix by method × operation × framework/runtime × platform × device × precision. Test actual forward pass, derivatives/backward, training, inference, cancellation and field export. CPU remains the reproducible baseline. Advertise CUDA, MPS or another accelerator only for the specific method and operation that passed on supported hardware; device detection alone is insufficient.
 
-### Structural preparation catalogue
+## 8. AI assistant, BYOK and agent workflows
 
-- **Formulations:** general plane stress, plane strain, axisymmetry and 3D solids; beams, trusses, plates, shells, membranes and appropriate transitions. Rotational degrees of freedom appear only for formulations that possess them.
-- **Conditions:** prescribed components, normal/tangential rollers, symmetry, periodicity, multipoint constraints, rigid/deformable remote coupling, springs/dampers, joints and tied interfaces.
-- **Loading:** total force versus traction, pressure, edge/point/body loads, gravity, moments, temperature-induced strain, preload and bolt pretension; later centrifugal/rotating-frame, moving and follower loads with the necessary formulations.
-- **Materials:** body-specific isotropic, orthotropic and anisotropic properties/orientations; then composites, hyperelasticity, plasticity, viscoelasticity, temperature dependence and history variables.
-- **Connections:** bonded interfaces first; frictionless contact, then friction, finite sliding and appropriate fastener/joint idealizations. Evaluate action–reaction, penetration, dissipation and convergence independently.
-- **Studies:** load cases and combinations; modal, harmonic and transient response; geometric/material nonlinearity, buckling and postbuckling; later fatigue, fracture, damage and rotordynamics with specialized evidence.
+AI assistance is part of the product direction, not a future optional extra. It should help users understand the product and operate supported workflows without becoming an authority on physical correctness.
 
-These are separate capability classes, informed by the [structural mechanics taxonomy](https://www.comsol.com/structural-mechanics-module). They must not be exposed as working Physics ML features until the corresponding physical and numerical contracts pass validation.
+### BYOK provider architecture
 
-Use feature-specific references: rotated roller/symmetry equivalence; analytical gravity-loaded bars and spring stiffness; periodic uniform-strain cells; remote-force/torque balance; free and restrained thermal expansion; contact opening/closure followed by Hertz-type and stick/slip cases. Linear load combinations and result superposition require compatible linear studies. Nonlinear, contact and history-dependent cases require solving the actual combined loading path.
+Start with direct provider adapters and a provider-neutral internal event contract. Support provider-native APIs where they are needed for important features, a common OpenAI-compatible endpoint contract, and user-managed local model endpoints. Track each model's actual support for streaming, tool calls, structured outputs, document/image input, context limits, cancellation and usage reporting. Do not silently downgrade a request when a feature is missing.
 
-### Engineering materials programme
+Do not require a Phyra-hosted gateway. A shared gateway can simplify organization-wide routing, virtual keys, budgets and observability, but it introduces a separate service, credential and data-routing responsibilities. The desktop should allow users to connect directly with their own key or configure a gateway they already control. Evaluate a multi-provider SDK only if its licensing, protocol coverage and failure behavior reduce maintenance without becoming a required proxy deployment. Local and offline workflows remain available without an API key.
 
-Current support is one homogeneous isotropic linear elastic material per study. Every capability below is planned. A material editor, library label or external framework does not establish a constitutive implementation. Extend materials together with geometry assignment, formulation, state persistence, physical outputs and independent reference tests.
+Keep provider credentials in the operating system's secure credential store. Never write keys into .phyra projects, prompts, logs, crash reports or exports. Show the selected provider, model, endpoint and exact study/document context sent with a request. Warn before sending CAD metadata, field data, images or documents externally; do not treat local files as provider input by default. Separate API charges from Phyra's local compute and report unknown cost as unknown.
 
-| ID     | Material capability                                                    | Necessary definition and dependencies                                                                                                                                                                         | Scientific promotion gate                                                                                                                                                  |
-| ------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MAT-01 | Multiple materials and traceable property records                      | Stable body/region assignment; SI dimensions; property source, revision, test conditions and applicability. Density, thermal coefficients and strength are accepted only when a formulation uses them         | Two-material interface/manufactured cases; assignment survives remesh/reopen; example values remain separate from certified data                                           |
-| MAT-02 | Orthotropic, transversely isotropic and general anisotropic elasticity | Explicit right-handed material axes and spatial orientation; declared tensor/shear convention; reciprocal compliance and positive-definite elastic energy                                                     | Rotated material-frame equivalence, patch tests, independent directional loading and energy checks; reject physically inadmissible matrices                                |
-| MAT-03 | Laminated and layered composites                                       | Ply material, thickness, orientation, stacking direction and reference surface; compatible shell/plate or resolved solid formulation; membrane/bending coupling and thermal expansion                         | Independent laminate stiffness/resultants, symmetric/unsymmetric layups, thickness/orientation changes and convergence; distinguish ply, laminate and interlaminar outputs |
-| MAT-04 | Functionally graded materials and heterogeneous coefficients           | Versioned spatial property laws, coordinates and length scales; integration-point evaluation; phase fractions and homogenization assumptions where used; positive admissible properties throughout the domain | Graded analytical/manufactured cases and quadrature/refinement studies; resolved interface checks for discontinuities; PINN residuals include coefficient variation        |
-| MAT-05 | Hyperelasticity and finite deformation                                 | Strain-energy law, compatible finite-strain kinematics/stress measures and constitutive tangent; volumetric treatment and mixed formulations where necessary                                                  | Objectivity, energy/stress/tangent derivative checks, uniaxial/shear/volumetric references and large-deformation convergence                                               |
-| MAT-06 | Plasticity and rate-dependent inelasticity                             | Yield surface, flow rule, hardening, local integration, consistent tangent and bounded increments; state variables belong to integration points                                                               | Yield onset, loading/unloading, multiaxial paths, dissipation and step convergence; exact restart state rather than a fresh model                                          |
-| MAT-07 | Viscoelasticity and creep                                              | Relaxation/retardation or other calibrated law, time/temperature conventions and internal memory; compatible transient or frequency formulation                                                               | Relaxation, creep/recovery, time-step and long-duration references; consistent frequency/time behavior where both are offered                                              |
-| MAT-08 | Damage, failure, fracture and fatigue                                  | Distinct initiation/propagation laws, regularization and length scales, calibrated strengths and load-history requirements; cohesive/interface or fracture formulation when needed                            | Mesh-objective energy/dissipation, benchmark crack/interface evolution and independent failure data; an index alone is not life prediction                                 |
-| MAT-09 | Learned and data-driven constitutive models                            | Declared stress/strain measures, state, training paths, units, data rights and admissible domain; symmetry/objectivity and thermodynamic constraints appropriate to the law                                   | Held-out material/load paths, tangent checks, cyclic/irreversible behavior, stability inside a solver and explicit rejection outside applicability                         |
+### User-facing AI capabilities
 
-Material data and constitutive algorithms should have separate versions. Changing a property law, orientation or assignment invalidates dependent results and model compatibility. The material contract must distinguish reversible elastic parameters from path-dependent internal state; a scalar property dictionary cannot safely represent both. Coordinate transforms, engineering-shear factors and unit conversions are authoritative scientific operations with their own tests.
+| Capability | Target behavior | Required evidence and controls |
+|---|---|---|
+| Product/documentation assistant | Answer questions about geometry tools, boundary conditions, materials, solver limits, errors and workflows. | Retrieve from versioned, offline Phyra help; cite the relevant help sections; say when the answer is not present. |
+| Study and result assistant | Explain the active problem, solver log, convergence, units and selected result fields. | Read exact project/run/result data through typed tools; cite study/run IDs and values; never invent a stress, error or physical conclusion. |
+| Modeling and analysis copilot | Help define geometry/conditions, diagnose missing constraints, create a mesh, start a solver and inspect results. | Produce a visible plan and typed change set; validate units/capabilities/current input fingerprint; ask approval before modifying the model, starting expensive work or exporting data. |
+| Bounded research agent | Coordinate a parameter sweep, mesh convergence, comparison or supported optimization study. | User-set limits for runs, time, memory and provider spend; progress, cancellation, partial-failure handling and reproducible provenance. |
+| External agent access | Let an external agent inspect and use Phyra from an authorized host. | Expose the same typed, capability-checked operations as the UI; a tool request cannot bypass desktop permissions or validation. |
 
-For laminates, classical plate theory supplies a bounded reference for extensional, coupling and bending stiffness. It does not establish interlaminar failure or a complete strength model. Start with lamina axes and independently calculated laminate resultants before adding shell integration, ply-level recovery or failure criteria. [NASA RP-1351, Basic mechanics of laminated composite plates](https://ntrs.nasa.gov/citations/19950009349), provides a primary constitutive reference and explicitly excludes strength prediction.
+Mutations must have a reviewable diff and a working undo path. Read-only help, geometry inspection and result queries can be available without mutation permission. For higher-impact actions, authorization must be clear, scoped and revocable. Treat imported documents, CAD metadata, model files and solver output as untrusted input; test prompt injection, stale edits, malformed tool calls, path traversal, unauthorized operations and credential leakage.
 
-For graded materials, preserve the physical spatial law instead of disguising it as a nonphysical temperature field. Nodal interpolation, piecewise-constant coefficients and integration-point evaluation are different approximations and need explicit quadrature and convergence evidence. [Martínez-Pañeda's FGM implementation study](https://arxiv.org/abs/1901.05738) documents why these choices can change results. Discontinuous material interfaces additionally require displacement/traction or other physics-specific continuity conditions; a smooth single-network residual is not automatically valid across them.
+### MCP and computer-use integration
 
-Learned constitutive models are not interchangeable with learned solution operators. They must be exercised within the actual increment/integration loop, under unseen loading paths, and checked for numerical stability, physically admissible work and tangent consistency. Saving model weights alone cannot reproduce a history-dependent study: integration-point state, loading path and solver settings must also be versioned and recoverable.
+Provide a local MCP server so supported MCP clients can discover Phyra resources and invoke typed tools. Initial tools should cover capability/status queries, project/study inspection, geometry and condition changes, mesh creation, solver launch/cancellation, result queries and export under explicit scopes. Version tool schemas, validate all inputs and outputs, return structured result metadata, identify the active project/run, and keep a visible audit of actions. Provide a tested registration path for supported hosts, with a one-click install only where the host offers a supported installation API. The server is local-only by default; it must not expose a general shell, arbitrary file access or public network listener.
 
-### Complete solid-mechanics vertical slices
+MCP is a transport and discovery contract, not Phyra's permission policy. The desktop remains responsible for consent and enforcement. Clearly show which tools are exposed, indicate each invocation and require user confirmation for sensitive changes, solve/export actions or external data transfer. Test against a pinned stable protocol release; do not assume a host will enforce Phyra's safety rules.
 
-Preparation must advance with the solver. Prioritize imported connected solids with persistent selections and body-specific materials, followed by validated bonded assemblies and then appropriate shell/beam transitions. Contact, finite sliding, preload, follower loading and geometric nonlinearity need a compatible incremental formulation; dynamics requires mass, damping, initial conditions and time integration. Modal and buckling eigenproblems need distinct operators, normalization and prestress definitions. Optimization needs declared design variables, constraints, valid sensitivities and independent reanalysis of the proposed design.
+For hosts that provide computer-use support, offer a bounded visible-app surface with semantic element names, accessible navigation and screenshots where the user authorizes them. Prefer Phyra's typed actions for engineering mutations because they can be validated and audited. Pixel-based clicking is a fallback for navigation, not a way to bypass model validation or approval.
 
-Lattice/architected structures and aerospace-scale assemblies are long-term preparation and scaling targets. Their thin members, repeated topology, anisotropy, connections and instability must survive geometry, meshing, model reduction and field inspection. A visually elaborate part is not a verified simulation. Admission gates include connectedness and feature resolution, local/global buckling where applicable, material/connection ownership, mesh convergence and measured memory/runtime limits.
+## 9. Results, documentation and product experience
 
-### Physics expansion matrix
+The workbench should communicate engineering intent and capability clearly at every stage:
 
-| Family and intended sequence               | Preparation and outputs that must accompany it                                                                                         | Candidate Physics ML value                                                                 | Independent promotion evidence                                                                                                              |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linear elasticity → broader formulations   | Materials/orientations, supports, tractions/body loads, displacement, stress, strain, reactions and energy                             | Weak/energy methods, parameter inference, bounded solution operators and hybrid correction | Patch/manufactured references, balance and mesh refinement                                                                                  |
-| Steady → transient heat conduction         | Temperature, flux, sources, Robin exchange, initial temperature, capacity, conductivity and interface resistance                       | Inverse conductivity/source estimation; thermal operators                                  | Analytical conduction/transient cases, energy and time convergence                                                                          |
-| Stokes → laminar incompressible flow       | Velocity/flow-rate inlet, pressure/outflow, walls/slip/symmetry, pressure reference, density/viscosity, initial fields                 | Bounded pressure/velocity operators, initial guesses and correction                        | Channel/cavity references, continuity, pressure drop, force and transient stability                                                         |
-| Richer thermal/fluid regimes               | Convection, radiation, buoyancy, conjugate domains; compressibility, shocks, turbulence/wall treatment and rotating domains separately | Validated closures, multiscale operators and regime-specific surrogates                    | Regime-specific conservation, wall/mesh/time resolution and independent data                                                                |
-| Multiphase, porous and transport problems  | Phase/interface conditions, permeability, species/concentration, diffusion/reaction, source terms and initial states                   | Bounded transport operators and inverse coefficients                                       | Mass/species balance, interface motion and reaction/front benchmarks                                                                        |
-| Nonlinear structures and dynamics          | Load/time increments, constitutive states, contact, inertia/damping and consistent stress/strain measures                              | Material calibration, energy-consistent surrogates, reduced dynamics and hybrid predictors | Objectivity and consistent constitutive tangents; loading/unloading, contact, modal/time and energy references                              |
-| Electrostatics → selected electromagnetics | Potential/charge/current, grounding, material interfaces; later curl/div-compatible fields, sources and absorbing boundaries           | Parameter inference and constrained operator families                                      | Charge/energy checks; appropriate analytic/interface/frequency references                                                                   |
-| Acoustics and waves                        | Pressure/displacement excitation, impedance, radiation/absorbing conditions, complex fields and frequency/time definitions             | Bounded-band operators and inverse impedance/material studies                              | Amplitude, phase, reflection, resonance and energy errors                                                                                   |
-| Coupled systems                            | Thermal–structural → conjugate heat transfer → FSI; later selected electrothermal/piezoelectric and other couplings                    | Coupling predictors, calibrated reduced models and optimization                            | Verified components and conservative transfer; transient FSI additionally requires synchronized time steps and coupled/added-mass stability |
+- Provide a stable model tree, geometry editor, viewport and property inspector with keyboard-accessible commands, selection modes, undo/redo and contextual help.
+- Show units, coordinate frames, material orientation, loads, constraints and the selected formulation where they are edited.
+- Explain invalid geometry, missing constraints, unsupported solver combinations, mesh failures, stale results and failed remapping with an actionable repair path.
+- Show which region, body, mesh and run a result belongs to. Distinguish a static field animation from time-dependent dynamics.
+- Provide sections/clipping, body isolation, vectors/tensors/principal quantities, probes and paths, surface/volume integrals, time/frequency navigation and controlled comparison as supported by each field type.
+- Keep field association intact. Make smoothing/projection explicit and do not hide singularities or discontinuous material interfaces.
+- Use sequential color maps for ordered magnitudes and diverging maps centered at zero for signed quantities; show units, limits, clipping and undefined values accessibly.
 
-Thermal and fluid preparation should retain the breadth of [heat-transfer modes and interfaces](https://www.comsol.com/heat-transfer-module) and [flow-regime/closure distinctions](https://www.comsol.com/cfd-module), even when only a small subset is initially solvable. Full electromagnetic and acoustic families require additional field representations; coupled analysis requires more than combining two independent predictions.
+Every supported analysis and method should have an offline help card covering equations, assumptions, geometry/material/condition compatibility, units, outputs, references, validation and known failures. Include a searchable capability catalogue, boundary-condition glossary, CAD tutorials and runnable examples. The documentation assistant should use this same versioned help source rather than a separate unmaintained knowledge base.
 
-Custom PDE work belongs to a later validated research interface: declared unknowns, units, residual/weak form, coefficients, initial/boundary/interface conditions and references. Start with reviewed, typed definitions. Do not imply that an arbitrary equation entered by a user or generated by a chatbot is automatically well posed or reliably solvable.
+Provide useful export and reporting for model definition, mesh, solver settings, provenance, plots, fields and benchmark comparisons. Reports must distinguish reference data, solver output, ML prediction and assistant interpretation. Keep the roadmap as the single planning document; put operational instructions in README/CONTRIBUTING and product help beside the features it explains.
 
-## 6. Physics ML method strategy
+Measure usability with representative engineering users. The acceptance task should cover geometry creation/import, materials and conditions, mesh, solve, interpretation and save/reopen. Record completion rate, time to first correct study, diagnostic recovery and critical unit/boundary/result-interpretation errors.
 
-Physics ML is a portfolio, not a synonym for PINNs. Current frameworks encompass operators, graph models and hybrid approaches as well as residual-based training; the [PhysicsNeMo overview](https://docs.nvidia.com/physicsnemo/latest/overview.html) is one implementation reference, not a required dependency or proof of Phyra support.
+## 10. Architecture and local devices
 
-| Method track                                  | Intended role and prerequisites                                                                                          | Promotion gate                                                                                                            |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Strong-form PINNs                             | Per-problem forward/inverse solutions; verified derivatives, scaling, conditions and sampling                            | Hold-out field/physical errors across multiple seeds; boundary and difficult-case performance; explicit failure reporting |
-| Variational, energy and weak-form methods     | Suitable elasticity/Poisson families; admissible trial fields, correct energy/weak form and integration                  | Compare against strong-form and independent references; distinguish quadrature error from optimization error              |
-| Domain decomposition and multilevel methods   | Multiscale/localized problems after a single-domain benchmark; interface/coarse-level information                        | Subdomain/interface errors, refinement behavior and actual communication/runtime costs                                    |
-| Differentiable and hybrid numerics            | Sensitivity, initial guesses, learned corrections/preconditioners or constitutive components                             | Gradient verification; corrected solution reaches the physical tolerance; fallback remains reliable                       |
-| FNO and DeepONet                              | Reusable mappings over defined parameter/input families; trustworthy training data or physics-constrained operator setup | Simulation-level held-out accuracy, preprocessing compatibility and total reuse cost                                      |
-| Mesh/graph and geometry-aware operators       | Varying domains/meshes with topology, normals, condition labels and geometry representations                             | New geometry/remesh tests; interface preservation; thin features and disconnected bodies; no hidden leakage               |
-| Reduced and multiscale models                 | Fast repeated studies and time evolution within declared regimes                                                         | Quantity-of-interest and long-rollout stability; reconstruction and conservation errors                                   |
-| Inverse problems and experimental calibration | Measurement schema, noise model, parameter bounds and identifiable observations                                          | Synthetic recovery, noise sensitivity and independent measurements; report non-identifiability                            |
-| Uncertainty and active learning               | A reliable predictive family, calibration data and defined distribution shifts                                           | Interval coverage and sharpness, subgroup/OOD checks; compare data acquisition at equal reference budget                  |
+Keep the Tauri + React/TypeScript desktop and headless numerical engine direction. Continue to separate project definition, geometry, meshing, materials, study, execution, fields and AI adapters. The UI expresses engineering intent; numerical backends report their actual formulation and limitations. Bulk mesh/result arrays do not belong in ordinary reactive JSON state.
 
-The current residual/autograd method is informed by [Raissi, Perdikaris and Karniadakis's original PINN work](https://doi.org/10.1016/j.jcp.2018.10.045), adapted to the implemented plane-stress problem; Phyra does not reproduce every experiment in that paper. Research foundations for future tracks include [PINN failure-mode analysis](https://papers.neurips.cc/paper_files/paper/2021/hash/df438e5206f31600e6ae4af72f2725f1-Abstract.html), [Deep Ritz](https://arxiv.org/abs/1710.00211), [multilevel domain decomposition](https://arxiv.org/abs/2306.05486), [FNO](https://arxiv.org/abs/2010.08895), [the original DeepONet paper](https://doi.org/10.1038/s42256-021-00302-5), [GINO](https://arxiv.org/abs/2309.00583), [Solver-in-the-Loop](https://arxiv.org/abs/2007.00016) and [Bayesian PINNs](https://arxiv.org/abs/2003.06097). Their reported results are problem-specific. Geometry generalization, robust uncertainty and universal solver superiority do not follow from adopting a paper or library.
+Promote extension contracts from real vertical slices, not speculative placeholders. The stable boundary should eventually cover:
 
-### Research frontier to reassess, not precommit
+- CAD-kernel and neutral-file adapters;
+- geometry/mesh identity and material/boundary assignments;
+- classical solver and physical formulation capabilities;
+- Physics ML training, inference, model and dataset manifests;
+- AI provider and internal typed-tool adapters;
+- result fields, provenance, cancellation and validation.
 
-Evaluate cross-physics pretraining and transferable scientific models as a later extension of the reusable-model track. Transformer backbones, few-data adaptation and physics-constrained generative ensembles may reduce repeated training or support experiment design. Their admission criteria include data/model rights, adaptation cost, long-rollout behavior, physical checks and held-out regimes. [Multiple Physics Pretraining](https://papers.neurips.cc/paper_files/paper/2024/file/d7cb9db5ade2db7814fbd01ee59f4c7b-Paper-Conference.pdf) demonstrates transfer research on fluid-oriented benchmarks; it does not establish a universal industrial solver.
+Version project schemas explicitly. Editing geometry, material, conditions or solver settings invalidates dependent results and incompatible learned models. Preserve stable units and result associations through migrations. Keep reusable trained models and datasets as separately versioned artifacts; do not mix executable models with ordinary result caches. Stabilize a third-party extension SDK only after at least two real integrations demonstrate the common requirements.
 
-Also investigate learning missing constitutive/transport laws inside differentiable solvers, multi-fidelity learning and models that preserve symmetry, conservation or thermodynamic constraints. The [missing-physics discovery preprint, revised in 2026](https://arxiv.org/abs/2507.15787), explores the distinction between learning a solution and learning an unknown physical law. Require independent constitutive/experimental checks and identifiable measurements before transferring such laws between configurations. These tracks belong to P4–P6 research and must earn the same promotion gates as simpler methods.
+### Local GPU and runtime
 
-### Training, inference and applicability
+Keep a dependable CPU reference route and make local acceleration an explicit product capability. The matrix must identify supported model/method, operation, GPU runtime, device, precision, platform, memory limits and validated case. Include local NVIDIA CUDA workflows as a target and Apple MPS where operations pass; add other accelerators only after equivalent evidence. Checkpointing, resume and cancellation must restore or retire actual optimizer/model state rather than merely saving training settings.
 
-Users should be able to choose explicitly between training a problem-specific model, training a reusable model family and applying an existing model. Model records need equations, assumptions, geometry/parameter/condition ranges, material laws, preprocessing, dataset rights, validation results, version, precision and device constraints. Query compatibility is checked before prediction.
+Optional research runtimes must not prevent a CPU user from installing or launching the desktop. Report which operations will use CPU/GPU and any precision differences before execution. Validate field and quantity-of-interest tolerances across devices; preserve the actual device/runtime/precision in provenance.
 
-The experiment system should preserve seeds, optimizer settings, sampling/quadrature rules, data splits, checkpoints and model provenance in safe, versioned formats. Support interruption and resume only when optimizer/model state is genuinely restored. Existing archives do not provide this capability.
+### Local execution contracts
 
-Nondimensionalization, adaptive sampling, boundary enforcement, optimizer comparisons and weak formulations are hypotheses to evaluate, not automatic fixes. Plasticity, friction, shocks and interfaces need appropriate specialized formulations. The current Gmsh/SciPy chain is not automatically differentiable; converting an array to a tensor does not create a derivative through geometry or meshing.
+Keep execution requests, job state, cancellation, progress, input fingerprints and result/provenance contracts separate from the UI so local backends can be isolated, tested and changed without coupling them to the interface. Use versioned project and study definitions, and keep solver inputs and results on the user's machine.
 
-For inverse studies, inspect identifiability before training. A single tensile measurement may determine a load/modulus ratio without identifying both values separately. Additional experiments or prior information may be necessary; low loss does not resolve that ambiguity.
+## 11. Acceptance gates
 
-### What “faster” must mean
+A capability is ready to be presented as supported only when its evidence covers the full user workflow.
 
-Report meshing, reference-data generation, preprocessing, training, validation, inference, query checks, memory and available classical cache/factorization separately. Compare at a justified accuracy and against a competent classical baseline.
+| Gate | Required evidence |
+|---|---|
+| CAD authoring | Users can create and edit representative constrained 2D profiles and 3D mechanical parts, import supported neutral files, inspect/repair geometry and preserve feature history through save/reopen. |
+| Geometry identity | Material and boundary selections survive valid edits/remeshing; ambiguous references require repair before solving. |
+| Mesh quality | Supported mesh families have quality checks, local/global refinement and convergence evidence appropriate to their analyses. |
+| Classical mechanics | General 2D plane stress/plane strain and 3D linear static solid workflows cover editable/imported geometries, multiple materials and common loads/supports; representative modal/buckling, dynamic, nonlinear/contact and fracture/damage workflows each have their own references, balance checks, mesh/time convergence and failure tests. The published matrix states exact limits. |
+| Materials and conditions | Every advertised material, load, support, contact or thermal condition has explicit units/semantics, assignment behavior and solver compatibility tests. |
+| Heat and radiation | Heat conduction and any advertised convection/radiation model pass their own energy, nonlinear-convergence and boundary-sign tests; the three radiation models remain distinct. |
+| Physics ML | Comparable experiments are runnable through the shared contract for representative PINN, energy/variational, operator and mesh/graph methods. Every integrated method has reproducible configuration, held-out validation appropriate to its claim, applicability limits, failures, actual device/precision and end-to-end cost. |
+| Paper-inspired research | At least a curated set of representative case packs can be recreated from product workflows; each states its source, reproduced scope, deviations, data rights and comparison metrics. |
+| AI and BYOK | Documentation answers cite the versioned help source; study/result answers trace to actual fields and runs; credentials stay out of projects/logs; users can inspect outbound context and control provider cost. |
+| Agent tools and MCP | Permissions, input schemas, confirmation, stale-state checks, undo, cancellation, result provenance and prompt-injection handling pass adversarial workflow tests. |
+| Architecture and compatibility | Project migrations preserve or explicitly invalidate caches; feature and engine capability matrices agree; real adapters use the shared contracts without placeholder modules. |
+| Local GPU | Every advertised GPU/method/operation combination has packaged tests on the declared device and precision; CPU remains usable. |
+| Desktop reliability | Supported macOS and Windows packages complete representative CAD-to-result, assistant, cancel, recover, save/reopen and export workflows. |
+| User understanding | Representative users complete declared engineering tasks without critical unit, boundary, formulation or result-currency mistakes. Documentation matches actual shipped behavior. |
 
-For comparable repeated queries, an illustrative break-even estimate is:
+Choose numerical tolerances before evaluating each benchmark. Do not apply one universal error percentage across fields with different scales or engineering meaning. Measure at least five independently seeded learning runs as an initial screening floor where randomness applies; make no reliability claim from that floor alone. Report failure rate, high-percentile error, quantities of interest and end-to-end memory/time alongside mean field error.
 
-```text
-N_break_even = (T_data + T_training + T_validation)
-               / (T_reference_query - T_prediction - T_query_checks)
-```
+## 12. Further product areas
 
-If the denominator is nonpositive, the measured scenario has no time-amortization advantage. Preview speed, experiment design or candidate screening may still be useful, but those benefits must be measured separately. No speedup number is a roadmap promise.
+With mechanical CAD and validated structural/research workflows in place, extend the same preparation contracts into broader fluid mechanics, more complete multiphysics and more demanding locally run accelerator studies. Each is a separate product area with distinct geometry, boundary conditions, data movement, conservation and operations; none should be represented as “enabled” by a generic plugin switch.
 
-## 7. Engineering assistant, BYOK and agent workflows
+Possible future paths include:
 
-### Provider independence with honest capability support
+- steady and transient incompressible flow, then selected compressible, turbulent, multiphase and porous-media problems;
+- more complete enclosure radiation and coupled thermal–structural analysis;
+- conjugate heat transfer and fluid–structure interaction after component solvers and conservative coupling are validated;
+- broader multidisciplinary methods, optimization and uncertainty workflows.
 
-Offer bring-your-own-key connections without a mandatory Phyra account or gateway. Start with native Anthropic Messages and OpenAI Responses adapters, plus a separately tested Chat Completions-compatible adapter. Expand to native Gemini and other providers as maintained adapters become available. Allow user-managed local model servers, such as Ollama or vLLM, through tested endpoint contracts.
+This future direction does not create a release schedule. Expand only where users, maintainers, available libraries and verification evidence justify a complete workflow.
 
-The goal is broad model choice, including user-specified model identifiers and endpoints, rather than a fixed list of favored models. Any valid credential still depends on provider authorization, protocol support and the chosen model's capabilities.
+## 13. Research anchors
 
-Track streaming, tools, structured-output guarantees, image/document input, context limits, cancellation and usage reporting per endpoint/model. Hide or explain unavailable actions; never silently downgrade a workflow. Compatibility layers have differences: see [Anthropic's documented limitations](https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk), [Gemini compatibility](https://ai.google.dev/gemini-api/docs/openai) and [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility). Native adapters should preserve provider-specific features behind a shared internal event contract.
+The selected literature motivates shared geometry, physics, mesh, material, boundary and model capabilities. These are representative anchors from the broader review, not a claim that Phyra will reproduce every paper.
 
-A gateway can be an optional connection managed by a user or organization, including an independently evaluated future Phyra-hosted option. It must have explicit data destinations, authentication, retention and cost behavior. Direct and local routes remain supported. No silent cloud fallback, automatic model download or mandatory hosted solver is implied by this roadmap.
+### Solid mechanics and Physics ML
 
-### Progressive assistant capabilities
+- Rezaei et al. (2022), [mixed PINN formulation for heterogeneous domains](https://arxiv.org/abs/2206.13103).
+- Wang et al. (2023), [exact Dirichlet energy-based PINN for solid mechanics](https://doi.org/10.1016/j.cma.2023.116184).
+- Kashefi and Mukerji (2023), [physics-informed PointNet on irregular elasticity geometries](https://arxiv.org/abs/2303.13634).
+- Lian et al. (2023), [PINNs for phase-field brittle fracture](https://doi.org/10.3389/fphy.2023.1152811).
+- Abueidda and Mobasher (2023), [learning methods for thermoelasticity](https://arxiv.org/abs/2305.17799).
+- Roy and Bose (2023), [physics-constrained learning for von Mises plasticity](https://www.sciencedirect.com/science/article/pii/S0952197623002336).
+- Kamali and Laksari (2024), [physics-informed learning for heterogeneous elasticity](https://doi.org/10.1016/j.jmbbm.2023.106228).
+- Hildebrand and Klinge (2024), [neural FEM and neural operator comparison in solid mechanics](https://doi.org/10.1007/s00521-024-10132-2).
+- Sahin et al. (2024, preprint), [PINNs for 3D contact problems](https://arxiv.org/abs/2412.09022).
+- Tian et al. (2025), [adaptive energy-based PINN for solid mechanics](https://doi.org/10.1016/j.engstruct.2025.119884).
+- Kaewnuratchadasorn et al. (2025), [geometry-aware neural operator for solid mechanics](https://doi.org/10.1111/mice.13405).
+- Le-Duc et al. (2026), [normalized energy-based PINNs for solid mechanics](https://doi.org/10.1016/j.finel.2026.104523).
 
-| Level                           | User value                                                                                | Required controls                                                                                                     |
-| ------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| A1 — Explain                    | Search offline product help; explain available methods, inputs, errors and actual results | Ground answers in versioned product content and selected study/run evidence; separate unknowns from measured values   |
-| A2 — Inspect                    | Check missing materials/conditions, units, mesh quality and run applicability             | Deterministic engineering validators; read-only tools; cite affected objects and run identifiers                      |
-| A3 — Propose and edit           | Suggest conditions, geometry parameters or study settings; apply authorized changes       | Typed SI-aware patch, visible diff, current-input precondition, undo and scoped authorization                         |
-| A4 — Coordinate studies         | Execute a bounded sweep, comparison or convergence investigation                          | Explicit run/compute/API budgets, cancellation, checkpoints, partial failures and per-run provenance                  |
-| A5 — Assist design and research | Plan inverse/optimization/active-learning experiments and compare supported methods       | Verified sensitivity/uncertainty, engineering constraints and independent acceptance checks; auditable tool decisions |
+### Engineering and integration references
 
-Numerical fields, convergence and physical quantities must come from numerical tools. The assistant may describe them, propose a method or reject unsupported requests; it must not manufacture results. It should be useful for expert workflows as well as onboarding, without occupying the main modeling workspace unnecessarily.
+- NVIDIA, [PhysicsNeMo overview](https://docs.nvidia.com/physicsnemo/latest/overview.html), [MeshGraphNet deforming-plate example](https://docs.nvidia.com/physicsnemo/latest/physicsnemo/examples/structural_mechanics/deforming_plate/README.html) and [mesh/graph user guide](https://docs.nvidia.com/physicsnemo/latest/user-guide/mesh.html).
+- Gmsh, [reference manual](https://gmsh.info/doc/texinfo/gmsh.html), for current mesh integration and future mesh-control evaluation.
+- Model Context Protocol, [tool specification](https://modelcontextprotocol.io/specification/2026-07-28/server/tools) and [security best practices](https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices).
+- LiteLLM, [SDK and gateway deployment paths](https://docs.litellm.ai/docs/learn) and [gateway request architecture](https://docs.litellm.ai/docs/proxy/architecture), as a reference for evaluating a provider adapter library versus operating a shared proxy.
 
-### Keys, data and actions
-
-Store credentials in native OS facilities such as macOS Keychain and Windows credential storage, outside projects, logs and exports. Provide add/test/remove/reconnect flows and redacted diagnostics. Remote connections require authenticated HTTPS; deliberately selected loopback endpoints have separate rules.
-
-Show the context leaving the machine: selected study metadata, run summaries and any specifically authorized geometry, fields, images or documents. Local files are not implicitly provider input. Changing a provider/gateway changes the data destination and may require a new authorization scope.
-
-Start with narrow tools such as reading studies/metrics and proposing patches. A model's tool request is only a proposal: native code enforces schema, units, permission, current-project fingerprint and resource limits. Support reusable authorization for a bounded workflow, so users do not repeatedly approve the same permitted action. General shell, unrestricted file access and arbitrary network execution are not default assistant tools.
-
-Treat imported documents, CAD metadata and tool outputs as untrusted data. Evaluate prompt-injection, malformed streams, authentication/rate-limit errors, stale changes and unauthorized actions. Provider strict-output support does not establish physical correctness or action permission; see the [official tool-calling contract](https://developers.openai.com/api/docs/guides/function-calling) and [agent safety guidance](https://developers.openai.com/api/docs/guides/agent-builder-safety).
-
-Display API usage/cost estimates and numerical compute budgets separately; report unknown cost when usage/pricing evidence is unavailable. Cancellation stops future work but cannot promise reversal of already incurred provider charges. Audit accepted changes, model/adapter versions, context hashes and run references without storing credentials or hidden reasoning traces.
-
-## 8. Professional interface, explanation and presentation
-
-The interface must become a precise engineering tool. Visual polish and understandable interaction are part of P1, not a cosmetic phase postponed until every solver exists.
-
-The current primitive workbench implements replace/add/toggle selection, synchronized model-tree/inspector boundaries, standard camera orientation, fit/reset, boundary isolation and node/preview-vertex distance inspection. Definition undo/redo is bounded and session-only; physical restoration requires recomputation. Constrained drawing, exact CAD measurements, feature history and advanced postprocessing remain separate milestones.
-
-- **Workspace:** a predictable model tree, viewport and property inspector; clear study/result context; stable menus, command search, contextual actions, keyboard shortcuts, selection modes and undo/redo. Show missing assignments and the object that needs correction.
-- **Light theme:** white and neutral tonal surfaces by default, disciplined typography, restrained emphasis and sufficient separation of model, mesh, selections and analysis fields. Reserve strong colors for data and meaningful status.
-- **Dark theme:** deep neutral graphite/charcoal surfaces with readable boundaries and muted accents. Preserve contour readability and avoid saturated dashboard backgrounds.
-- **Identity:** v0.1.0 finalizes a vector Phi mark, matching native app icons and a compact wordmark. Preserve legibility at small sizes and verify future changes in both themes and native desktop contexts.
-- **Scientific color:** choose sequential maps for ordered magnitudes and diverging maps centered on zero for signed differences. Provide units, explicit fixed/shared ranges, clipping, zero/undefined handling and accessible alternatives. Theme changes must not alter data or hide failures.
-- **Platform quality:** keyboard access, focus states, accessible contrast, high-DPI/multiple-display behavior, resizing and expected macOS/Windows conventions. Evaluate dense real studies, not only an empty landing screen.
-
-Postprocessing should grow to sections/clipping, body isolation, vectors/tensors/principal quantities, path probes, surface/volume integrals, time/frequency navigation and consistent comparison. Preserve node/cell/integration-point associations. Make smoothing or projection explicit; do not silently average discontinuous materials or hide singularities. The [ParaView color-mapping reference](https://docs.paraview.org/en/latest/ReferenceManual/colorMapping.html) illustrates the separation of field/component selection, transfer functions and legend control.
-
-### Product documentation that answers engineering questions
-
-Every available study/method needs an offline card covering equations, assumptions, supported geometry/conditions/materials, units, discretization/training approach, outputs, validation references and known failures. Each screen needs task-oriented help: what to do next, why an input matters, how to choose a value and how to repair an error.
-
-Provide a searchable supported-capability catalogue, boundary-condition glossary and guided examples that produce real results. Start with axial loading, bending and manufactured elasticity, then follow released thermal/fluid families. Distinguish examples from certified material data and research demonstrations from supported engineering use.
-
-The README includes genuine current-interface screenshots inspecting saved CPU references and a short workflow video from the preceding interface iteration, links directly to runnable examples and local setup, and states the current scope. Final video recapture is deferred until the current refinement stabilizes. Label historical captures and keep new help screenshots tied to actual saved-reference or desktop workflows. Keep lightweight assets and accessibility text; avoid duplicate manuals and a sprawling documentation tree. This roadmap remains the single planning document, while operational instructions remain in README/CONTRIBUTING and explanations live with the product capabilities they describe.
-
-## 9. Scientific and product acceptance gates
-
-Each new capability follows **research → reproducible prototype → validated bounded pilot → packaged supported feature**. Publish its status and supported combinations. Promotion requires the following evidence; thresholds are selected and justified per benchmark before evaluating the chosen method.
-
-| Gate                          | Evidence required                                                                                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mathematical definition       | Equations, unknowns, assumptions, units, formulation and boundary/initial/interface semantics                                                          |
-| Independent correctness       | Analytical/manufactured cases and, where appropriate, independent numerical or experimental references; existing tolerances remain intact              |
-| Physical checks               | Constraints and force/moment, mass, energy, charge or interface-work balance appropriate to the family                                                 |
-| Refinement and error          | Mesh/time/quadrature convergence; area/volume-weighted field errors and engineering quantities; documented singularity evaluation                      |
-| Learning robustness           | Multiple seeds, unseen validation points, failures and optimization sensitivity; training loss distinguished from accuracy                             |
-| Generalization                | For reusable models, split by independent simulation, geometry, material and regime; nodes of one solution cannot establish new-problem generalization |
-| Applicability and uncertainty | Defined scope, calibrated interval coverage where offered, distribution-shift tests and explicit abstention/correction behavior                        |
-| Performance                   | End-to-end timings, memory, model/data generation cost, hardware/precision and optimized reference baseline                                            |
-| Workflow safety               | Correct persistence/migration, cancellation, stale-result ownership, invalid-input rejection and recovery from partial failure                         |
-| Product usability             | Representative users complete preparation and interpretation tasks; no critical misreading of units, boundaries, method scope or result currency       |
-| Target distribution           | Packaged macOS and Windows workflows on declared supported environments; dependency/redistribution and credential checks                               |
-
-For early evaluation, use at least five independently seeded runs per learning benchmark and separate nominal cases from deliberately difficult cases. This is a proposed screening floor, not a measured reliability guarantee or a sufficient sample for high-percentile/failure-rate claims. Justify sample counts and statistical uncertainty for those claims separately. Each family must justify error and balance thresholds for its intended use; one universal percentage is inappropriate across displacement, drag, temperature, resonance and fracture.
-
-Per-problem PINNs may evaluate residuals at independent points of the same PDE instance; label that evidence as within-instance residual validation, not a field-error bound. Field accuracy additionally requires independent physical references. Reusable-model generalization requires held-out physical instances. Uncertainty calibration uses data separate from training and final evaluation, and distinguishes pointwise interval coverage from simultaneous whole-field coverage.
-
-Track median and high-percentile error, failure rate and target quantities alongside L2. Report reactions/compliance for mechanics, heat flux for thermal problems, pressure drop/drag for flow, and phase/energy for waves. A raw corner stress maximum may not converge; explain the evaluation region and quantity rather than silently removing difficult points.
-
-Before shipping a major workflow, set a task-based usability target with representative engineers and new users. An initial proposed target is at least 90% successful completion of the declared reference task with no critical modeling/result-interpretation error. Record time to a first correct study, diagnostic recovery and help effectiveness; revise the target through evidence rather than presenting it as current performance.
-
-## 10. Architecture, platforms and scale
-
-Preserve the separation between project definition, geometry, discretization/sampling, study, execution and fields. Introduce explicit contracts only when a real capability needs them. The UI should select a physical problem and inspect solver applicability; it should not encode a different physical problem for each algorithm.
-
-Extension contracts should eventually cover physics definitions, material laws, discretizations, numerical methods, model/data manifests, result associations and AI provider/tool adapters. Stabilize an SDK after at least two real integrations demonstrate the shared interface. Use reviewed extensions and owned workers; preserve the current safe serialization and migration principles.
-
-### Physics ML execution runtime and framework adapters
-
-The intended separation is **desktop workbench → immutable study/execution request → reviewed method or model adapter → owned runtime → validated fields and provenance**. The workbench owns engineering intent, assignments and interpretation; an execution backend owns a numerical implementation, resources and model lifecycle. Frameworks supply capabilities, not permission to change the physical problem or silently reinterpret material/boundary data. Current local FEM and PyTorch PINN implementations justify these boundaries; new adapter interfaces should be introduced only with a real vertical slice.
-
-| Track                      | Current or proposed responsibility                                                                                            | Admission gate                                                                                                                                                             |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Existing CPU mechanics     | Current Gmsh/SciPy meshing and classical references; bounded local process execution                                          | Preserve analytical references, resource limits, fields, cancellation and persistence while refactoring                                                                    |
-| PyTorch numerical methods  | Current per-problem elasticity PINN; future reusable/hybrid/model-family methods                                              | Per-operation derivatives, precision, seeded references and actual framework/device metadata                                                                               |
-| NVIDIA PhysicsNeMo adapter | Proposed selected model/provider or training backend; optional curated dependencies and compatible tensor/mesh/sample mapping | One end-to-end physical benchmark through the normal study/run/field pipeline; compare native framework output, units, derivatives, boundaries, cost and failure behavior  |
-| JAX or equivalent adapters | Proposed differentiated kernels or model families when they add demonstrated value                                            | Verified derivative/transformation semantics, precision configuration, platform installation and identical physical references; no assumed interchangeability with PyTorch |
-| Local multi-GPU execution  | Proposed distributed data/model/domain strategies for sufficiently large workloads                                            | Single-device equivalence within justified tolerances; weighted metrics, all-rank cancellation, partial-failure recovery and measured scaling                              |
-| User-managed HPC execution | Later proposed workstation/cluster/scheduler adapters                                                                         | Explicit data/credential permissions, fixed launch definitions, quotas, job identity, checkpoint transfer and provenance; local offline execution remains independent      |
-
-[PhysicsNeMo's current installation documentation](https://docs.nvidia.com/physicsnemo/latest/getting-started/installation.html) distinguishes pip environments, containers and optional extras. Symbolic PDE/residual functionality now resides in `physicsnemo.sym`; Phyra must pin and test an adapter against a selected framework release rather than rely on older standalone-package assumptions. Installation, importing a model and completing a physical workflow are separate gates. Optional framework runtimes should not inflate the default desktop bundle or force GPU/container dependencies on CPU users.
-
-Maintain a capability matrix by **framework version × method × operation × platform × device × precision**. CPU, Apple GPU and NVIDIA GPU are separate validation targets. Test actual forward, derivative/backward, training, field evaluation and cancellation operations rather than merely enumerating hardware. Do not infer PhysicsNeMo support on Apple GPU from PyTorch MPS support, or CUDA support from an installed device driver. [PhysicsNeMo system requirements](https://docs.nvidia.com/physicsnemo/latest/getting-started/system_requirements.html) and [JAX's platform/backend installation matrix](https://docs.jax.dev/en/latest/installation.html) are upstream constraints to check, not Phyra support statements. CPU remains a reproducible reference route; an unsupported operation produces an explicit limitation or disclosed fallback.
-
-### Dataset → training → validation → model → inference
-
-The reusable-model lifecycle requires artifacts distinct from a project-specific result:
-
-1. **Dataset:** identify equations, geometry/material/condition ranges, sample and mesh associations, SI units, reference solver/settings, data rights, checksums and quality checks. Keep train/validation/test splits grouped by independent physical instance; record generator failures and exclusions.
-2. **Training execution:** retain dataset/split hashes, preprocessing and normalization, model architecture/version, optimizer/sampling settings, random seeds, actual device/precision, framework/runtime versions, metrics and resource budgets. No user-supplied executable code is admitted through a data manifest.
-3. **Held-out validation:** reserve final physical instances and unseen query points as appropriate; measure field and quantity errors, conservation, hard cases and failure rate across justified seeds. Tune neither thresholds nor test instances after viewing the final result.
-4. **Model version:** promote an immutable, inspectable record containing architecture and safe tensor state, applicability envelope, references, validation evidence, data/model rights and compatible runtime versions. A digest establishes identity, not scientific accuracy or trust in executable code.
-5. **Inference execution:** check query/material/geometry/condition compatibility, load the declared preprocessing, return fields at declared locations and units, and attach model/dataset/execution provenance. Reject or explicitly abstain outside scope; compare or correct through a reference method when that route has been validated.
-6. **Update or resume:** a new dataset, material law, preprocessing rule or model state creates a new version. Resume restores validated model/optimizer/sampler state in a safe format and reports any reproducibility limits; retraining from settings is not resume.
-
-Current `.phyra` archives store per-problem settings, metrics and evaluated fields; they do not store reusable model datasets or trained checkpoints. Do not overload the existing result cache with an executable model archive. Artifact import needs cumulative size/dimension/index/finite-value checks and schema migration just as project import does. Learned constitutive state additionally follows integration-point and load-history ownership.
-
-### Multi-GPU and distributed correctness
-
-Start with independent bounded studies or data-parallel training when the workload warrants it; introduce parameter/optimizer sharding or spatial/domain partitioning only for demonstrated memory or scaling needs. [PhysicsNeMo's distributed guide](https://docs.nvidia.com/physicsnemo/latest/user-guide/distributed_training.html) distinguishes these strategies. [Its ShardTensor contract](https://docs.nvidia.com/physicsnemo/latest/physicsnemo/api/physicsnemo.domain_parallel.html) supports domain sharding alongside DDP/FSDP2, but requires compatible operations, layouts, gradient synchronization and checkpoint handling. These framework facilities do not automatically define a physically correct subdomain interface.
-
-For uneven sample/mesh partitions, reduce weighted sums and counts so losses, field norms and conservation match the global problem; averaging rank-local means can change the objective. Preserve unique entity ownership, boundary labels, normals and interface exchange. PINN domain decomposition requires the chosen continuity/flux formulation, and transient solvers require consistent time/state transfer. Compare distributed and single-device physical results within preselected numerical tolerances; bitwise equality across devices is not promised.
-
-The future scheduler needs explicit queued/running/cancelling/terminal states, bounded concurrency and memory, owned ranks, aggregate progress, heartbeats and recovery from a lost rank or interrupted host. Cancellation must retire the entire owned job and prevent any late rank from publishing current results. Checkpoint/restart must preserve partition and state provenance. No general shell or arbitrary executable path is added to the desktop bridge.
-
-Measure strong and weak scaling, peak host/device memory, communication, data loading, preprocessing and checkpoint overhead. A faster training kernel may still lose end-to-end on small studies. Establish reproducible single-GPU workloads before multi-GPU, then multi-node/HPC gates; cross-platform desktop support is independent of a specialized compute host. Public cloud, accounts, billing and hosted execution remain outside this iteration and require separate user-controlled architecture and distribution decisions.
-
-### macOS and Windows are primary targets
-
-- Verify clean-machine installation, offline solve, cancellation, recovery, save/reopen, Unicode/space-containing paths and uninstall on both targets. Distinguish configuration, build, package inspection, launch and numerical execution evidence.
-- Measure startup, package size, peak memory, interaction latency and large-field rendering. Reduce unnecessary bundled dependencies with reproducible target-specific packaging rather than removing numerical support invisibly.
-- Test CPU, MPS and CUDA by algorithm, operation and precision. FFT, scatter, complex arithmetic and higher-order autograd support require their own checks. A hardware/device probe is not blanket solver support.
-- Establish production signing/notarization and appropriate Windows distribution trust; version update/migration policy, crash recovery and dependency/Corresponding Source compliance precede public release claims.
-- Keep CPU execution useful. Optional GPU runtimes and accelerators need explicit installation, availability, compatibility and fallback behavior; never advertise CUDA execution based only on detection code.
-
-Larger meshes and models require chunked/streamed field handling, bounded GPU buffers, cancellation at useful boundaries and measured quality of service. Bulk arrays remain outside ordinary reactive JSON state. Scalability includes save/load, probing and comparison as well as solve time.
-
-Optional remote execution should progress from user-managed workstation/SSH or scheduler adapters to separately evaluated multi-node training. Include job ownership, authentication, quotas, checkpoint transfer, data permissions and result provenance. Local solving remains independent of a public service. Hosted compute, gateways or paid infrastructure require separate architecture, licensing, security and business decisions before implementation.
-
-### Release and compatibility gates
-
-Roadmap phases describe product outcomes; they are not release assignments. Select the scope of each `0.x.y` release from completed, verified work rather than promising a version or date for every planned capability. Semantic tags such as `v0.x.y` identify one synchronized application/package/native/engine version and a reviewed source revision. Run `npm run release:version -- 0.2.0` to update all application and lockfile version metadata together; this does not create a tag or publish anything. The configured [tag workflow](.github/workflows/release.yml) checks metadata and requires the owner's explicit `PHYRA_PUBLIC_DISTRIBUTION_READY=true` repository variable before reusing the full scientific and packaged desktop CI. Successful target jobs stage DMG or Windows installers, SHA-256 checksums and license/notice files under ignored `artifacts/release/`; the workflow prepares a draft for owner review. The gate defaults closed, and this configured flow has not established release execution, consumer installation, signing or complete Corresponding Source readiness.
-
-Publishing the reviewed GitHub Release updates its `releases/latest` download page. In-app update checks, updater metadata and signing credentials are a separate feature and remain absent until an update path is implemented and validated. Do not commit build products to the normal source tree or equate a draft/uploaded artifact with publication authorization or redistribution readiness.
-
-Preserve previous supported project schemas, explicitly migrate or discard incompatible caches, and test recovery/rollback before release. Record target architecture, OS/runtime minimums and actual launch/solve evidence. Security-reporting intake, dependency review and a supported-version policy are prerequisites to a serious public launch; [SECURITY.md](SECURITY.md) states the current reporting limitation rather than inventing a private route.
-
-## 11. Community and sustainable ownership
-
-The roadmap should be feasible for a growing community over years, without depending indefinitely on one contributor. Establish maintained domains for geometry/mesh, physical formulations, Physics ML, contracts/persistence, native lifecycle, visualization/UX, AI integration and platform distribution.
-
-As participation grows, aim for at least two active reviewers per critical domain. This is an organizational target, not an assertion that those maintainers already exist. Numerical contributions require independent references; persistence changes require migration evidence; AI integrations require protocol, injection and permission tests; distribution changes require target evidence.
-
-Discuss major changes through concise proposals stating the problem, alternatives, dependencies, maintenance cost and acceptance gate. Preserve GPL-3.0-or-later and DCO practice. Track model/dataset/media rights independently from code licenses, and review commercial CAD component compatibility before adoption.
-
-Create reproducible benchmark tasks and appropriately licensed small fixtures that new contributors can run locally. Define experimental-feature promotion, deprecation, supported-version policy and a private security-reporting route before broad distribution. Expand governance and release coordination as real contributors arrive; avoid speculative organizational bureaucracy.
-
-Funding priorities should protect maintenance and validation: domain expertise, Windows/macOS test access, benchmark/data stewardship and reproducible compute. A large contributor count is useful only if it increases supported capability and review capacity.
-
-## 12. First execution priorities
-
-These work packages record the first launch slice and the recommended next outcomes. They refine the phases into reviewable outcomes without pretending the multi-year programme is one release.
-
-| Order                                              | Work package                                                                 | Concrete completion evidence                                                                                                                         |
-| -------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — implemented; user validation open              | Existing-workflow usability and capability audit                             | Tested task flow; unsupported/experimental labels; screen and method-help inventory tied to current behavior                                         |
-| 2 — hosted workflows verified; distribution open   | Consumer installation and minimum-version distribution validation            | Hosted macOS/Windows package/FEM/PINN/cancel/save/reopen passed; manual installation/dialogs/uninstall, minimum macOS and redistribution gaps remain |
-| 3 — implementation delivered; user validation open | Professional workspace, help, themes and identity                            | Representative-user workflow acceptance; offline help; readable scientific colors; reviewed logo/icon assets                                         |
-| 4 — limited preparation slice completed            | Primitive selection, copied boundary sets and safe definition history         | Bounded/stale-safe undo; persisted stamps and explicit repair; camera/isolation and undeformed node/preview-vertex measurement; current hosted packaged workflows passed |
-| Later; deferred from launch                        | Read-only BYOK assistant                                                     | Native Anthropic/OpenAI adapters, credential protection, endpoint contract tests and run-grounded answers                                            |
-| 5                                                  | Geometry/condition contract and kernel prototypes, alongside ongoing UX work | Stable body/region identity; SI semantics; supported-combination matrix; reproducible kernel/sketch/licensing evaluation                             |
-| 6                                                  | STEP imported-part vertical slice                                            | Import → repair → named selections → material/conditions → mesh → validated linear solve → reopen                                                    |
-| 7, after material-region identity                  | Multiple-material and orthotropic solid slice                                | Body assignments, tensor axes/units, independent patch/interface references and safe reopen; laminate/FGM/nonlinear work retains its separate gates  |
-| Parallel research                                  | PINN reliability and first thermal/inverse pilot                             | Independent references, multi-seed errors, energy/balance checks, identifiability and declared scope                                                 |
-| 8                                                  | Bounded studies and reusable-model pilot                                     | Dataset manifests, held-out physical instances, immutable model compatibility and measured accuracy/cost                                             |
-| 9, after execution and model contracts             | One optional framework/runtime adapter                                       | Pinned dependency and license closure; actual train/validate/infer/cancel path on CPU and one verified accelerator; no default cloud dependency      |
-| Later, after single-device scientific validation   | Distributed execution pilot                                                  | Weighted reductions, partition/interface references, rank failure/cancel/restart and measured strong/weak scaling; no assumed hardware coverage      |
-
-The first physics expansion should be chosen for independently demonstrable value and available maintainers. Steady thermal/inverse problems are promising early candidates; general turbulent CFD and unrestricted multiphysics should not displace the foundation.
-
-## 13. Risks, decisions and revision policy
-
-| Risk or unresolved decision                                              | Required response                                                                                                           |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Physics ML fails or costs more than a reference method                   | Retain bounded applicability, publish failures, compare alternatives and use correction/reference routes where available    |
-| Native CAD formats have incompatible licenses or uneven platform support | Prefer neutral exchange; complete translator/version/platform/redistribution evaluation before making promises              |
-| Geometry edits invalidate physical assignments                           | Preserve identity where proven; require repair of ambiguous references; block unsafe solving                                |
-| Training data is expensive, biased or restricted                         | Record rights/provenance; validate generation; split by physical instance; measure acquisition cost and coverage            |
-| GPU differences invalidate numerical assumptions                         | Test each algorithm/precision; expose unsupported devices and preserve a verified reference route                           |
-| AI gives misleading advice or exceeds authority                          | Ground answers; enforce typed native tools, budgets and scopes; test adversarial input; retain review/undo                  |
-| Scope grows faster than maintenance capacity                             | Deliver complete problem families; defer isolated UI placeholders; secure domain reviewers before support commitments       |
-| Research progress changes the best method                                | Keep method interfaces composable; reassess accuracy/cost and retire weak approaches without rewriting the physical problem |
-
-Review this roadmap at major capability gates and at least quarterly while development is active. Reassess user evidence, scientific results, dependencies, licenses and available ownership. Mark an item completed only with linked implementation and acceptance evidence; keep restricted or experimental status visible.
-
-The stable commitment is the product direction: **capable engineering preparation, validated Physics ML and intelligent user-controlled workflows**. The sequence and selected methods should evolve as the evidence improves.
+Review this roadmap at major capability gates. Reassess the order when user evidence, research results, library maturity, licensing or platform support change. Mark a capability complete only when its implementation and acceptance evidence exist in the repository or linked verification records.
