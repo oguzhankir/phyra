@@ -1,4 +1,5 @@
-import { Check, CircleAlert, File, Save } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, CircleAlert, Save } from 'lucide-react';
 
 type Props = {
   path: string | null;
@@ -14,6 +15,26 @@ type Props = {
 
 export default function ProjectWorkspaceBar(props: Props) {
   const saving = props.autosaveStatus === 'saving';
+  const prior = useRef({ dirty: props.dirty, status: props.autosaveStatus, path: props.path });
+  const [showSaved, setShowSaved] = useState(false);
+  const [savedTick, setSavedTick] = useState(0);
+  useEffect(() => {
+    const before = prior.current;
+    prior.current = { dirty: props.dirty, status: props.autosaveStatus, path: props.path };
+    if (!props.path || props.dirty) {
+      setShowSaved(false);
+      return;
+    }
+    if (before.dirty || before.status === 'saving' || (!before.path && props.path)) {
+      setShowSaved(true);
+      setSavedTick((tick) => tick + 1);
+    }
+  }, [props.path, props.dirty, props.autosaveStatus]);
+  useEffect(() => {
+    if (!savedTick) return;
+    const timer = window.setTimeout(() => setShowSaved(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [savedTick]);
   const status = !props.desktop
     ? 'Browser preview'
     : saving
@@ -23,7 +44,9 @@ export default function ProjectWorkspaceBar(props: Props) {
         : !props.path
           ? 'Draft · not saved to a file'
           : !props.dirty
-            ? 'All changes saved'
+            ? showSaved
+              ? 'All changes saved'
+              : ''
             : props.autosaveStatus === 'paused'
               ? 'Auto-save paused'
               : props.autosaveEnabled
@@ -32,13 +55,7 @@ export default function ProjectWorkspaceBar(props: Props) {
   return (
     <div className="project-workspace-bar">
       <div
-        className="project-file-location"
-        title={props.path ?? 'Choose a project file location with Save'}
-      >
-        <File size={14} />
-        <span>{props.path?.split(/[\\/]/).pop() ?? 'No file location'}</span>
-      </div>
-      <div
+        hidden={!status}
         className={`project-persistence-state${props.autosaveStatus === 'error' ? ' failed' : ''}`}
         role="status"
         title={props.autosaveError ?? undefined}
@@ -77,6 +94,7 @@ export default function ProjectWorkspaceBar(props: Props) {
           disabled={!props.canSave || saving || (!!props.path && !props.dirty)}
           onClick={props.onSave}
           aria-label="Save project"
+          title={props.path ?? 'Choose a project file location'}
         >
           <Save size={14} /> {props.path ? 'Save' : 'Save project…'}
         </button>

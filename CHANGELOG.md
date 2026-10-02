@@ -9,11 +9,13 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Home screen for creating a named 2D or 3D project, opening a local project and starting from an editable example.
 - Home and a closable project tab that preserve the current project while moving between the start screen and workbench. Close with the tab’s ×, File → Close project or Ctrl/⌘ W.
 - Desktop auto-save updates an associated project file after a 1.5-second editing pause, with an on/off control and visible pending, paused, saving and failure states. A first explicit Save chooses the file location; recovery copies remain separate.
+- A preparation checklist checks study, geometry, material, supports, loads, mesh settings and method eligibility before execution. Boundary restraint checks account for rigid translation and rotation; the worker remains authoritative after meshing.
 
 ### Changed
 
 - A compact File/Edit/View/Help header stays available on Home and in the workbench. Examples live on Home; New project uses the same name and analysis-type dialog from Home, File or Ctrl/⌘ N.
 - File location and save state appear together in the project workspace. Home shows the project open in this session, and switching tabs keeps it open.
+- Support and load summaries stay visible in the model tree, and successful saves show a short confirmation before returning to the document state.
 
 ### Fixed
 

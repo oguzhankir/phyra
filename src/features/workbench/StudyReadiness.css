@@ -1,0 +1,102 @@
+.study-readiness {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 18px;
+}
+.study-readiness > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  gap: 12px;
+}
+.study-readiness header strong {
+  font-size: 14px;
+}
+.study-readiness header p {
+  font-size: 12px;
+  color: var(--muted, #647080);
+  margin: 4px 0 0;
+}
+.readiness-count {
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-variant-numeric: tabular-nums;
+  background: var(--hover, #f2f4f7);
+  font-size: 13px;
+}
+.readiness-count.complete {
+  color: var(--success, #237957);
+}
+.readiness-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+.readiness-check {
+  display: flex;
+  text-align: left;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+}
+.readiness-check:hover {
+  background: var(--hover, #f2f4f7);
+}
+.readiness-check > svg:first-child {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--success, #237957);
+}
+.readiness-check.missing > svg:first-child,
+.readiness-check.invalid > svg:first-child {
+  color: var(--danger, #bb4540);
+}
+.readiness-check.review > svg:first-child {
+  color: var(--warning, #967025);
+}
+.readiness-check > span {
+  flex: 1;
+  min-width: 0;
+}
+.readiness-check strong {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.readiness-check strong small {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted, #647080);
+}
+.readiness-check > span > span {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 3px;
+  color: var(--muted, #647080);
+}
+.readiness-note {
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--muted, #647080);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.study-readiness.compact .readiness-checks {
+  grid-template-columns: 1fr;
+}
+.work-area:has(.study-readiness) {
+  overflow-y: auto;
+}
+.study-readiness + .viewport-wrap {
+  min-height: 180px;
+}
