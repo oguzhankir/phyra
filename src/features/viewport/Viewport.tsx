@@ -1,4 +1,10 @@
-import { cameraOrientation, planeFitDistance, boxFitDistance, type CameraView } from './camera';
+import {
+  cameraOrientation,
+  planeFitDistance,
+  boxFitDistance,
+  cameraResizeFactor,
+  type CameraView,
+} from './camera';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -317,7 +323,25 @@ export default function Viewport(props: Props) {
       const { width, height } = element.getBoundingClientRect();
       if (width < 1 || height < 1) return;
       renderer.setSize(width, height);
-      camera.aspect = width / height;
+      const aspect = width / height;
+      if (viewportSizeInitialized && state.data) {
+        const span = state.viewBounds.getSize(new THREE.Vector3());
+        const offset = camera.position.clone().sub(controls.target);
+        const factor = cameraResizeFactor(
+          [span.x, span.y, span.z],
+          [offset.x, offset.y, offset.z],
+          [camera.up.x, camera.up.y, camera.up.z],
+          camera.aspect,
+          aspect,
+          camera.fov,
+          current.current.project.study.dimension === '2d',
+        );
+        camera.position.copy(controls.target).addScaledVector(offset, factor);
+        const distance = offset.length() * factor;
+        camera.far = Math.max(camera.far, distance * 10);
+        controls.maxDistance = Math.max(controls.maxDistance, distance * 5);
+      }
+      camera.aspect = aspect;
       camera.updateProjectionMatrix();
       if (!viewportSizeInitialized) {
         viewportSizeInitialized = true;
