@@ -22,6 +22,13 @@ export function boundaryViolation(from, to) {
     return null;
   }
   const targetLayer = target.split('/')[1];
+  if (
+    source.startsWith('src/features/assistant/') &&
+    targetLayer === 'features' &&
+    !target.startsWith('src/features/assistant/') &&
+    !target.startsWith('src/features/help/')
+  )
+    return 'The assistant receives host snapshots; it may reuse offline help but not workbench feature state.';
   if (source === 'src/main.tsx')
     return targetLayer === 'app'
       ? null

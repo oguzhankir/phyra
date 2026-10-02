@@ -33,4 +33,21 @@ describe('production dependency ownership', () => {
     ).toBeTruthy();
     expect(boundaryViolation('src/platform/desktop/bridge.ts', '@tauri-apps/api/core')).toBeNull();
   });
+  it('isolates the assistant from host feature state while sharing versioned help', () => {
+    expect(
+      boundaryViolation(
+        'src/features/assistant/session/useAssistantSession.ts',
+        'src/features/project/PropertyInspector.tsx',
+      ),
+    ).toBeTruthy();
+    expect(
+      boundaryViolation('src/features/assistant/context.ts', 'src/features/help/content.ts'),
+    ).toBeNull();
+    expect(
+      boundaryViolation(
+        'src/features/assistant/session/useAssistantSession.ts',
+        'src/platform/desktop/assistant.ts',
+      ),
+    ).toBeNull();
+  });
 });

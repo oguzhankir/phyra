@@ -26,6 +26,15 @@ const conversation = (): AssistantConversation => ({
 });
 
 describe('shared conversation identity', () => {
+  it('never supplies another document or project transcript during a host transition', () => {
+    const registry = new ConversationRegistry();
+    const saved = conversation();
+    registry.bind('A', saved);
+    expect(registry.get('new-owner', 'project')).toBeUndefined();
+    expect(registry.get('A', 'other-project')).toBeUndefined();
+    expect(registry.get('A', null)).toBeUndefined();
+    expect(registry.get('A', 'project')).toBe(saved);
+  });
   it('retries the latest unsaved text when two documents open the same history', () => {
     const registry = new ConversationRegistry();
     const saved = conversation();

@@ -34,9 +34,10 @@ export class ConversationRegistry {
   private values = new Map<string, AssistantConversation>();
   private dirty = new Set<string>();
 
-  get(owner: string) {
+  get(owner: string, projectId?: string | null) {
     const id = this.owners.get(owner);
-    return id ? this.values.get(id) : undefined;
+    const value = id ? this.values.get(id) : undefined;
+    return projectId === undefined || value?.projectId === projectId ? value : undefined;
   }
   bind(owner: string, value: AssistantConversation) {
     this.owners.set(owner, value.id);
