@@ -84,7 +84,7 @@ async function start(): Promise<void> {
   try {
     const verification = await verificationMode;
     if (verification) await invoke('verification_trace', { message: 'frontend startup' });
-    const { default: App } = await import('./App');
+    const { default: App } = await import('./AssistantWorkbench');
     if (verification) await invoke('verification_trace', { message: 'app loaded' });
     root.render(
       <StartupBoundary>

@@ -19,7 +19,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 ### Changed
 
 - A compact File/Edit/View/Help header stays available on Home and in the workbench. Examples live on Home; New project uses the same name and analysis-type dialog from Home, File or Ctrl/⌘ N.
-- File location and save state appear together in the project workspace. Home shows the project open in this session, and switching tabs keeps it open.
+- Save identifies its associated file through a tooltip. Pending and failed writes remain visible; successful writes show a brief confirmation. Home lists open documents, and switching tabs keeps them open.
 - Support and load summaries stay visible in the model tree, and successful saves show a short confirmation before returning to the document state.
 
 ### Fixed

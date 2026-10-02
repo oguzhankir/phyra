@@ -9,18 +9,23 @@ import {
 } from './content';
 import { searchHelp } from './search';
 import './HelpPanel.css';
+import AcademicMarkdown from '../../shared/FormattedText';
+import { openAssistantReference } from '../../platform/desktop/assistant';
 
 export interface HelpPanelProps {
   open: boolean;
   onClose: () => void;
   context?: HelpContext;
+  articleId?: HelpArticleId;
 }
 
-export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProps) {
+export function HelpPanel({ open, onClose, context = 'overview', articleId }: HelpPanelProps) {
   const [copiedSource, setCopiedSource] = useState<string | null>(null);
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const [query, setQuery] = useState('');
-  const [activeId, setActiveId] = useState<HelpArticleId>(() => getContextArticle(context).id);
+  const [activeId, setActiveId] = useState<HelpArticleId>(
+    () => articleId ?? getContextArticle(context).id,
+  );
   const [showArticle, setShowArticle] = useState(true);
   const contentRef = useRef<HTMLElement>(null);
   const searchId = useId();
@@ -31,9 +36,9 @@ export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProp
   useEffect(() => {
     if (!open) return;
     setQuery('');
-    setActiveId(getContextArticle(context).id);
+    setActiveId(articleId ?? getContextArticle(context).id);
     setShowArticle(true);
-  }, [open, context]);
+  }, [open, context, articleId]);
 
   useEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0;
@@ -164,7 +169,20 @@ export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProp
             <section className="help-section" key={section.title}>
               <h3>{section.title}</h3>
               {section.paragraphs?.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
+                <AcademicMarkdown
+                  key={paragraph}
+                  onExternal={
+                    desktop
+                      ? (url) => {
+                          void openAssistantReference(url).catch(() =>
+                            setCopiedSource('open-unavailable'),
+                          );
+                        }
+                      : undefined
+                  }
+                >
+                  {paragraph}
+                </AcademicMarkdown>
               ))}
               {section.steps && (
                 <ol>
@@ -201,19 +219,31 @@ export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProp
                       </small>
                       <p>{reference.scope}</p>
                       {desktop ? (
-                        <button
-                          className="text-button"
-                          onClick={() =>
-                            void navigator.clipboard
-                              .writeText(reference.url)
-                              .then(() => setCopiedSource(reference.url))
-                              .catch(() => setCopiedSource('unavailable'))
-                          }
-                        >
-                          {copiedSource === reference.url
-                            ? 'Source link copied'
-                            : 'Copy source link'}
-                        </button>
+                        <>
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              void openAssistantReference(reference.url).catch(() =>
+                                setCopiedSource('open-unavailable'),
+                              )
+                            }
+                          >
+                            Read primary source <ArrowRight size={12} />
+                          </button>
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              void navigator.clipboard
+                                .writeText(reference.url)
+                                .then(() => setCopiedSource(reference.url))
+                                .catch(() => setCopiedSource('unavailable'))
+                            }
+                          >
+                            {copiedSource === reference.url
+                              ? 'Source link copied'
+                              : 'Copy source link'}
+                          </button>
+                        </>
                       ) : (
                         <a href={reference.url} target="_blank" rel="noopener noreferrer">
                           Read primary source <ArrowRight size={12} />
@@ -224,6 +254,9 @@ export function HelpPanel({ open, onClose, context = 'overview' }: HelpPanelProp
                   ))}
                   {copiedSource === 'unavailable' && (
                     <p role="status">Copying is unavailable. Select the displayed source URL.</p>
+                  )}
+                  {copiedSource === 'open-unavailable' && (
+                    <p role="status">Opening is unavailable. Copy the displayed source URL.</p>
                   )}
                 </div>
               )}
