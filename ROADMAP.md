@@ -4,7 +4,7 @@
 
 This is Phyra's single product roadmap. It describes the current foundation, the product destination, and the evidence required before capabilities are presented as supported. It is organized by reusable engineering capabilities and dependency order, not by intermediate release promises or delivery dates.
 
-The roadmap builds toward a substantial first stable product milestone, v1.0.0. Phyra should be a capable local-first mechanical engineering workbench: users can create and edit useful 2D and 3D mechanical geometry, define real engineering studies, solve selected structural and thermal problems with established numerical methods, reproduce representative Physics ML research workflows, and use an AI assistant under their control. The target is broad and coherent, not a claim that every possible CAD or solver function is finished.
+The roadmap describes a capable local-first mechanical engineering workbench: users can create and edit useful 2D and 3D mechanical geometry, define real engineering studies, solve selected structural and thermal problems with established numerical methods, reproduce representative Physics ML research workflows, and use an AI assistant under their control. The target is broad and coherent, not a claim that every possible CAD or solver function is finished.
 
 ## Contents
 
@@ -17,9 +17,9 @@ The roadmap builds toward a substantial first stable product milestone, v1.0.0. 
 7. [Physics ML and paper-inspired research](#7-physics-ml-and-paper-inspired-research)
 8. [AI assistant, BYOK and agent workflows](#8-ai-assistant-byok-and-agent-workflows)
 9. [Results, documentation and product experience](#9-results-documentation-and-product-experience)
-10. [Architecture, local devices and future execution](#10-architecture-local-devices-and-future-execution)
+10. [Architecture and local devices](#10-architecture-and-local-devices)
 11. [Acceptance gates](#11-acceptance-gates)
-12. [Beyond the first stable foundation](#12-beyond-the-first-stable-foundation)
+12. [Further product areas](#12-further-product-areas)
 13. [Research anchors](#13-research-anchors)
 
 ## 1. Product direction
@@ -31,7 +31,7 @@ Phyra combines four things that should reinforce one another:
 - **Physics ML research:** train, evaluate and apply physics-informed, operator, mesh/graph and hybrid methods on the same problem definitions and reference data.
 - **An AI workbench assistant:** explain Phyra and its methods, answer questions from the active study and results, and help users carry out bounded workflows through approved tools.
 
-The stable product should feel complete across supported workflows, rather than like a collection of solver demonstrations. A user should be able to go from sketch or imported part, through materials, conditions and meshing, to a validated result and a clear explanation of its limits.
+The workbench should feel complete across supported workflows, rather than like a collection of solver demonstrations. A user should be able to go from sketch or imported part, through materials, conditions and meshing, to a validated result and a clear explanation of its limits.
 
 ### Product principles
 
@@ -45,13 +45,13 @@ The stable product should feel complete across supported workflows, rather than 
 
 ### Product boundary
 
-The first stable target concentrates on mechanical CAD, solid mechanics, selected heat transfer, research-grade Physics ML experimentation and a user-controlled AI assistant. It does not promise every industrial formulation or every CAD discipline. Each advertised feature must correspond to a declared and validated capability, not a checkbox in an editor.
+The core product focuses on mechanical CAD, solid mechanics, selected heat transfer, research-grade Physics ML experimentation and a user-controlled AI assistant. It does not promise every industrial formulation or every CAD discipline. Each advertised feature must correspond to a declared and validated capability, not a checkbox in an editor.
 
-The initial CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM and unrelated authoring disciplines are outside this target. Broader fluid mechanics and a hosted cloud execution product are later expansion areas; the desktop and engine should be structured so they can be added without making them prerequisites for the initial product.
+The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM and unrelated authoring disciplines are outside the product direction. Broader fluid mechanics and coupled multiphysics are later expansion areas; keep the desktop and engine structured to explore them without making them prerequisites for supported mechanical workflows.
 
 ## 2. Verified starting point
 
-“Completed” means implemented and verified only within the scope shown. “Experimental” means a real implementation exists but has restricted applicability. Everything not listed as completed is planned or research.
+“Completed” means implemented and verified within the scope shown. “Experimental” means a real implementation exists but has restricted applicability or incomplete evidence. “Partial” means verified support covers only part of the capability, with remaining limits stated in the table. Capabilities listed as Planned or Planned / research are future work; capabilities absent from this table have not been assessed here.
 
 | Capability | Current status | Verified scope and remaining limit |
 |---|---|---|
@@ -113,7 +113,7 @@ The work advances through dependent product outcomes; there are no release-by-re
 | 3. Build the classical analysis foundation | Generalize 2D and 3D solid mechanics, common materials and boundary conditions; add further study families separately. | Independent analytic/manufactured references, equilibrium checks, mesh/time convergence and failure tests per formulation. |
 | 4. Reproduce selected research workflows | Use shared CAD, material, mesh and solver features to recreate representative literature cases; add Physics ML methods on the same problem/field contract. | Reproducible case packs, held-out cases, disclosed deviations, error and cost comparison with the reference path. |
 | 5. Deliver AI-assisted engineering | Add BYOK documentation and study assistants, approved native workflow tools, computer-use affordances and MCP access. | Grounded-answer evaluation, credential/data-flow tests, tool authorization, stale-input checks, undo and cancellation. |
-| 6. Harden the stable workbench | Complete results, reporting, offline help, package workflows, GPU capability reporting, compatibility and user validation. | Representative users complete declared tasks; each promoted capability passes packaged desktop and scientific gates. |
+| 6. Harden the workbench | Complete results, reporting, offline help, package workflows, GPU capability reporting, compatibility and user validation. | Representative users complete declared tasks; each promoted capability passes packaged desktop and scientific gates. |
 
 A paper is a source of problem definitions and evidence, not a product specification by itself. A selected paper may expose a missing reusable feature; implement that feature only after confirming its broader role in Phyra and its validation path. The target is a library of reproducible workflows built from shared product capabilities, not a stack of paper-specific solvers.
 
@@ -135,11 +135,11 @@ Phyra should become a strong mechanical CAD workbench for the geometries and ass
 
 Select the CAD kernel and sketch-constraint approach through prototypes that cover edit stability, import robustness, platform support, licensing/redistribution and application packaging. Keep the geometry definition separate from the mesh so changing a discretization does not erase design intent or physical assignments. Do not commit to a CAD library because it handles one demo part.
 
-The target is analysis-oriented mechanical CAD. Do not add unrelated authoring disciplines to the initial stable scope. A CAD feature is complete only when geometry can be created or imported, edited, inspected, saved and reopened in a normal workflow.
+The target is analysis-oriented mechanical CAD. Do not add unrelated authoring disciplines to the product scope. A CAD feature is complete only when geometry can be created or imported, edited, inspected, saved and reopened in a normal workflow.
 
 ## 6. Classical analysis and physical definitions
 
-The v1.0.0 target is broader than one rectangular elasticity example. Phyra should support a well-defined selection of common 2D/3D structural studies and selected heat-transfer studies, using established numerical libraries where appropriate. Treat each formulation as its own capability with its own scope and reference cases. The stable portfolio should include complete workflows for general 2D plane-stress/plane-strain and 3D linear static solid mechanics, multiple material regions, common structural loads and supports, mesh refinement/convergence, and the result quantities engineers need to inspect. It should also provide representative, independently validated workflows across modal/buckling, harmonic or transient response, geometric/material nonlinearity, contact, and selected fracture/damage cases; the capability matrix must state which formulation and material models are actually covered. For heat transfer, target steady/transient conduction, convection, surface-to-ambient radiation, and at least one sequential thermoelastic case. A capability may remain experimental when its evidence is incomplete, but a stable product cannot present the current rectangle-only workflow as its full analysis scope.
+The product direction goes beyond one rectangular elasticity example. Phyra should support a well-defined selection of common 2D/3D structural studies and selected heat-transfer studies, using established numerical libraries where appropriate. Treat each formulation as its own capability with its own scope and reference cases. The portfolio should include complete workflows for general 2D plane-stress/plane-strain and 3D linear static solid mechanics, multiple material regions, common structural loads and supports, mesh refinement/convergence, and the result quantities engineers need to inspect. It should also provide representative, independently validated workflows across modal/buckling, harmonic or transient response, geometric/material nonlinearity, contact, and selected fracture/damage cases; the capability matrix must state which formulation and material models are actually covered. For heat transfer, target steady/transient conduction, convection, surface-to-ambient radiation, and at least one sequential thermoelastic case. A capability may remain experimental when its evidence is incomplete; the current rectangle-only workflow must not be presented as the full analysis scope.
 
 ### Structural analysis families
 
@@ -211,7 +211,7 @@ The literature review across representative 2021–2026 solid-mechanics work poi
 | Hybrid FE–ML | Learned initial guesses, corrections, reduced models or selected coupled fields | Independent reference route, valid correction behavior, robustness outside the training examples and end-to-end cost. |
 | Inverse and learned constitutive methods | Material/parameter identification or a constitutive law inside an actual solver | Identifiability, unseen load paths, tangent/stability checks and data rights. |
 
-The ML contract must be independent of a specific architecture: problem definition, mesh/samples, boundary and material labels, tensor fields, training/inference requests, checkpoints and provenance. A model contributes a real adapter to that contract; a generic plugin label or notebook is not product integration. Before the stable milestone, users should be able to run comparable experiments with representative strong-form PINN, energy/variational, operator-learning and mesh/graph methods on suitable shared cases, and add further architectures through the adapter contract. The UI lists only integrations that Phyra can actually load, run, validate and report; integration does not imply that every method is scientifically supported for every problem.
+The ML contract must be independent of a specific architecture: problem definition, mesh/samples, boundary and material labels, tensor fields, training/inference requests, checkpoints and provenance. A model contributes a real adapter to that contract; a generic plugin label or notebook is not product integration. Users should be able to run comparable experiments with representative strong-form PINN, energy/variational, operator-learning and mesh/graph methods on suitable shared cases, and add further architectures through the adapter contract. The UI lists only integrations that Phyra can actually load, run, validate and report; integration does not imply that every method is scientifically supported for every problem.
 
 ### Replicate research without adding paper-specific features
 
@@ -236,13 +236,13 @@ Maintain the support matrix by method × operation × framework/runtime × platf
 
 ## 8. AI assistant, BYOK and agent workflows
 
-AI assistance is part of the stable product direction, not a future optional extra. It should help users understand the product and operate supported workflows without becoming an authority on physical correctness.
+AI assistance is part of the product direction, not a future optional extra. It should help users understand the product and operate supported workflows without becoming an authority on physical correctness.
 
 ### BYOK provider architecture
 
 Start with direct provider adapters and a provider-neutral internal event contract. Support provider-native APIs where they are needed for important features, a common OpenAI-compatible endpoint contract, and user-managed local model endpoints. Track each model's actual support for streaming, tool calls, structured outputs, document/image input, context limits, cancellation and usage reporting. Do not silently downgrade a request when a feature is missing.
 
-Do not require a Phyra-hosted gateway. A shared gateway can simplify organization-wide routing, virtual keys, budgets and observability, but it introduces a separate service, credential and data-routing responsibilities. The first stable product should allow a user to connect directly with their own key or configure a gateway they already control. Evaluate a multi-provider SDK only if its licensing, protocol coverage and failure behavior reduce maintenance without becoming a required proxy deployment. Local and offline workflows remain available without an API key.
+Do not require a Phyra-hosted gateway. A shared gateway can simplify organization-wide routing, virtual keys, budgets and observability, but it introduces a separate service, credential and data-routing responsibilities. The desktop should allow users to connect directly with their own key or configure a gateway they already control. Evaluate a multi-provider SDK only if its licensing, protocol coverage and failure behavior reduce maintenance without becoming a required proxy deployment. Local and offline workflows remain available without an API key.
 
 Keep provider credentials in the operating system's secure credential store. Never write keys into .phyra projects, prompts, logs, crash reports or exports. Show the selected provider, model, endpoint and exact study/document context sent with a request. Warn before sending CAD metadata, field data, images or documents externally; do not treat local files as provider input by default. Separate API charges from Phyra's local compute and report unknown cost as unknown.
 
@@ -284,7 +284,7 @@ Provide useful export and reporting for model definition, mesh, solver settings,
 
 Measure usability with representative engineering users. The acceptance task should cover geometry creation/import, materials and conditions, mesh, solve, interpretation and save/reopen. Record completion rate, time to first correct study, diagnostic recovery and critical unit/boundary/result-interpretation errors.
 
-## 10. Architecture, local devices and future execution
+## 10. Architecture and local devices
 
 Keep the Tauri + React/TypeScript desktop and headless numerical engine direction. Continue to separate project definition, geometry, meshing, materials, study, execution, fields and AI adapters. The UI expresses engineering intent; numerical backends report their actual formulation and limitations. Bulk mesh/result arrays do not belong in ordinary reactive JSON state.
 
@@ -305,15 +305,13 @@ Keep a dependable CPU reference route and make local acceleration an explicit pr
 
 Optional research runtimes must not prevent a CPU user from installing or launching the desktop. Report which operations will use CPU/GPU and any precision differences before execution. Validate field and quantity-of-interest tolerances across devices; preserve the actual device/runtime/precision in provenance.
 
-### Preparation for later remote execution
+### Local execution contracts
 
-The first stable product remains a local desktop application. Keep the execution request, job state, cancellation, progress, input fingerprint and result/provenance contracts separate from the UI so a future remote worker could implement the same contract. Use portable, versioned project/study definitions and explicit transfer scopes.
-
-A remote worker, hosted storage, accounts, billing, public service, cloud solver and multi-tenant gateway are not part of this roadmap's stable acceptance target. Do not add network or server abstractions until a real remote execution design is authorized and its security, data residency, licensing and operational requirements are understood.
+Keep execution requests, job state, cancellation, progress, input fingerprints and result/provenance contracts separate from the UI so local backends can be isolated, tested and changed without coupling them to the interface. Use versioned project and study definitions, and keep solver inputs and results on the user's machine.
 
 ## 11. Acceptance gates
 
-The initial stable milestone is complete only when its advertised product scope is supported by evidence across the full user workflow.
+A capability is ready to be presented as supported only when its evidence covers the full user workflow.
 
 | Gate | Required evidence |
 |---|---|
@@ -334,16 +332,15 @@ The initial stable milestone is complete only when its advertised product scope 
 
 Choose numerical tolerances before evaluating each benchmark. Do not apply one universal error percentage across fields with different scales or engineering meaning. Measure at least five independently seeded learning runs as an initial screening floor where randomness applies; make no reliability claim from that floor alone. Report failure rate, high-percentile error, quantities of interest and end-to-end memory/time alongside mean field error.
 
-## 12. Beyond the first stable foundation
+## 12. Further product areas
 
-After the mechanical CAD and validated structural/research foundation is stable, extend the same preparation and execution contracts into broader fluid mechanics, more complete multiphysics, remote/cloud execution, multi-user projects and larger-scale GPU/HPC studies. Each is a separate product area with distinct geometry, boundary conditions, data movement, conservation and operations; none should be represented as “enabled” by a generic plugin switch.
+With mechanical CAD and validated structural/research workflows in place, extend the same preparation contracts into broader fluid mechanics, more complete multiphysics and more demanding locally run accelerator studies. Each is a separate product area with distinct geometry, boundary conditions, data movement, conservation and operations; none should be represented as “enabled” by a generic plugin switch.
 
 Possible future paths include:
 
 - steady and transient incompressible flow, then selected compressible, turbulent, multiphase and porous-media problems;
 - more complete enclosure radiation and coupled thermal–structural analysis;
 - conjugate heat transfer and fluid–structure interaction after component solvers and conservative coupling are validated;
-- user-controlled remote workstations or cluster execution, then a hosted cloud workbench only if product and operational requirements justify it;
 - broader multidisciplinary methods, optimization and uncertainty workflows.
 
 This future direction does not create a release schedule. Expand only where users, maintainers, available libraries and verification evidence justify a complete workflow.
