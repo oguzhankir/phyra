@@ -79,7 +79,7 @@ export default function CommandPalette({
               aria-expanded="true"
               aria-controls="command-results"
               aria-activedescendant={
-                matches[selected] ? `command-${matches[selected].id}` : undefined
+                matches[selected] ? `command-option-${matches[selected].id}` : undefined
               }
               autoComplete="off"
               placeholder="Geometry, loads, mesh, save…"
@@ -115,7 +115,7 @@ export default function CommandPalette({
         >
           {matches.map((command, index) => (
             <button
-              id={`command-${command.id}`}
+              id={`command-option-${command.id}`}
               key={command.id}
               role="option"
               aria-selected={index === selected}

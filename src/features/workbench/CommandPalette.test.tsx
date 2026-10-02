@@ -30,8 +30,29 @@ describe('action search', () => {
     expect(markup).toContain('Jump to an editor or run a project action.');
     expect(markup).toContain('aria-label="Search actions and editors"');
     expect(markup).toContain('aria-controls="command-results"');
-    expect(markup).toContain('aria-activedescendant="command-geometry"');
-    expect(markup).toMatch(/id="command-run"[^>]*disabled=""/);
+    expect(markup).toContain('aria-activedescendant="command-option-geometry"');
+    expect(markup).toMatch(/id="command-option-run"[^>]*disabled=""/);
+  });
+
+  it('gives the Results action a distinct identity from the matching-options list', () => {
+    const markup = renderToStaticMarkup(
+      <CommandPalette
+        commands={[
+          {
+            id: 'results',
+            label: 'Results',
+            description: 'Inspect fields.',
+            group: 'Inspect',
+            action: () => {},
+          },
+        ]}
+        onClose={() => {}}
+      />,
+    );
+    const ids = [...markup.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(markup).toContain('aria-activedescendant="command-option-results"');
+    expect(markup).toContain('id="command-results"');
   });
 
   it('presents an empty catalogue without a dangling active option', () => {
