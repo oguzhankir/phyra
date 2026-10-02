@@ -1,25 +1,26 @@
-import { planeFitDistance } from './camera';
+import { cameraOrientation, planeFitDistance, boxFitDistance, type CameraView } from './camera';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Maximize, RotateCcw, ScanLine } from 'lucide-react';
+import { ScanLine, Focus, Ruler, X } from 'lucide-react';
+import ViewportTools from './ViewportTools';
 import { invokeVerification as invoke } from '../../platform/desktop/verification';
 import type { Project } from '../../domain/contracts/types';
 import {
   deformationScale,
   deformationPhase,
-  numericArray,
-  solutionArray,
   type Field,
   type ResultData,
   type FieldSource,
 } from '../../domain/results/fields';
-import { formatValue } from '../../domain/units';
+import { displayValue, formatValue } from '../../domain/units';
 import { regionNames, type RegionId } from '../../domain/project/regions';
 import { contourColor } from './contours';
 import { tractionGlyph } from './traction';
-import { profileError, sampleSegment } from '../../domain/project/profile';
+import { surfaceData, type SurfaceData } from './surface';
+import { pickedRegion, nearestHitNode, displayedNode, visibleTriangles } from './picking';
 import { nextSelection, selectionIntent, type SelectionMode } from './selection';
+import { geometryDistance } from './measurement';
 
 import type { Probe } from '../../domain/results/probe';
 type Props = {
@@ -27,9 +28,9 @@ type Props = {
   data: ResultData | null;
   field: Field | null;
   selected: RegionId[];
-  selectionMode?: SelectionMode;
-  onSelectionChange?: (regions: RegionId[]) => void;
   onSelect: (region: RegionId) => void;
+  onSelectionChange?: (regions: RegionId[]) => void;
+  selectionMode?: SelectionMode;
   onProbe: (probe: Probe | null) => void;
   onVerified?: (report: Record<string, unknown>) => void;
   edges: boolean;
@@ -38,18 +39,6 @@ type Props = {
   source?: FieldSource;
   animate?: boolean;
   theme?: 'light' | 'dark';
-};
-type SurfaceData = {
-  positions: Float64Array;
-  triangles: Uint32Array;
-  regions: Uint32Array;
-  regionIds: RegionId[];
-  cells?: Uint32Array;
-  volumeCells?: Uint32Array;
-  cellWidth?: number;
-  displacement?: Float64Array;
-  boundaryEdges?: Uint32Array;
-  edgeRegions?: Uint32Array;
 };
 type Runtime = {
   renderer: THREE.WebGLRenderer;
@@ -60,222 +49,27 @@ type Runtime = {
   surface?: THREE.Mesh;
   grid?: THREE.GridHelper;
   invalidate: () => void;
-  fit: () => void;
+  fit: (view?: CameraView) => void;
   data?: SurfaceData;
+  displayedTriangles: Uint32Array;
+  visibleRegions: ReadonlySet<RegionId> | null;
+  hover?: { group: THREE.Group; moving: Runtime['moving'] };
+  hoverRegion: RegionId | null;
   field?: Field | null;
   scale: number;
   bounds: THREE.Box3;
+  viewBounds: THREE.Box3;
   maximumScale: number;
   animationStart: number | null;
   moving: { attribute: THREE.BufferAttribute; nodes: Uint32Array }[];
 };
-function primitiveSurface(project: Project): SurfaceData {
-  const { kind, length: l, width: w, height: h, radius: r, thickness: t } = project.geometry;
-  const regionIds = regionNames(kind, project.study.dimension, project.geometry.profile).map(
-    (region) => region.id,
-  );
-  if (project.study.dimension === '2d' && kind === 'profile' && project.geometry.profile) {
-    const profile = project.geometry.profile;
-    const vertices: THREE.Vector2[] = [];
-    const boundaryEdges: number[] = [],
-      edgeRegions: number[] = [];
-    const ring = (points: [number, number][], region: number, closed: boolean) => {
-      const start = vertices.length;
-      vertices.push(...points.map(([x, y]) => new THREE.Vector2(x, y)));
-      for (let i = 0; i < points.length - (closed ? 0 : 1); i++) {
-        boundaryEdges.push(start + i, start + ((i + 1) % points.length));
-        edgeRegions.push(region);
-      }
-    };
-    // Sampling belongs only to this display preview; Gmsh receives the exact curves.
-    const outline = profile.outer.flatMap((segment) => sampleSegment(segment).slice(0, -1));
-    const holes = profile.holes.map((hole) =>
-      Array.from({ length: 72 }, (_, i): [number, number] => {
-        const angle = (-2 * Math.PI * i) / 72;
-        return [
-          hole.center[0] + hole.radius * Math.cos(angle),
-          hole.center[1] + hole.radius * Math.sin(angle),
-        ];
-      }),
-    );
-    let cursor = 0;
-    for (const segment of profile.outer) {
-      const points = sampleSegment(segment).slice(0, -1);
-      for (let i = 0; i < points.length; i++) {
-        boundaryEdges.push(cursor + i, (cursor + i + 1) % outline.length);
-        edgeRegions.push(regionIds.indexOf(segment.id));
-      }
-      cursor += points.length;
-    }
-    vertices.push(...outline.map(([x, y]) => new THREE.Vector2(x, y)));
-    profile.holes.forEach((hole, index) => ring(holes[index], regionIds.indexOf(hole.id), true));
-    const faces = profileError(profile)
-      ? []
-      : THREE.ShapeUtils.triangulateShape(
-          outline.map(([x, y]) => new THREE.Vector2(x, y)),
-          holes.map((points) => points.map(([x, y]) => new THREE.Vector2(x, y))),
-        );
-    return {
-      positions: new Float64Array(vertices.flatMap((point) => [point.x, point.y, 0])),
-      triangles: new Uint32Array(faces.flat()),
-      regions: new Uint32Array(faces.length),
-      regionIds,
-      boundaryEdges: new Uint32Array(boundaryEdges),
-      edgeRegions: new Uint32Array(edgeRegions),
-    };
-  }
-  if (project.study.dimension === '2d')
-    return {
-      positions: new Float64Array([0, 0, 0, l, 0, 0, l, w, 0, 0, w, 0]),
-      triangles: new Uint32Array([0, 1, 2, 0, 2, 3]),
-      regions: new Uint32Array(2),
-      regionIds,
-      boundaryEdges: new Uint32Array([3, 0, 1, 2, 0, 1, 2, 3]),
-      edgeRegions: new Uint32Array([0, 1, 2, 3]),
-    };
-  const vertices: number[] = [];
-  const triangles: number[] = [];
-  const regions: number[] = [];
-  const triangle = (a: number[], b: number[], c: number[], region: RegionId) => {
-    const start = vertices.length / 3;
-    vertices.push(...a, ...b, ...c);
-    triangles.push(start, start + 1, start + 2);
-    regions.push(regionIds.indexOf(region));
-  };
-  const quad = (a: number[], b: number[], c: number[], d: number[], region: RegionId) => {
-    triangle(a, b, c, region);
-    triangle(a, c, d, region);
-  };
-  if (kind === 'cylinder') {
-    for (let i = 0; i < 72; i++) {
-      const a = (2 * Math.PI * i) / 72;
-      const b = (2 * Math.PI * (i + 1)) / 72;
-      const a0 = [0, r * Math.cos(a), r * Math.sin(a)];
-      const b0 = [0, r * Math.cos(b), r * Math.sin(b)];
-      const a1 = [l, a0[1], a0[2]];
-      const b1 = [l, b0[1], b0[2]];
-      triangle([0, 0, 0], b0, a0, 'x0');
-      triangle([l, 0, 0], a1, b1, 'x1');
-      quad(a0, b0, b1, a1, 'outer');
-    }
-  } else {
-    const outline =
-      kind === 'bracket'
-        ? [
-            [0, 0],
-            [l, 0],
-            [l, t],
-            [t, t],
-            [t, w],
-            [0, w],
-          ]
-        : [
-            [0, 0],
-            [l, 0],
-            [l, w],
-            [0, w],
-          ];
-    const sides: RegionId[] =
-      kind === 'bracket'
-        ? ['y0', 'x1', 'inner-y', 'inner-x', 'y1', 'x0']
-        : ['y0', 'x1', 'y1', 'x0'];
-    const top = outline.map(([x, y]) => [x, y, h]);
-    const bottom = outline.map(([x, y]) => [x, y, 0]);
-    const faces = THREE.ShapeUtils.triangulateShape(
-      outline.map(([x, y]) => new THREE.Vector2(x, y)),
-      [],
-    );
-    for (const [a, b, c] of faces) {
-      triangle(bottom[c], bottom[b], bottom[a], 'z0');
-      triangle(top[a], top[b], top[c], 'z1');
-    }
-    for (let i = 0; i < outline.length; i++) {
-      const next = (i + 1) % outline.length;
-      quad(bottom[i], bottom[next], top[next], top[i], sides[i]);
-    }
-  }
-  return {
-    positions: new Float64Array(vertices),
-    triangles: new Uint32Array(triangles),
-    regions: new Uint32Array(regions),
-    regionIds,
-  };
-}
-function surfaceData(
-  project: Project,
-  data: ResultData | null,
-  source: FieldSource = 'primary',
-): SurfaceData {
-  if (!data) return primitiveSurface(project);
-  return {
-    positions: numericArray(data, 'positions') as Float64Array,
-    triangles: numericArray(data, 'surface') as Uint32Array,
-    regions: numericArray(data, 'surfaceRegions') as Uint32Array,
-    regionIds: data.manifest.regions.map((region) => region.id as RegionId),
-    cells: numericArray(data, 'surfaceCells') as Uint32Array,
-    volumeCells: numericArray(data, 'cells') as Uint32Array,
-    cellWidth: data.manifest.arrays.cells.shape[1],
-    displacement:
-      data.manifest.operation !== 'mesh' ? solutionArray(data, 'displacement', source) : undefined,
-    boundaryEdges:
-      data.manifest.dimension === '2d'
-        ? (numericArray(data, 'boundaryEdges') as Uint32Array)
-        : undefined,
-    edgeRegions:
-      data.manifest.dimension === '2d'
-        ? (numericArray(data, 'edgeRegions') as Uint32Array)
-        : undefined,
-  };
-}
-function pickedRegion(
-  source: SurfaceData,
-  triangle: number,
-  point: THREE.Vector3,
-  scale: number,
-  length: number,
-): string {
-  let region: string = source.regionIds[source.regions[triangle]];
-  if (source.boundaryEdges) {
-    let distance = Infinity;
-    let nearest = -1;
-    const line = new THREE.Line3();
-    for (let edge = 0; edge < source.boundaryEdges.length / 2; edge++) {
-      for (const [endpoint, node] of [
-        [line.start, source.boundaryEdges[2 * edge]],
-        [line.end, source.boundaryEdges[2 * edge + 1]],
-      ] as const)
-        endpoint
-          .fromArray(source.positions, 3 * node)
-          .add(
-            new THREE.Vector3()
-              .fromArray(
-                source.displacement ?? new Float64Array(3),
-                source.displacement ? 3 * node : 0,
-              )
-              .multiplyScalar(scale),
-          );
-      const candidate = line
-        .closestPointToPoint(point, true, new THREE.Vector3())
-        .distanceToSquared(point);
-      if (candidate < distance) {
-        distance = candidate;
-        nearest = edge;
-      }
-    }
-    region =
-      distance < Math.pow(length * 0.035, 2)
-        ? source.regionIds[source.edgeRegions![nearest]]
-        : 'Interior';
-  }
-  return region;
-}
-
 function clearGroup(group: THREE.Group) {
   group.traverse((item) => {
     if (
       item instanceof THREE.Mesh ||
       item instanceof THREE.LineSegments ||
-      item instanceof THREE.Line
+      item instanceof THREE.Line ||
+      item instanceof THREE.Points
     ) {
       item.geometry.dispose();
       const materials = Array.isArray(item.material) ? item.material : [item.material];
@@ -285,6 +79,54 @@ function clearGroup(group: THREE.Group) {
   group.clear();
 }
 
+function regionOverlay(state: Runtime, region: RegionId, color: number) {
+  const source = state.data!;
+  const nodes: number[] = [];
+  if (source.boundaryEdges)
+    for (let edge = 0; edge < source.edgeRegions!.length; edge++) {
+      if (source.regionIds[source.edgeRegions![edge]] !== region) continue;
+      nodes.push(source.boundaryEdges[2 * edge], source.boundaryEdges[2 * edge + 1]);
+    }
+  else
+    for (const triangle of state.displayedTriangles) {
+      if (source.regionIds[source.regions[triangle]] !== region) continue;
+      nodes.push(...source.triangles.slice(3 * triangle, 3 * triangle + 3));
+    }
+  const values = new Float32Array(nodes.length * 3);
+  nodes.forEach((node, index) =>
+    displayedNode(source, node, state.scale).toArray(values, 3 * index),
+  );
+  const geometry = new THREE.BufferGeometry().setAttribute(
+    'position',
+    new THREE.BufferAttribute(values, 3),
+  );
+  const overlay = source.boundaryEdges
+    ? new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, depthTest: false }))
+    : new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({
+          color,
+          opacity: 0.22,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+        }),
+      );
+  const group = new THREE.Group();
+  group.add(overlay);
+  return {
+    group,
+    moving: [
+      {
+        attribute: geometry.getAttribute('position') as THREE.BufferAttribute,
+        nodes: new Uint32Array(nodes),
+      },
+    ],
+  };
+}
+
 export default function Viewport(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const runtime = useRef<Runtime | null>(null);
@@ -292,6 +134,13 @@ export default function Viewport(props: Props) {
   current.current = props;
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(0);
+  const [hovered, setHovered] = useState<RegionId | null>(null);
+  const [isolated, setIsolated] = useState<RegionId[] | null>(null);
+  const [cameraView, setCameraView] = useState<CameraView | 'custom'>('isometric');
+  const [measuring, setMeasuring] = useState(false);
+  const measurementMode = useRef(measuring);
+  measurementMode.current = measuring;
+  const [measuredNodes, setMeasuredNodes] = useState<number[]>([]);
   const lastProject = useRef('');
   const initializationError = useRef<string | null>(null);
   const verificationFailureReported = useRef(false);
@@ -309,8 +158,16 @@ export default function Viewport(props: Props) {
     );
   };
 
+  const geometryIdentity = `${props.project.id}:${props.project.study.dimension}:${JSON.stringify(props.project.geometry)}`;
+  useEffect(() => {
+    setIsolated(null);
+    setMeasuredNodes([]);
+    setHovered(null);
+  }, [geometryIdentity, props.data]);
+
   useEffect(() => {
     const element = container.current!;
+    traceVerification('viewport renderer initialization started');
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
@@ -327,6 +184,7 @@ export default function Viewport(props: Props) {
       return;
     }
     initializationError.current = null;
+    traceVerification('viewport renderer initialized');
     // StrictMode can recreate the renderer while retaining component refs.
     lastProject.current = '';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -334,8 +192,15 @@ export default function Viewport(props: Props) {
     element.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.00001, 10000);
+    const initialSize = element.getBoundingClientRect();
+    let viewportSizeInitialized = initialSize.width > 0 && initialSize.height > 0;
+    if (initialSize.width > 0 && initialSize.height > 0) {
+      renderer.setSize(initialSize.width, initialSize.height);
+      camera.aspect = initialSize.width / initialSize.height;
+      camera.updateProjectionMatrix();
+    }
     camera.up.set(0, 0, 1);
-    const controls = new OrbitControls(camera, renderer.domElement);
+    let controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.13;
     scene.add(new THREE.AmbientLight(0xffffff, 1.5));
@@ -358,33 +223,65 @@ export default function Viewport(props: Props) {
       invalidate,
       scale: 0,
       bounds: new THREE.Box3(),
+      viewBounds: new THREE.Box3(),
       maximumScale: 0,
       animationStart: null,
       moving: [],
-      fit: () => {
-        const bounds = state.bounds;
+      displayedTriangles: new Uint32Array(),
+      visibleRegions: null,
+      hoverRegion: null,
+      fit: (view) => {
+        // Drain any damped orbit/pan before applying an exact named orientation.
+        controls.enableDamping = false;
+        controls.update();
+        controls.enableDamping = true;
+        const bounds = state.viewBounds;
         const center = bounds.getCenter(new THREE.Vector3());
         const span = bounds.getSize(new THREE.Vector3());
         const size = Math.max(span.length(), 0.000001);
-        controls.target.copy(center);
         const plane = current.current.project.study.dimension === '2d';
+        const orientation = view ? cameraOrientation(view) : null;
+        const direction = orientation
+          ? new THREE.Vector3(...orientation.direction)
+          : camera.position.clone().sub(controls.target);
+        const up = plane
+          ? new THREE.Vector3(0, 1, 0)
+          : orientation
+            ? new THREE.Vector3(...orientation.up)
+            : camera.up.clone();
+        if (!camera.up.equals(up)) {
+          // OrbitControls fixes its up-axis transform at construction. Recreate
+          // through its public lifecycle when the named view changes that axis.
+          controls.dispose();
+          camera.up.copy(up);
+          controls = new OrbitControls(camera, renderer.domElement);
+          controls.enableDamping = true;
+          controls.dampingFactor = 0.13;
+          controls.addEventListener('change', invalidate);
+          state.controls = controls;
+        }
         controls.enableRotate = !plane;
         controls.mouseButtons.LEFT = plane ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
-        camera.up.set(0, plane ? 1 : 0, plane ? 0 : 1);
-        camera.position
-          .copy(center)
-          .add(
-            (plane ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1.3, -1.8, 1.3))
-              .normalize()
-              .multiplyScalar(
-                plane ? planeFitDistance(span.x, span.y, camera.aspect, camera.fov) : size * 1.7,
-              ),
-          );
+        if (plane) {
+          direction.set(0, 0, 1);
+        }
+        if (direction.lengthSq() === 0) direction.set(1.3, -1.8, 1.3);
+        controls.target.copy(center);
+        const distance = plane
+          ? planeFitDistance(span.x, span.y, camera.aspect, camera.fov)
+          : boxFitDistance(
+              [span.x, span.y, span.z],
+              [direction.x, direction.y, direction.z],
+              [camera.up.x, camera.up.y, camera.up.z],
+              camera.aspect,
+              camera.fov,
+            );
+        camera.position.copy(center).add(direction.normalize().multiplyScalar(distance));
         camera.near = size / 10000;
-        camera.far = size * 100;
+        camera.far = Math.max(size * 100, distance * 10);
         camera.updateProjectionMatrix();
         controls.minDistance = size / 10;
-        controls.maxDistance = size * 30;
+        controls.maxDistance = Math.max(size * 30, distance * 5);
         controls.update();
         invalidate();
       },
@@ -396,6 +293,10 @@ export default function Viewport(props: Props) {
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      if (!viewportSizeInitialized) {
+        viewportSizeInitialized = true;
+        if (state.data) state.fit();
+      }
       invalidate();
     });
     resize.observe(element);
@@ -403,6 +304,14 @@ export default function Viewport(props: Props) {
     const fitKey = (event: KeyboardEvent) => {
       if (
         event.key.toLowerCase() === 'f' &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.defaultPrevented &&
+        !(
+          event.target instanceof HTMLElement &&
+          event.target.closest('[role="dialog"], [contenteditable="true"]')
+        ) &&
         !(event.target instanceof HTMLInputElement) &&
         !(event.target instanceof HTMLTextAreaElement) &&
         !(event.target instanceof HTMLSelectElement)
@@ -415,7 +324,7 @@ export default function Viewport(props: Props) {
       if (current.current.animate && state.data?.displacement && state.maximumScale > 0) {
         state.animationStart ??= now;
         state.scale = state.maximumScale * deformationPhase(now - state.animationStart);
-        for (const item of state.moving) {
+        for (const item of [...state.moving, ...(state.hover?.moving ?? [])]) {
           for (let i = 0; i < item.nodes.length; i++)
             for (let axis = 0; axis < 3; axis++)
               item.attribute.array[3 * i + axis] =
@@ -435,8 +344,83 @@ export default function Viewport(props: Props) {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let down = [0, 0];
+    const hitAt = (event: PointerEvent) => {
+      if (!state.surface || !state.data) return null;
+      camera.updateMatrixWorld(true);
+      if (current.current.animate) state.surface.geometry.computeBoundingSphere();
+      const rect = element.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        (-(event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObject(state.surface)[0] ?? null;
+    };
+    const hoverRegion = (region: RegionId | null) => {
+      if (region === state.hoverRegion) return;
+      if (state.hover) {
+        state.model.remove(state.hover.group);
+        clearGroup(state.hover.group);
+        state.hover = undefined;
+      }
+      state.hoverRegion = region;
+      setHovered(region);
+      if (region) {
+        state.hover = regionOverlay(state, region, 0xe0b062);
+        state.model.add(state.hover.group);
+      }
+      invalidate();
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (event.buttons !== 0 || measurementMode.current) {
+        if (
+          current.current.project.study.dimension === '3d' &&
+          (event.buttons & 1) !== 0 &&
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 5
+        )
+          setCameraView('custom');
+        hoverRegion(null);
+        return;
+      }
+      const hit = hitAt(event);
+      if (!hit || hit.faceIndex == null || !state.data) {
+        hoverRegion(null);
+        return;
+      }
+      const triangle = state.displayedTriangles[hit.faceIndex];
+      const region = pickedRegion(
+        state.data,
+        triangle,
+        hit.point,
+        state.scale,
+        {
+          camera,
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+        },
+        state.visibleRegions,
+      );
+      hoverRegion(region === 'Interior' ? null : region);
+    };
+    const pointerLeave = () => hoverRegion(null);
     const pointerDown = (event: PointerEvent) => {
       down = [event.clientX, event.clientY];
+      hoverRegion(null);
+    };
+    const select = (region: RegionId | null, event: PointerEvent) => {
+      const currentProps = current.current;
+      if (currentProps.onSelectionChange)
+        currentProps.onSelectionChange(
+          nextSelection(
+            currentProps.selected,
+            region,
+            selectionIntent(event, currentProps.selectionMode ?? 'replace'),
+          ),
+        );
+      else if (region) currentProps.onSelect(region);
     };
     const pointerUp = (event: PointerEvent) => {
       if (
@@ -446,72 +430,43 @@ export default function Viewport(props: Props) {
         !state.data
       )
         return;
-      const rect = element.getBoundingClientRect();
-      pointer.set(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        (-(event.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObject(state.surface)[0];
+      const hit = hitAt(event);
       if (!hit || hit.faceIndex == null) {
-        current.current.onSelectionChange?.(
-          nextSelection(
-            current.current.selected,
-            null,
-            selectionIntent(event, current.current.selectionMode ?? 'replace'),
-          ),
-        );
+        if (!measurementMode.current) select(null, event);
         current.current.onProbe(null);
         return;
       }
-      const triangle = hit.faceIndex;
+      const triangle = state.displayedTriangles[hit.faceIndex];
       const source = state.data;
       const region = pickedRegion(
         source,
         triangle,
         hit.point,
         state.scale,
-        state.bounds.getSize(new THREE.Vector3()).length(),
+        {
+          camera,
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+        },
+        state.visibleRegions,
       );
-      const intent = selectionIntent(event, current.current.selectionMode ?? 'replace');
-      const selectedRegion = region === 'Interior' ? null : (region as RegionId);
-      if (current.current.onSelectionChange)
-        current.current.onSelectionChange(
-          nextSelection(current.current.selected, selectedRegion, intent),
-        );
-      else if (selectedRegion) current.current.onSelect(selectedRegion);
+      if (state.visibleRegions && region === 'Interior') {
+        current.current.onProbe(null);
+        return;
+      }
+      if (measurementMode.current) {
+        const node = nearestHitNode(source, triangle, hit.point, state.scale);
+        setMeasuredNodes((previous) => (previous.length === 1 ? [previous[0], node] : [node]));
+        return;
+      }
+      select(region === 'Interior' ? null : region, event);
       if (!state.field) {
         current.current.onProbe(null);
         return;
       }
       let id = source.cells?.[triangle] ?? 0;
       if (state.field.association === 'node') {
-        const nodes = [
-          source.triangles[triangle * 3],
-          source.triangles[triangle * 3 + 1],
-          source.triangles[triangle * 3 + 2],
-        ];
-        let distance = Infinity;
-        for (const node of nodes) {
-          const position = new THREE.Vector3(
-            source.positions[node * 3],
-            source.positions[node * 3 + 1],
-            source.positions[node * 3 + 2],
-          );
-          if (source.displacement)
-            position.add(
-              new THREE.Vector3(
-                source.displacement[node * 3],
-                source.displacement[node * 3 + 1],
-                source.displacement[node * 3 + 2],
-              ).multiplyScalar(state.scale),
-            );
-          const candidate = position.distanceToSquared(hit.point);
-          if (candidate < distance) {
-            distance = candidate;
-            id = node;
-          }
-        }
+        id = nearestHitNode(source, triangle, hit.point, state.scale);
       }
       const position: [number, number, number] =
         state.field.association === 'node'
@@ -534,6 +489,8 @@ export default function Viewport(props: Props) {
     };
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointerup', pointerUp);
+    renderer.domElement.addEventListener('pointermove', pointerMove);
+    renderer.domElement.addEventListener('pointerleave', pointerLeave);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('keydown', fitKey);
@@ -570,10 +527,19 @@ export default function Viewport(props: Props) {
     const dark = props.theme === 'dark';
     state.renderer.setClearColor(dark ? 0x202122 : 0xfafaf8, 1);
     clearGroup(state.model);
+    state.hover = undefined;
+    state.hoverRegion = null;
+    setHovered(null);
     state.moving = [];
     state.animationStart = null;
     state.data = data;
     state.field = props.field;
+    state.visibleRegions = isolated ? new Set(isolated) : null;
+    state.displayedTriangles = visibleTriangles(data, state.visibleRegions);
+    const renderNodes = new Uint32Array(state.displayedTriangles.length * 3);
+    state.displayedTriangles.forEach((triangle, index) =>
+      renderNodes.set(data.triangles.subarray(3 * triangle, 3 * triangle + 3), 3 * index),
+    );
     const bounds = new THREE.Box3();
     const point = new THREE.Vector3();
     for (let i = 0; i < data.positions.length; i += 3)
@@ -590,7 +556,13 @@ export default function Viewport(props: Props) {
     );
     setScale(state.scale);
     state.maximumScale = state.scale;
-    const positions = new Float32Array(data.triangles.length * 3);
+    // Camera-only bounds include the undeformed ghost and the full displayed
+    // deformation cycle. Physical lengths and scale still use the SI box above.
+    state.viewBounds.copy(bounds);
+    if (data.displacement && state.maximumScale > 0)
+      for (let node = 0; node < data.positions.length / 3; node++)
+        state.viewBounds.expandByPoint(displayedNode(data, node, state.maximumScale));
+    const positions = new Float32Array(renderNodes.length * 3);
     const colors = new Float32Array(positions.length);
     const undeformed = new Float32Array(positions.length);
     const supportedRegions = new Set<string>(
@@ -601,7 +573,8 @@ export default function Viewport(props: Props) {
     );
     const selectedRegions = new Set<string>(props.selected);
     const color = new THREE.Color();
-    for (let triangle = 0; triangle < data.triangles.length / 3; triangle++) {
+    for (let rendered = 0; rendered < state.displayedTriangles.length; rendered++) {
+      const triangle = state.displayedTriangles[rendered];
       const region = data.boundaryEdges ? 'Interior' : data.regionIds[data.regions[triangle]];
       if (!props.field)
         color.set(
@@ -617,7 +590,7 @@ export default function Viewport(props: Props) {
         );
       for (let vertex = 0; vertex < 3; vertex++) {
         const node = data.triangles[triangle * 3 + vertex];
-        const offset = (triangle * 3 + vertex) * 3;
+        const offset = (rendered * 3 + vertex) * 3;
         for (let axis = 0; axis < 3; axis++) {
           undeformed[offset + axis] = data.positions[node * 3 + axis];
           positions[offset + axis] =
@@ -642,7 +615,7 @@ export default function Viewport(props: Props) {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     state.moving.push({
       attribute: geometry.getAttribute('position') as THREE.BufferAttribute,
-      nodes: data.triangles,
+      nodes: renderNodes,
     });
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
@@ -664,16 +637,21 @@ export default function Viewport(props: Props) {
           polygonOffsetUnits: 1,
         });
     const surface = new THREE.Mesh(geometry, material);
+    if (data.boundaryEdges && isolated) {
+      material.transparent = true;
+      material.opacity = 0.15;
+      material.depthWrite = false;
+    }
     state.surface = surface;
     state.model.add(surface);
-    if (props.edges || !props.data) {
+    if ((props.edges || !props.data) && !(data.boundaryEdges && isolated)) {
       let edges: THREE.BufferGeometry;
       if (props.data) {
-        const nodes = new Uint32Array(data.triangles.length * 2);
-        for (let t = 0; t < data.triangles.length / 3; t++)
+        const nodes = new Uint32Array(renderNodes.length * 2);
+        for (let t = 0; t < renderNodes.length / 3; t++)
           for (let side = 0; side < 3; side++) {
-            nodes[t * 6 + side * 2] = data.triangles[t * 3 + side];
-            nodes[t * 6 + side * 2 + 1] = data.triangles[t * 3 + ((side + 1) % 3)];
+            nodes[t * 6 + side * 2] = renderNodes[t * 3 + side];
+            nodes[t * 6 + side * 2 + 1] = renderNodes[t * 3 + ((side + 1) % 3)];
           }
         const values = new Float32Array(nodes.length * 3);
         for (let i = 0; i < nodes.length; i++)
@@ -704,6 +682,7 @@ export default function Viewport(props: Props) {
     if (data.boundaryEdges && data.edgeRegions) {
       for (let edge = 0; edge < data.edgeRegions.length; edge++) {
         const region = data.regionIds[data.edgeRegions[edge]];
+        if (state.visibleRegions && !state.visibleRegions.has(region)) continue;
         const nodes = data.boundaryEdges.slice(edge * 2, edge * 2 + 2);
         const values = new Float32Array(6);
         for (let i = 0; i < 2; i++)
@@ -742,7 +721,7 @@ export default function Viewport(props: Props) {
         );
       }
     }
-    if (state.scale > 0) {
+    if (state.scale > 0 && !(data.boundaryEdges && isolated)) {
       const ghost = new THREE.BufferGeometry();
       ghost.setAttribute('position', new THREE.BufferAttribute(undeformed, 3));
       state.model.add(
@@ -758,32 +737,16 @@ export default function Viewport(props: Props) {
       ghost.dispose();
     }
     if (props.selected.length && props.field && !data.boundaryEdges) {
-      const selectedVertices: number[] = [];
-      for (let i = 0; i < data.regions.length; i++)
-        if (props.selected.includes(data.regionIds[data.regions[i]]))
-          selectedVertices.push(...positions.slice(i * 9, i * 9 + 9));
-      const selectedGeometry = new THREE.BufferGeometry();
-      selectedGeometry.setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute(selectedVertices, 3),
-      );
-      state.model.add(
-        new THREE.Mesh(
-          selectedGeometry,
-          new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            opacity: 0.18,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-          }),
-        ),
-      );
+      for (const region of props.selected) {
+        if (state.visibleRegions && !state.visibleRegions.has(region)) continue;
+        const overlay = regionOverlay(state, region, 0xffffff);
+        state.model.add(overlay.group);
+        state.moving.push(...overlay.moving);
+      }
     }
     // Region markings come from the same authoritative boundary mapping used for picking.
     for (const region of data.regionIds) {
+      if (state.visibleRegions && !state.visibleRegions.has(region)) continue;
       const index = data.regionIds.indexOf(region);
       const triangle = data.regions.findIndex((candidate) => candidate === index);
       const boundary = data.edgeRegions?.findIndex((candidate) => candidate === index) ?? -1;
@@ -843,6 +806,47 @@ export default function Viewport(props: Props) {
         state.model.add(arrow);
       }
     }
+    if (
+      measuredNodes.length &&
+      measuredNodes.every((node) => node * 3 + 2 < data.positions.length)
+    ) {
+      const values = new Float32Array(measuredNodes.length * 3);
+      measuredNodes.forEach((node, index) =>
+        displayedNode(data, node, state.scale).toArray(values, 3 * index),
+      );
+      const measurementGeometry = new THREE.BufferGeometry().setAttribute(
+        'position',
+        new THREE.BufferAttribute(values, 3),
+      );
+      const points = new THREE.Points(
+        measurementGeometry,
+        new THREE.PointsMaterial({
+          color: 0xe0b062,
+          size: 7,
+          sizeAttenuation: false,
+          depthTest: false,
+        }),
+      );
+      points.renderOrder = 10;
+      state.model.add(points);
+      state.moving.push({
+        attribute: measurementGeometry.getAttribute('position') as THREE.BufferAttribute,
+        nodes: new Uint32Array(measuredNodes),
+      });
+      if (measuredNodes.length === 2) {
+        const lineGeometry = measurementGeometry.clone();
+        const line = new THREE.Line(
+          lineGeometry,
+          new THREE.LineBasicMaterial({ color: 0xe0b062, depthTest: false }),
+        );
+        line.renderOrder = 10;
+        state.model.add(line);
+        state.moving.push({
+          attribute: lineGeometry.getAttribute('position') as THREE.BufferAttribute,
+          nodes: new Uint32Array(measuredNodes),
+        });
+      }
+    }
     if (state.grid) {
       state.scene.remove(state.grid);
       state.grid.geometry.dispose();
@@ -865,7 +869,9 @@ export default function Viewport(props: Props) {
     state.grid = grid;
     state.scene.add(grid);
     if (lastProject.current !== `${props.project.id}-${props.project.study.dimension}`) {
-      state.fit();
+      const view = props.project.study.dimension === '2d' ? 'top' : 'isometric';
+      state.fit(view);
+      setCameraView(view);
       lastProject.current = `${props.project.id}-${props.project.study.dimension}`;
     }
     state.invalidate();
@@ -887,41 +893,9 @@ export default function Viewport(props: Props) {
           surface.updateMatrixWorld(true);
           const center = bounds.getCenter(new THREE.Vector3());
           const plane = props.project.study.dimension === '2d';
-          const target = center.clone();
-          if (plane && data.boundaryEdges && data.edgeRegions) {
-            const x1 = data.regionIds.indexOf('x1');
-            const edges = Array.from(data.edgeRegions.keys()).filter(
-              (edge) => data.edgeRegions![edge] === x1,
-            );
-            const edge = edges[Math.floor(edges.length / 2)];
-            if (edge !== undefined) {
-              const a = data.boundaryEdges[edge * 2],
-                b = data.boundaryEdges[edge * 2 + 1];
-              const displayed = (node: number) =>
-                new THREE.Vector3()
-                  .fromArray(data.positions, node * 3)
-                  .add(
-                    new THREE.Vector3()
-                      .fromArray(
-                        data.displacement ?? new Float64Array(3),
-                        data.displacement ? node * 3 : 0,
-                      )
-                      .multiplyScalar(state.scale),
-                  );
-              target.copy(displayed(a)).add(displayed(b)).multiplyScalar(0.5);
-              // A tiny move toward its adjacent cell makes the ray unambiguously interior.
-              for (let cell = 0; cell < data.triangles.length / 3; cell++) {
-                const nodes = Array.from(data.triangles.slice(cell * 3, cell * 3 + 3));
-                if (nodes.includes(a) && nodes.includes(b)) {
-                  const centroid = nodes
-                    .reduce((sum, node) => sum.add(displayed(node)), new THREE.Vector3())
-                    .multiplyScalar(1 / 3);
-                  target.lerp(centroid, 1e-5);
-                  break;
-                }
-              }
-            }
-          }
+          const target = plane
+            ? new THREE.Vector3(bounds.max.x - length * 1e-6, center.y, 0)
+            : center;
           const ray = new THREE.Raycaster(
             target
               .clone()
@@ -931,7 +905,7 @@ export default function Viewport(props: Props) {
             plane ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(-1, 0, 0),
           );
           const hit = ray.intersectObject(surface)[0];
-          const triangle = hit?.faceIndex ?? -1;
+          const triangle = hit?.faceIndex != null ? state.displayedTriangles[hit.faceIndex] : -1;
           const node = triangle >= 0 ? data.triangles[triangle * 3] : -1;
           const index = props.field!.association === 'cell' ? (data.cells?.[triangle] ?? -1) : node;
           const drawingBuffer = [state.renderer.domElement.width, state.renderer.domElement.height];
@@ -948,12 +922,16 @@ export default function Viewport(props: Props) {
           }
           traceVerification('viewport verification report');
           current.current.onVerified!({
-            renderedTriangles: data.triangles.length / 3,
+            renderedTriangles: state.displayedTriangles.length,
             field: props.field!.label,
             association: props.field!.association,
             pickedRegion:
               triangle >= 0 && hit
-                ? pickedRegion(data, triangle, hit.point, state.scale, length)
+                ? pickedRegion(data, triangle, hit.point, state.scale, {
+                    camera: state.camera,
+                    width: container.current!.clientWidth,
+                    height: container.current!.clientHeight,
+                  })
                 : null,
             probedIndex: index,
             probedValue: index >= 0 ? props.field!.values[index] : null,
@@ -989,8 +967,35 @@ export default function Viewport(props: Props) {
     props.source,
     props.animate,
     props.theme,
+    isolated,
+    measuredNodes,
     !!props.onVerified,
   ]);
+
+  const distance =
+    measuredNodes.length === 2 &&
+    runtime.current?.data &&
+    measuredNodes.every(
+      (node) => node >= 0 && node * 3 + 2 < runtime.current!.data!.positions.length,
+    )
+      ? displayValue(
+          geometryDistance(runtime.current.data.positions, measuredNodes[0], measuredNodes[1]),
+          'm',
+          props.project.displayUnits,
+        )
+      : null;
+  const regionLabel = hovered
+    ? (regionNames(
+        props.project.geometry.kind,
+        props.project.study.dimension,
+        props.project.geometry.profile,
+      ).find((region) => region.id === hovered)?.name ?? hovered)
+    : null;
+  const resetView = () => {
+    const view = props.project.study.dimension === '2d' ? 'top' : 'isometric';
+    setCameraView(view);
+    runtime.current?.fit(view);
+  };
 
   return (
     <div className="viewport">
@@ -1004,18 +1009,29 @@ export default function Viewport(props: Props) {
         }
       />
       {error && <div className="viewport-error">{error}</div>}
-      <div className="viewport-actions">
-        <button title="Fit model (F)" aria-label="Fit model" onClick={() => runtime.current?.fit()}>
-          <Maximize size={16} />
-        </button>
-        <button
-          title="Reset camera"
-          aria-label="Reset camera"
-          onClick={() => runtime.current?.fit()}
-        >
-          <RotateCcw size={16} />
-        </button>
-      </div>
+      <ViewportTools
+        dimension={props.project.study.dimension}
+        view={cameraView}
+        selectionCount={props.selected.length}
+        isolated={isolated !== null}
+        measuring={measuring}
+        onView={(view) => {
+          setCameraView(view);
+          runtime.current?.fit(view);
+        }}
+        onFit={() => runtime.current?.fit()}
+        onReset={resetView}
+        onIsolate={() => {
+          setIsolated([...props.selected]);
+          setMeasuredNodes([]);
+          props.onProbe(null);
+        }}
+        onRestore={() => setIsolated(null)}
+        onMeasure={() => {
+          setMeasuring(!measuring);
+          setMeasuredNodes([]);
+        }}
+      />
       <div className="viewport-caption">
         <ScanLine size={13} />
         <span>
@@ -1029,6 +1045,50 @@ export default function Viewport(props: Props) {
             : ''}
         </span>
       </div>
+      {isolated && (
+        <div className="viewport-isolation" role="status">
+          <Focus size={12} /> {isolated.length}{' '}
+          {props.project.study.dimension === '2d' ? 'edge' : 'boundary'}
+          {isolated.length === 1 ? '' : 's'} isolated
+          <button aria-label="Exit boundary isolation" onClick={() => setIsolated(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+      {regionLabel && !measuring && (
+        <div className="viewport-hover" role="status">
+          {regionLabel}
+        </div>
+      )}
+      {(measuring || measuredNodes.length > 0) && (
+        <div className="viewport-measurement" role="status">
+          <Ruler size={13} />
+          <span>
+            <strong>
+              {distance
+                ? `${formatValue(distance.value)} ${distance.units}`
+                : measuredNodes.length === 1
+                  ? 'Select the second node'
+                  : props.data
+                    ? 'Select two mesh nodes'
+                    : 'Select two geometry vertices'}
+            </strong>
+            <small>
+              Undeformed distance · snaps to {props.data ? 'mesh nodes' : 'vertices'}
+              {distance ? ' · click to start again' : ''}
+            </small>
+          </span>
+          <button
+            aria-label="Close measurement"
+            onClick={() => {
+              setMeasuring(false);
+              setMeasuredNodes([]);
+            }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
       {props.data && props.data.manifest.operation !== 'mesh' && (
         <div className="deformation-badge">
           {props.animate ? 'Peak deformation' : 'Deformation'} × {formatValue(scale)}
@@ -1045,9 +1105,11 @@ export default function Viewport(props: Props) {
       <div className="viewport-help">
         {props.project.study.dimension === '2d' ? 'Drag to pan' : 'Drag to orbit'} <i /> Scroll to
         zoom <i />{' '}
-        {props.project.study.dimension === '2d'
-          ? 'Click edges to select · interior to probe'
-          : 'Click faces to toggle selection'}
+        {measuring
+          ? 'Click to snap measurement nodes'
+          : props.project.study.dimension === '2d'
+            ? 'Click edges · Shift add · Ctrl/⌘ toggle'
+            : 'Click faces · Shift add · Ctrl/⌘ toggle'}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import {
   type FieldSource,
 } from '../../domain/results/fields';
 import { regionNames, type RegionId } from '../../domain/project/regions';
+import { profileError, sampleSegment } from '../../domain/project/profile';
 
 export type SurfaceData = {
   positions: Float64Array;
@@ -22,7 +23,57 @@ export type SurfaceData = {
 };
 function primitiveSurface(project: Project): SurfaceData {
   const { kind, length: l, width: w, height: h, radius: r, thickness: t } = project.geometry;
-  const regionIds = regionNames(kind, project.study.dimension).map((region) => region.id);
+  const regionIds = regionNames(kind, project.study.dimension, project.geometry.profile).map(
+    (region) => region.id,
+  );
+  if (project.study.dimension === '2d' && kind === 'profile' && project.geometry.profile) {
+    const profile = project.geometry.profile;
+    const boundaryEdges: number[] = [];
+    const edgeRegions: number[] = [];
+    const outline = profile.outer.flatMap((segment) => sampleSegment(segment).slice(0, -1));
+    const holes = profile.holes.map((hole) =>
+      Array.from({ length: 72 }, (_, index): [number, number] => {
+        const angle = (-2 * Math.PI * index) / 72;
+        return [
+          hole.center[0] + hole.radius * Math.cos(angle),
+          hole.center[1] + hole.radius * Math.sin(angle),
+        ];
+      }),
+    );
+    let cursor = 0;
+    for (const segment of profile.outer) {
+      const points = sampleSegment(segment).slice(0, -1);
+      for (let index = 0; index < points.length; index++) {
+        boundaryEdges.push(cursor + index, (cursor + index + 1) % outline.length);
+        edgeRegions.push(regionIds.indexOf(segment.id));
+      }
+      cursor += points.length;
+    }
+    const vertices: THREE.Vector2[] = outline.map(([x, y]) => new THREE.Vector2(x, y));
+    profile.holes.forEach((hole, holeIndex) => {
+      const points = holes[holeIndex];
+      const start = vertices.length;
+      vertices.push(...points.map(([x, y]) => new THREE.Vector2(x, y)));
+      for (let index = 0; index < points.length; index++) {
+        boundaryEdges.push(start + index, start + ((index + 1) % points.length));
+        edgeRegions.push(regionIds.indexOf(hole.id));
+      }
+    });
+    const faces = profileError(profile)
+      ? []
+      : THREE.ShapeUtils.triangulateShape(
+          outline.map(([x, y]) => new THREE.Vector2(x, y)),
+          holes.map((points) => points.map(([x, y]) => new THREE.Vector2(x, y))),
+        );
+    return {
+      positions: new Float64Array(vertices.flatMap((point) => [point.x, point.y, 0])),
+      triangles: new Uint32Array(faces.flat()),
+      regions: new Uint32Array(faces.length),
+      regionIds,
+      boundaryEdges: new Uint32Array(boundaryEdges),
+      edgeRegions: new Uint32Array(edgeRegions),
+    };
+  }
   if (project.study.dimension === '2d')
     return {
       positions: new Float64Array([0, 0, 0, l, 0, 0, l, w, 0, 0, w, 0]),
