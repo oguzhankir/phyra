@@ -207,12 +207,7 @@ pub async fn assistant_write_conversation(
     blocking_storage(Arc::clone(&state.storage_lock), move || {
         let directory = storage::directory(&app)?;
         let settings = storage::read_settings(&directory)?;
-        let secret = storage::credential(&settings)?;
-        storage::reject_credentials(
-            &serde_json::to_string(&conversation).map_err(|_| "Invalid assistant history")?,
-            secret.as_deref().map(|s| s.as_str()),
-        )?;
-        storage::write_conversation(&directory, &conversation)
+        storage::write_conversation_checked(&directory, &conversation, &settings)
     })
     .await
 }
@@ -245,12 +240,12 @@ pub async fn assistant_publish_snapshot(
     {
         return Err("This assistant session has closed".into());
     }
-    let encoded = serde_json::to_string(&snapshot).map_err(|_| "Invalid MCP snapshot")?;
+    let content = serde_json::to_value(&snapshot).map_err(|_| "Invalid MCP snapshot")?;
     let directory = blocking_storage(Arc::clone(&state.storage_lock), move || {
         let directory = storage::directory(&app)?;
         let settings = storage::read_settings(&directory)?;
         let secret = storage::credential(&settings)?;
-        storage::reject_credentials(&encoded, secret.as_deref().map(|s| s.as_str()))?;
+        storage::reject_json_credentials(&content, secret.as_deref().map(|s| s.as_str()))?;
         Ok(directory)
     })
     .await?;

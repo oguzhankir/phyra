@@ -16,6 +16,15 @@ use std::{
 use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
+pub fn official_endpoint(provider: Provider) -> Option<&'static str> {
+    match provider {
+        Provider::Gemini => Some("https://generativelanguage.googleapis.com/v1beta"),
+        Provider::Openai => Some("https://api.openai.com/v1"),
+        Provider::Anthropic => Some("https://api.anthropic.com/v1"),
+        _ => None,
+    }
+}
+
 pub fn validate_settings(settings: &Settings, require_model: bool) -> Result<Url, String> {
     text(&settings.endpoint, 2048)?;
     text(&settings.model, 200)?;
@@ -58,13 +67,7 @@ pub fn validate_settings(settings: &Settings, require_model: bool) -> Result<Url
     }
     let path = endpoint.path().trim_end_matches('/').to_string();
     endpoint.set_path(&path);
-    let official = match settings.provider {
-        Provider::Gemini => Some("https://generativelanguage.googleapis.com/v1beta"),
-        Provider::Openai => Some("https://api.openai.com/v1"),
-        Provider::Anthropic => Some("https://api.anthropic.com/v1"),
-        _ => None,
-    };
-    if let Some(official) = official {
+    if let Some(official) = official_endpoint(settings.provider) {
         if settings.local || endpoint.as_str() != official {
             return Err("This provider uses its fixed official API endpoint".into());
         }
