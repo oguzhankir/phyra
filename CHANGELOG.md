@@ -10,6 +10,11 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Home and a closable project tab that preserve the current project while moving between the start screen and workbench. Close with the tab’s ×, File → Close project or Ctrl/⌘ W.
 - Desktop auto-save updates an associated project file after a 1.5-second editing pause, with an on/off control and visible pending, paused, saving and failure states. A first explicit Save chooses the file location; recovery copies remain separate.
 - A preparation checklist checks study, geometry, material, supports, loads, mesh settings and method eligibility before execution. Boundary restraint checks account for rigid translation and rotation; the worker remains authoritative after meshing.
+- Independent project tabs preserve each document’s edits, file association, recovery and run/result ownership, with a 32-document session limit.
+- Bounded interactive 2D profile drafting with rectangles, polylines, circular arcs, radius edits, grid snapping and circular holes, followed by validated Apply or Revert.
+- Optional BYOK documentation/study chat with native Gemini, OpenAI Responses, Anthropic Messages and compatible/local Ollama text streaming, model discovery, OS credential storage, inspectable context consent and bounded local conversation history.
+- Opt-in local read-only MCP inspection of help, active project and run summaries, with native scopes, revocation, expiring session consent and an access audit.
+- In-product mathematical formulations for 3D/plane-stress FEM, scaled PINN residuals/losses and Kirsch reference assumptions, with primary references and source links.
 
 ### Changed
 
