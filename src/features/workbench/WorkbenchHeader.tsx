@@ -10,24 +10,23 @@ import {
   Save,
   Search,
   Undo2,
+  X,
 } from 'lucide-react';
 import phyraLogo from '../../../assets/phyra.svg';
-import type { Theme, ThemePreference } from './theme';
+import type { ThemePreference } from './theme';
 
 type Props = {
-  name: string;
-  path: string | null;
-  dirty: boolean;
+  hasProject: boolean;
+  canClose: boolean;
   locked: boolean;
   canUseFiles: boolean;
   canSave: boolean;
   canExport: boolean;
-  device: string;
-  theme: Theme;
   preference: ThemePreference;
   onTheme: (theme: ThemePreference) => void;
   onNew: () => void;
   onOpen: () => void;
+  onClose: () => void;
   onSave: (saveAs?: boolean) => void;
   onExport: () => void;
   onHelp: () => void;
@@ -112,6 +111,12 @@ export default function WorkbenchHeader(props: Props) {
               <span className="menu-icon" />
               Save as…<kbd>⇧ ⌘/Ctrl S</kbd>
             </button>
+            <button
+              disabled={!props.hasProject || !props.canClose}
+              onClick={() => action(props.onClose)}
+            >
+              <X size={15} /> Close project<kbd>⌘/Ctrl W</kbd>
+            </button>
             <div className="menu-divider" />
             <button disabled={!props.canExport} onClick={() => action(props.onExport)}>
               <span className="menu-icon" />
@@ -183,17 +188,6 @@ export default function WorkbenchHeader(props: Props) {
           Help
         </button>
       </div>
-      <div className="project-title" title={props.path ?? props.name}>
-        <div className="project-name-row">
-          <strong>{props.name}</strong>
-          <span className={`project-save-status${props.dirty ? ' dirty' : ''}`}>
-            {props.dirty ? 'Unsaved changes' : props.path ? 'Saved' : 'Not saved'}
-          </span>
-        </div>
-        <span className="project-file-name">
-          {props.path ? props.path.split(/[\\/]/).pop() : 'Unsaved local project'}
-        </span>
-      </div>
       <div className="header-end">
         {props.onCommands && (
           <button
@@ -204,42 +198,9 @@ export default function WorkbenchHeader(props: Props) {
             onClick={props.onCommands}
           >
             <Search size={15} />
-            <span>Find…</span>
+            <span>Commands</span>
           </button>
         )}
-        <div className="file-actions">
-          <button
-            title="New project · Ctrl/⌘ N"
-            aria-label="New project"
-            disabled={props.locked}
-            onClick={props.onNew}
-          >
-            <FilePlus2 size={17} />
-            <span>New</span>
-          </button>
-          <button
-            title="Open project · Ctrl/⌘ O"
-            aria-label="Open project"
-            disabled={props.locked || !props.canUseFiles}
-            onClick={props.onOpen}
-          >
-            <FolderOpen size={17} />
-            <span>Open</span>
-          </button>
-          <button
-            className="save-action"
-            title="Save project · Ctrl/⌘ S"
-            aria-label="Save project"
-            disabled={!props.canSave}
-            onClick={() => props.onSave()}
-          >
-            <Save size={17} />
-            <span>Save</span>
-          </button>
-        </div>
-        <span className="device-badge" title="Local execution device">
-          {props.device}
-        </span>
       </div>
     </header>
   );

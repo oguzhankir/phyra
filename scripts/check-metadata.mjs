@@ -13,6 +13,13 @@ const rustMetadata = await readFile('src-tauri/Cargo.toml', 'utf8');
 const packageLock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 const cargoLock = await readFile('src-tauri/Cargo.lock', 'utf8');
 const engineMetadata = await readFile('engine/phyra_engine/__init__.py', 'utf8');
+const changelog = await readFile('CHANGELOG.md', 'utf8');
+assert.match(changelog, /^# Changelog\r?$/m, 'Canonical changelog must have a title');
+assert.match(
+  changelog,
+  /^## Unreleased\r?$/m,
+  'Canonical changelog must retain an Unreleased section',
+);
 const rustVersion = rustMetadata.match(/\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
 const lockedRustVersion = cargoLock.match(
   /\[\[package\]\]\nname = "phyra"\nversion = "([^"]+)"/,

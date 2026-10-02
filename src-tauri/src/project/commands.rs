@@ -8,7 +8,7 @@ use crate::execution::{
     worker::{job_directory, remember_failure, worker},
 };
 use serde_json::{json, Value};
-use std::fs;
+use std::{fs, path::PathBuf};
 use tauri::Manager;
 #[tauri::command]
 pub(crate) async fn open_project(app: tauri::AppHandle) -> Result<Option<Value>, String> {
@@ -82,6 +82,7 @@ pub(crate) async fn save_project(
     project: Value,
     job_id: Option<String>,
     save_as: bool,
+    automatic: Option<bool>,
 ) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         validate_project(&project)?;
@@ -112,14 +113,12 @@ pub(crate) async fn save_project(
             .clone()
             .filter(|(id, _)| Some(id.as_str()) == project["id"].as_str())
             .map(|(_, path)| path);
-        let path = if !save_as && current.is_some() {
-            current
-        } else {
+        let path = save_destination(current, save_as, automatic.unwrap_or(false), || {
             rfd::FileDialog::new()
                 .add_filter("Phyra project", &["phyra"])
                 .set_file_name("project.phyra")
                 .save_file()
-        };
+        })?;
         let Some(mut path) = path else {
             return Ok(None);
         };
@@ -136,4 +135,64 @@ pub(crate) async fn save_project(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+// Automatic writes may only use the association selected by the application.
+// They must never create a file dialog or accept a renderer-supplied path.
+fn save_destination(
+    current: Option<PathBuf>,
+    save_as: bool,
+    automatic: bool,
+    choose: impl FnOnce() -> Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    if automatic {
+        if save_as {
+            return Err("Autosave cannot choose a new archive destination".into());
+        }
+        return current
+            .map(Some)
+            .ok_or_else(|| "Save the project once before archive autosave".into());
+    }
+    Ok(if !save_as && current.is_some() {
+        current
+    } else {
+        choose()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::save_destination;
+    use std::path::PathBuf;
+
+    #[test]
+    fn autosave_uses_owned_path_without_a_dialog() {
+        let path = PathBuf::from("owned.phyra");
+        assert_eq!(
+            save_destination(Some(path.clone()), false, true, || panic!(
+                "no autosave dialog"
+            ))
+            .unwrap(),
+            Some(path)
+        );
+    }
+
+    #[test]
+    fn unassociated_and_save_as_autosaves_are_rejected_without_a_dialog() {
+        assert!(save_destination(None, false, true, || panic!("no autosave dialog")).is_err());
+        assert!(
+            save_destination(Some(PathBuf::from("old.phyra")), true, true, || panic!(
+                "no autosave dialog"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn first_manual_save_can_cancel_without_reusing_an_old_association() {
+        assert_eq!(
+            save_destination(Some(PathBuf::from("old.phyra")), true, false, || None).unwrap(),
+            None
+        );
+    }
 }

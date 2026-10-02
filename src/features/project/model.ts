@@ -73,5 +73,4 @@ export interface ProjectInspectorModel {
   exportFields: () => Promise<void>;
   fileBusy: string | null;
   busy: Operation | null;
-  dirty: boolean;
 }

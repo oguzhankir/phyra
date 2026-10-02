@@ -1,12 +1,16 @@
 import { subscribeCloseRequested } from '../platform/desktop/lifecycle';
-import { useEffect, type RefObject, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, type RefObject, type Dispatch, type SetStateAction } from 'react';
 import type { Operation } from '../domain/contracts/types';
 import type { Section } from '../features/workbench/navigation';
 import type { HelpContext } from '../features/help/content';
 import type { ExampleId } from '../features/examples/projects';
+import type { Project } from '../domain/contracts/types';
 import { historyShortcut } from './historyShortcut';
 type Props = {
   desktop: boolean;
+  hasProject: boolean;
+  projectActive: boolean;
+  modalOpen: boolean;
   busyRef: RefObject<Operation | null>;
   fileBusyRef: RefObject<string | null>;
   confirmationRef: RefObject<boolean>;
@@ -16,8 +20,12 @@ type Props = {
   confirmation: boolean;
   section: Section;
   save: (as?: boolean) => Promise<boolean>;
-  open: () => Promise<void>;
-  create: (example?: ExampleId) => Promise<void>;
+  open: () => Promise<boolean>;
+  create: (
+    example?: ExampleId,
+    name?: string,
+    dimension?: Project['study']['dimension'],
+  ) => Promise<boolean>;
   setHelpContext: Dispatch<SetStateAction<HelpContext>>;
   setHelp: Dispatch<SetStateAction<boolean>>;
   setError: (message: string | null) => void;
@@ -27,6 +35,9 @@ type Props = {
 };
 export function useDesktopLifecycle({
   desktop,
+  hasProject,
+  projectActive,
+  modalOpen,
   busyRef,
   fileBusyRef,
   confirmationRef,
@@ -45,12 +56,23 @@ export function useDesktopLifecycle({
   redo,
   historyBlocked,
 }: Props) {
+  const modalOpenRef = useRef(modalOpen);
+  modalOpenRef.current = modalOpen;
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (modalOpen) {
+        if (
+          event.key === 'F1' ||
+          ((event.metaKey || event.ctrlKey) &&
+            ['s', 'o', 'n', 'w', 'k'].includes(event.key.toLowerCase()))
+        )
+          event.preventDefault();
+        return;
+      }
       if (event.key === 'F1') {
         event.preventDefault();
         if (!confirmation) {
-          setHelpContext(section);
+          setHelpContext(projectActive ? section : 'overview');
           setHelp(true);
         }
         return;
@@ -60,7 +82,10 @@ export function useDesktopLifecycle({
         : /Win/i.test(navigator.platform)
           ? 'windows'
           : 'other';
-      const action = historyShortcut(event, { platform, blocked: historyBlocked });
+      const action = historyShortcut(event, {
+        platform,
+        blocked: historyBlocked || !projectActive,
+      });
       if (action) {
         event.preventDefault();
         (action === 'redo' ? redo : undo)();
@@ -71,7 +96,7 @@ export function useDesktopLifecycle({
       if (!['s', 'o', 'n'].includes(character)) return;
       event.preventDefault();
       if (busyRef.current || fileBusyRef.current || confirmationRef.current || help) return;
-      if (character === 's') void save(event.shiftKey);
+      if (character === 's' && hasProject) void save(event.shiftKey);
       if (character === 'o') void open();
       if (character === 'n') void create();
     };
@@ -87,12 +112,29 @@ export function useDesktopLifecycle({
       window.removeEventListener('keydown', key);
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [save, open, create, help, confirmation, section, undo, redo, historyBlocked]);
+  }, [
+    save,
+    open,
+    create,
+    help,
+    confirmation,
+    section,
+    undo,
+    redo,
+    historyBlocked,
+    hasProject,
+    projectActive,
+    modalOpen,
+  ]);
   useEffect(() => {
     if (!desktop) return;
     let unsubscribe: (() => void) | undefined;
     let dead = false;
     subscribeCloseRequested(async (event, close) => {
+      if (modalOpenRef.current) {
+        event.preventDefault();
+        return;
+      }
       if (busyRef.current || fileBusyRef.current) {
         event.preventDefault();
         setError(

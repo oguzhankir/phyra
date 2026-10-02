@@ -77,8 +77,9 @@ export function saveProject(
   project: Project,
   jobId?: string,
   saveAs = false,
+  automatic = false,
 ): Promise<string | null> {
-  return invoke('save_project', { project, jobId: jobId ?? null, saveAs });
+  return invoke('save_project', { project, jobId: jobId ?? null, saveAs, automatic });
 }
 export function exportResults(jobId: string): Promise<string | null> {
   return invoke('export_results', { jobId });

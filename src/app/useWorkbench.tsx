@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Constraint, Load, Project } from '../domain/contracts/types';
 import {
   nextSelectionName,
@@ -22,7 +22,20 @@ const uid = () => crypto.randomUUID();
 
 // Composes definition, execution and presentation owners. Cross-owner transitions
 // live here; each feature consumes only its explicit view/edit contract.
-export function useWorkbench() {
+type WorkbenchOptions = {
+  onProjectActivated: () => void;
+  onNewProjectRequested: () => void;
+  hasProject: boolean;
+  projectActive: boolean;
+  newProjectOpen: boolean;
+};
+export function useWorkbench({
+  onProjectActivated,
+  onNewProjectRequested,
+  hasProject,
+  projectActive,
+  newProjectOpen,
+}: WorkbenchOptions) {
   const desktop = '__TAURI_INTERNALS__' in window;
   const activity = useWorkbenchActivity();
   const executionRef = useRef<ExecutionSession | null>(null);
@@ -147,7 +160,10 @@ export function useWorkbench() {
   });
   verificationRef.current = verification;
   useEffect(() => {
-    if (requestedOperation) void execution.execute(requestedOperation);
+    if (requestedOperation) {
+      onProjectActivated?.();
+      void execution.execute(requestedOperation);
+    }
   }, [requestedOperation]);
   useEffect(() => {
     if (section === 'solver' && !execution.devices && !verification && !execution.deviceError)
@@ -170,13 +186,18 @@ export function useWorkbench() {
       session.replace(next);
       session.setDirty(true);
       setNotice('Project definition recovered · recompute results');
+      onProjectActivated?.();
     },
     onError: setError,
   });
   activity.recovery.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
   const locked =
-    !!execution.busy || !!session.fileBusy || execution.deviceBusy || activity.recovery.current;
+    !!execution.busy ||
+    !!session.fileBusy ||
+    session.transitioning ||
+    execution.deviceBusy ||
+    activity.recovery.current;
   const historyBlocked =
     locked ||
     session.confirmation ||
@@ -195,8 +216,41 @@ export function useWorkbench() {
     },
     session.confirmation ? 'unsaved' : view.help ? 'help' : recovery.prompt ? 'recovery' : null,
   );
+  const createFromShortcut = useCallback(
+    async (
+      example?: Parameters<typeof session.create>[0],
+      name?: string,
+      dimension?: Project['study']['dimension'],
+    ) => {
+      if (!example && !name && onNewProjectRequested) {
+        if (
+          activity.execution.current ||
+          activity.file.current ||
+          activity.confirmation.current ||
+          activity.recovery.current ||
+          activity.device.current ||
+          newProjectOpen
+        )
+          return false;
+        onNewProjectRequested();
+        return false;
+      }
+      const created = await session.create(example, name, dimension);
+      if (created) onProjectActivated?.();
+      return created;
+    },
+    [session.create, onProjectActivated, onNewProjectRequested, activity, newProjectOpen],
+  );
+  const openFromShortcut = useCallback(async () => {
+    const opened = await session.open();
+    if (opened) onProjectActivated?.();
+    return opened;
+  }, [session.open, onProjectActivated]);
   useDesktopLifecycle({
     desktop,
+    hasProject,
+    projectActive,
+    modalOpen: newProjectOpen || activity.recovery.current || session.transitioning,
     busyRef: activity.execution,
     fileBusyRef: activity.file,
     confirmationRef: activity.confirmation,
@@ -206,8 +260,8 @@ export function useWorkbench() {
     confirmation: session.confirmation,
     section,
     save: session.save,
-    open: session.open,
-    create: session.create,
+    open: openFromShortcut,
+    create: createFromShortcut,
     setHelpContext: view.setHelpContext,
     setHelp: view.setHelp,
     setError,

@@ -35,6 +35,12 @@ npm run test:desktop
 
 `test:desktop` launches the package outside the checkout with developer Python paths removed. It checks real 3D FEM, rectangular 2D FEM/PINN comparison, and the exact-profile Kirsch SI study: rendering, picking/probing, reference diagnostics, persistence, SI CSV export, stale-result rejection, repeated runs and cancellation. It queries actual method/device capabilities and exercises native definition-only recovery in isolated temporary storage, including active-session protection and interface reload ownership. Evidence is ignored under `artifacts/`. Target one workflow with `npm run test:desktop -- --3d-only`, `--physicsml-only`, or `--profile-only`; optionally supply an absolute executable path. Native dialogs, minimum macOS 14 and consumer clean-machine installation/uninstall remain manual checks; hosted execution does not establish those results.
 
+## Changelog and pull requests
+
+Every pull request that changes user-visible behavior, scientific results or assumptions, project compatibility, persistence, supported platforms or security must update [CHANGELOG.md](CHANGELOG.md) under **Unreleased**. Describe the effect on users in one concise entry under Added, Changed, Fixed, Removed, Deprecated or Security; combine related work and omit empty headings. Reviewers require this entry before merging an applicable change.
+
+Typos, internal refactoring, test-only changes and contributor tooling need no entry when they leave those outcomes unchanged. Record **Changelog: N/A — reason** in the pull request description so the exception is explicit. A dependency change still needs an entry if it changes compatibility, behavior or security. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and remains a curated product history rather than a commit log.
+
 ## Preparing a release
 
 Plan product outcomes in the [roadmap](ROADMAP.md); assign a version only when the next release scope is selected. To synchronize the app, Tauri, Rust, Python engine and both lockfiles, run:
@@ -43,7 +49,7 @@ Plan product outcomes in the [roadmap](ROADMAP.md); assign a version only when t
 npm run release:version -- 0.2.0
 ```
 
-This edits version metadata only. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.2.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
+This edits version metadata only. Move the completed scope from Unreleased in CHANGELOG.md into a section for the selected version; assign a date only when the release actually exists. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.2.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
 
 ```sh
 git tag -a v0.2.0 -m "Phyra v0.2.0"
@@ -97,7 +103,7 @@ The [roadmap](ROADMAP.md) keeps reusable operator learning, datasets/model manif
 
 ## Repository discipline
 
-Keep human documentation in README, AGENTS, CONTRIBUTING, LICENSE and the single roadmap, with the explicitly requested [citation metadata](CITATION.cff) and [security policy](SECURITY.md). Preserve the implementation ownership above and the native execution, project/archive/recovery, result/export and platform-file responsibilities under `src-tauri/src/`; its entry point only wires the application. Add folders for actual responsibilities, not speculative future modules. Legal texts, mathematical comments, test fixtures and small community templates have concrete purposes; avoid reports and duplicate instructions. Use English in authored source/text and preserve GPL-3.0-or-later notices. Do not present example properties as certified material data.
+Keep human documentation in README, AGENTS, CONTRIBUTING, LICENSE, CHANGELOG and the single roadmap, with the explicitly requested [citation metadata](CITATION.cff) and [security policy](SECURITY.md). Preserve the implementation ownership above and the native execution, project/archive/recovery, result/export and platform-file responsibilities under `src-tauri/src/`; its entry point only wires the application. Add folders for actual responsibilities, not speculative future modules. Legal texts, mathematical comments, test fixtures and small community templates have concrete purposes; avoid reports and duplicate instructions. Use English in authored source/text and preserve GPL-3.0-or-later notices. Do not present example properties as certified material data.
 
 The small `public/reference/` fixtures are actual CPU worker results for browser inspection, with exact asset digests and normal field provenance. Regenerate them after setup with `node scripts/generate-reference.mjs`; it validates the caches, physical balances and analytical references before replacing them. Seeds define the numerical runs; execution IDs, timestamps and measured timings remain real.
 

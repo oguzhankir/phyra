@@ -12,7 +12,7 @@ import SupportEditor from './SupportEditor';
 
 import type { ProjectInspectorModel } from './model';
 export default function PropertyInspector({ workbench }: { workbench: ProjectInspectorModel }) {
-  const { rightWidth, section, showHelp, locked, project, fileBusy, busy, dirty } = workbench;
+  const { rightWidth, section, showHelp, locked, project, busy } = workbench;
   return (
     <aside
       id="workbench-properties-panel"
@@ -47,24 +47,11 @@ export default function PropertyInspector({ workbench }: { workbench: ProjectIns
         </fieldset>
         {section === 'results' && <ResultsInspector workbench={workbench} />}
       </div>
-      <div className="properties-footer">
-        {fileBusy ? (
-          <>
-            <LockKeyhole size={12} />
-            Project file operation in progress
-          </>
-        ) : busy ? (
-          <>
-            <LockKeyhole size={12} />
-            Inputs locked while worker runs
-          </>
-        ) : (
-          <>
-            REV {project.revision}
-            <span>{dirty ? 'Modified' : 'Unchanged'}</span>
-          </>
-        )}
-      </div>
+      {busy && (
+        <div className="properties-footer">
+          <LockKeyhole size={12} /> Inputs locked while worker runs
+        </div>
+      )}
     </aside>
   );
 }

@@ -181,7 +181,7 @@ export function useRecoverySession({
         : invalidDrafts || inputError(project)
           ? 'Recovery paused · invalid inputs'
           : !dirty
-            ? 'Project unchanged'
+            ? null
             : checkpointRevision === project.revision && savedAt
               ? 'Recovery definition saved'
               : 'Recovery pending';

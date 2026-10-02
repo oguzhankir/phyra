@@ -5,12 +5,14 @@ import {
   ChevronRight,
   Download,
   GitCompareArrows,
+  House,
+  File,
   Magnet,
   Play,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { primaryOperation, supportsPinn } from '../domain/project/study';
 import { selectionIsCompatible } from '../domain/project/namedSelections';
 import { type FieldId } from '../domain/results/fields';
@@ -34,6 +36,8 @@ import {
   workflowStages,
 } from '../features/workbench/navigation';
 import WorkbenchHeader from '../features/workbench/WorkbenchHeader';
+import ProjectStartCenter from '../features/workbench/ProjectStartCenter';
+import ProjectWorkspaceBar from '../features/workbench/ProjectWorkspaceBar';
 import { NumericDraftContext } from '../shared/forms/PropertyControls';
 import { useModalFocus } from '../shared/ui/useModalFocus';
 
@@ -42,7 +46,24 @@ import { useWorkbench } from './useWorkbench';
 import { createWorkbenchCommands } from './workbenchCommands';
 import WorkbenchOverlays from './WorkbenchOverlays';
 export default function App() {
-  const workbench = useWorkbench();
+  const [activeTab, setActiveTab] = useState<'home' | 'project'>('home');
+  const [projectTabOpen, setProjectTabOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const requestNewProject = useCallback(() => {
+    setActiveTab('home');
+    setNewProjectOpen(true);
+  }, []);
+  const activateProjectTab = useCallback(() => {
+    setProjectTabOpen(true);
+    setActiveTab('project');
+  }, []);
+  const workbench = useWorkbench({
+    onProjectActivated: activateProjectTab,
+    onNewProjectRequested: requestNewProject,
+    hasProject: projectTabOpen,
+    projectActive: activeTab === 'project',
+    newProjectOpen,
+  });
   const {
     recovery,
     undo,
@@ -72,6 +93,13 @@ export default function App() {
     create,
     open,
     save,
+    close,
+    autosaveEnabled,
+    setAutosaveEnabled,
+    autosaveStatus,
+    autosaveError,
+    deviceBusy,
+    transitioning,
     exportFields,
     showHelp,
     leftWidth,
@@ -140,15 +168,67 @@ export default function App() {
     const search = (event: KeyboardEvent) => {
       if ((!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
       event.preventDefault();
-      if (!help && !confirmation && !recovery.prompt && !fileBusy)
+      if (activeTab === 'project' && !help && !confirmation && !recovery.prompt && !fileBusy)
         setCommandsOpen((value) => !value);
     };
     window.addEventListener('keydown', search);
     return () => window.removeEventListener('keydown', search);
-  }, [help, confirmation, recovery.prompt, fileBusy]);
+  }, [activeTab, help, confirmation, recovery.prompt, fileBusy]);
   useEffect(() => {
     if (help || confirmation || recovery.prompt || fileBusy) setCommandsOpen(false);
+    if (help || confirmation || recovery.prompt) setNewProjectOpen(false);
   }, [help, confirmation, recovery.prompt, fileBusy]);
+  const createFromHome = async (name: string, dimension: '2d' | '3d'): Promise<boolean> => {
+    const created = await create(undefined, name, dimension);
+    if (created) activateProjectTab();
+    return created;
+  };
+  const openFromHome = async (): Promise<boolean> => {
+    const opened = await open();
+    if (opened) activateProjectTab();
+    return opened;
+  };
+  const exampleFromHome = async (id: Parameters<typeof create>[0]): Promise<boolean> => {
+    const created = await create(id);
+    if (created) activateProjectTab();
+    return created;
+  };
+  const referenceFromHome = async (id: Parameters<typeof inspectReference>[0]) => {
+    if (await inspectReference(id)) activateProjectTab();
+  };
+  const canClose =
+    projectTabOpen &&
+    !transitioning &&
+    !busy &&
+    !deviceBusy &&
+    (!fileBusy || autosaveStatus === 'saving') &&
+    recovery.ready &&
+    !recovery.pending &&
+    !recovery.prompt &&
+    !confirmation &&
+    !newProjectOpen;
+  const closeProjectTab = useCallback(async () => {
+    if (!canClose || !(await close())) return;
+    setProjectTabOpen(false);
+    setActiveTab('home');
+    setCommandsOpen(false);
+    setNewProjectOpen(false);
+    window.requestAnimationFrame(() => document.getElementById('home-tab')?.focus());
+  }, [canClose, close]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'w' &&
+        activeTab === 'project'
+      ) {
+        event.preventDefault();
+        if (!help) void closeProjectTab();
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [activeTab, help, closeProjectTab]);
   const problems = useMemo(() => {
     const items: Problem[] = [];
     if (validation) items.push(validationProblem(validation));
@@ -198,44 +278,154 @@ export default function App() {
     if (problem.section) selectSection(problem.section);
     else showHelp(problem.help ?? 'overview');
   };
-  const commands = createWorkbenchCommands(workbench);
+  const commands = createWorkbenchCommands({
+    ...workbench,
+    create: async () => {
+      requestNewProject();
+      return false;
+    },
+    open: openFromHome,
+  });
   return (
     <NumericDraftContext.Provider value={reportDraftValidity}>
-      <div className="app-shell">
+      <div className={`app-shell${activeTab === 'home' ? ' home-open' : ''}`}>
         <WorkbenchHeader
-          canUndo={canUndo && !historyBlocked}
-          canRedo={canRedo && !historyBlocked}
+          hasProject={projectTabOpen}
+          canClose={canClose}
+          canUndo={activeTab === 'project' && canUndo && !historyBlocked}
+          canRedo={activeTab === 'project' && canRedo && !historyBlocked}
           undoLabel={undoLabel}
           redoLabel={redoLabel}
           onUndo={undo}
           onRedo={redo}
-          name={project.name}
-          path={path}
-          dirty={dirty}
-          locked={locked}
+          locked={locked || confirmation || newProjectOpen}
           canUseFiles={desktop}
-          canSave={!locked && !validation && desktop}
-          canExport={!locked && solved && desktop}
-          device={
-            currentData?.manifest.training?.device ??
-            (isPinn
-              ? project.study.solver.pinn.device === 'auto'
-                ? 'CPU · float64 (Auto)'
-                : project.study.solver.pinn.device.toUpperCase()
-              : 'FEM · CPU')
-          }
-          theme={theme}
+          canSave={projectTabOpen && !locked && !validation && desktop}
+          canExport={projectTabOpen && !locked && solved && desktop}
           preference={preference}
           onTheme={setPreference}
-          onNew={() => void create()}
-          onOpen={() => void open()}
+          onNew={requestNewProject}
+          onOpen={() => void openFromHome()}
+          onClose={() => void closeProjectTab()}
           onSave={(saveAs) => void save(saveAs)}
           onExport={() => void exportFields()}
-          onHelp={() => showHelp()}
+          onHelp={() => showHelp(activeTab === 'home' ? 'overview' : section)}
           onFilesHelp={() => showHelp('files')}
-          onCommands={() => setCommandsOpen(true)}
+          onCommands={activeTab === 'project' ? () => setCommandsOpen(true) : undefined}
         />
-        <div className="workspace">
+        <nav
+          className="project-document-tabs"
+          role="tablist"
+          aria-label="Open documents"
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !projectTabOpen)
+              return;
+            event.preventDefault();
+            const target =
+              event.key === 'Home'
+                ? 'home'
+                : event.key === 'End'
+                  ? 'project'
+                  : activeTab === 'home'
+                    ? 'project'
+                    : 'home';
+            setActiveTab(target);
+            document.getElementById(`${target}-tab`)?.focus();
+          }}
+        >
+          <button
+            className="project-document-tab home-document-tab"
+            id="home-tab"
+            role="tab"
+            tabIndex={activeTab === 'home' ? 0 : -1}
+            aria-selected={activeTab === 'home'}
+            aria-controls="project-home-panel"
+            onClick={() => {
+              setCommandsOpen(false);
+              setActiveTab('home');
+            }}
+          >
+            <House size={14} />
+            <span>Home</span>
+          </button>
+          {projectTabOpen && (
+            <div
+              className={`project-tab-item${activeTab === 'project' ? ' active' : ''}`}
+              role="presentation"
+            >
+              <button
+                className="project-document-tab"
+                id="project-tab"
+                role="tab"
+                tabIndex={activeTab === 'project' ? 0 : -1}
+                aria-selected={activeTab === 'project'}
+                aria-controls="project-workbench-panel"
+                title={path ?? `${project.name} · unsaved draft`}
+                onClick={() => setActiveTab('project')}
+              >
+                <File size={14} />
+                <span>{project.name}</span>
+                {dirty && <span className="tab-dirty-dot" aria-label="Unsaved changes" />}
+              </button>
+              <button
+                className="project-tab-close"
+                disabled={!canClose}
+                aria-label={`Close ${project.name}`}
+                title="Close project · Ctrl/⌘ W"
+                onClick={() => void closeProjectTab()}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+        </nav>
+        <section
+          className="project-start-tab"
+          id="project-home-panel"
+          role="tabpanel"
+          aria-labelledby="home-tab"
+          hidden={activeTab !== 'home'}
+        >
+          <ProjectStartCenter
+            desktop={desktop}
+            locked={locked || confirmation}
+            hasProject={projectTabOpen}
+            projectName={project.name}
+            projectPath={path}
+            dirty={dirty}
+            error={error}
+            newProjectOpen={newProjectOpen}
+            onRequestNew={requestNewProject}
+            onCancelNew={() => setNewProjectOpen(false)}
+            onContinue={() => setActiveTab('project')}
+            onNew={createFromHome}
+            onOpen={openFromHome}
+            onExample={exampleFromHome}
+            onReference={referenceFromHome}
+            onHelp={() => showHelp('overview')}
+            onDismissError={() => setError(null)}
+          />
+        </section>
+        {activeTab === 'project' && projectTabOpen && (
+          <ProjectWorkspaceBar
+            path={path}
+            dirty={dirty}
+            desktop={desktop}
+            canSave={!locked && !validation && desktop}
+            autosaveEnabled={autosaveEnabled}
+            autosaveStatus={autosaveStatus}
+            autosaveError={autosaveError}
+            onAutosave={setAutosaveEnabled}
+            onSave={() => void save()}
+          />
+        )}
+        <div
+          className="workspace"
+          hidden={activeTab !== 'project' || !projectTabOpen}
+          role="tabpanel"
+          id="project-workbench-panel"
+          aria-labelledby="project-tab"
+        >
           <aside id="workbench-model-panel" className="model-panel" style={{ width: leftWidth }}>
             <ModelTree
               project={project}
@@ -249,7 +439,6 @@ export default function App() {
               solved={solved}
               stale={!!data && !currentData}
               onSection={selectSection}
-              onExample={(example) => void create(example)}
               onAddSupport={addConstraint}
               onAddLoad={addLoad}
               onAddSelection={addNamedSelection}
@@ -360,14 +549,6 @@ export default function App() {
                   )}{' '}
                   <small>· Desktop required to compute</small>
                 </span>
-                <div className="reference-actions">
-                  <button disabled={locked} onClick={() => void inspectReference('3d')}>
-                    Inspect 3D reference
-                  </button>
-                  <button disabled={locked} onClick={() => void inspectReference('2d-compare')}>
-                    Inspect 2D comparison
-                  </button>
-                </div>
               </div>
             )}
             <div className="viewport-toolbar">

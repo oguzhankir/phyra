@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import type { Project } from '../../domain/contracts/types';
 import { selectionIsCompatible } from '../../domain/project/namedSelections';
-import type { ExampleId } from '../examples/projects';
 import { stageForSection, workflowStages, type Section } from './navigation';
 
 type Props = {
@@ -28,7 +27,6 @@ type Props = {
   solved: boolean;
   stale: boolean;
   onSection: (section: Section, id?: string) => void;
-  onExample: (id: ExampleId) => void;
   onAddSupport: () => void;
   onAddLoad: () => void;
   onAddSelection: () => void;
@@ -60,32 +58,7 @@ export default function ModelTree(props: Props) {
   return (
     <>
       <div className="panel-heading">
-        <span>Study workflow</span>
-      </div>
-      <div className="example-picker">
-        <label className="example-picker-label" htmlFor="workbench-example">
-          Example projects
-        </label>
-        <select
-          id="workbench-example"
-          aria-label="Load example"
-          disabled={props.locked}
-          value=""
-          onChange={(event) => {
-            if (event.target.value) props.onExample(event.target.value as ExampleId);
-          }}
-        >
-          <option value="">Choose an example…</option>
-          <option value="plane-stress-tension">2D plane-stress tension</option>
-          <option value="kirsch-quarter">Kirsch quarter plate · SI realization</option>
-          <option value="cantilever">3D cantilever beam</option>
-          <option value="cylinder">Axial cylinder</option>
-          <option value="bracket">L bracket</option>
-          <option value="extension">Prescribed extension</option>
-        </select>
-        <p className="model-starter-hint">
-          Editable starter models with illustrative material values.
-        </p>
+        <span>Model</span>
       </div>
       <nav className="model-tree workflow-stages" aria-label="Study workflow">
         {workflowStages.map((stage) => {

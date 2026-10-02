@@ -147,13 +147,14 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'From model to results',
         steps: [
-          'Choose an editable example from Example projects, or use New to start a project.',
+          'On Home, choose an editable example, or use New project to enter a name and choose 3D solid or 2D plane stress. File → New project and Ctrl/⌘ N open the same dialog.',
+          'Use Save project to choose a .phyra file location. In the desktop app, Auto-save then keeps that file up to date after a short editing pause; the project bar shows its file and save state.',
           'In Prepare, review Study definition, Geometry and Material. The right inspector edits the selected task; Next moves to the following task.',
           'In Supports and Loads, select named boundaries and define their physical conditions. Check visible units before entering values.',
           'Open Solve, choose a mesh size and use Generate mesh above the viewport. Inspect the element count and minimum quality.',
           'Open Solution method and use Run FEM. The main action above the viewport follows the selected task.',
           'In Inspect, choose a field from the viewport toolbar and review physical values and reference errors. Open details for equilibrium, assumptions and provenance; use Export fields for SI CSV data.',
-          'Use Save to retain the study and current results. Find… or Ctrl/⌘ K searches existing editors and actions; F1 opens the current screen’s help.',
+          'Check All changes saved, or use Save to retain the study and compatible current results. Find… or Ctrl/⌘ K searches existing editors and actions; F1 opens the current screen’s help.',
         ],
         screenshots: [
           {
@@ -167,7 +168,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Try Physics ML next',
         paragraphs: [
-          'Open 2D plane-stress tension, run its FEM reference, then select PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
+          'On Home, choose Plate in tension, run its FEM reference, then select PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
         ],
         note: {
           tone: 'warning',
@@ -177,13 +178,15 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Inspect a saved reference in the browser',
         paragraphs: [
-          'Use Inspect 3D reference or Inspect 2D comparison to load recorded CPU results. Select result sources and fields, then probe values in the viewport.',
+          'On Home, use 3D FEM or 2D FEM / PINN under Explore recorded CPU results. Select result sources and fields, then probe values in the viewport.',
           'Both references contain saved fields and run provenance; the 2D comparison also contains recorded training history. Loading one starts no numerical worker. Editing physical inputs makes its fields stale; use the desktop application to mesh, solve, train and use native project files.',
         ],
       },
       {
         title: 'Read the workspace',
         paragraphs: [
+          'The Home tab contains New, Open and examples. Selecting Home keeps the current project open; return through its tab or the Open in this session row. Changing tabs does not trigger a save or close; Auto-save continues independently when enabled.',
+          'The project tab contains the analysis workspace. Use its ×, File → Close project or Ctrl/⌘ W to close it. A saved project closes directly; unsaved changes offer Save, Discard and Cancel.',
           'The left workflow separates Prepare, Solve and Inspect. Expand an existing stage to find its editors; the right inspector edits that selection while the central viewport shows the model or current fields.',
           'Problems keeps actionable diagnostics visible without opening every interpretation warning. Run overview retains execution evidence; training and comparison views appear only for supported studies. Advanced settings and scientific details remain available in disclosures.',
           'Light and dark themes change presentation, not physical values, units or the contour mapping.',
@@ -590,7 +593,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Edit, solve and inspect',
         steps: [
-          'Open the Kirsch quarter example. Inspect the clockwise circular cutout arc in the counterclockwise outer loop. Bottom uy = 0 and vertical ux = 0 are symmetry conditions; the cutout is free.',
+          'On Home, choose Plate with a hole for the Kirsch quarter example. Inspect the clockwise circular cutout arc in the counterclockwise outer loop. Bottom uy = 0 and vertical ux = 0 are symmetry conditions; the cutout is free.',
           'Inspect Loads: the outer left and top edges use the exact spatial vector traction σn, not uniform tension on both edges. Review the stated center, radius and remote tension.',
           'Generate a mesh, then run FEM. Inspect displacement/stress, reactions, force/moment balance and Independent Kirsch reference in Results.',
           'Reduce target and boundary sizes and repeat. Compare area-weighted displacement/stress errors across at least three meshes. Free-hole traction from first-order element stress also needs refinement.',
@@ -837,8 +840,9 @@ export const helpArticles: readonly HelpArticle[] = [
   },
   {
     id: 'files',
-    title: 'Save, reopen and export',
-    summary: 'Keep project definitions and physical fields with explicit units and run identity.',
+    title: 'Save, close, recover and export',
+    summary:
+      'Choose a project file, understand auto-save and recovery, and retain physical fields.',
     category: 'Inspect',
     kind: 'Guide',
     keywords: [
@@ -854,23 +858,42 @@ export const helpArticles: readonly HelpArticle[] = [
       'checkpoint',
       'recovery',
       'autosave',
+      'close',
+      'discard',
+      'tab',
       'crash',
     ],
     sections: [
       {
         title: 'Project files',
         paragraphs: [
-          'Save or Save as creates a .phyra archive with the project definition and available compatible cached fields. Reopening validates metadata and binary arrays before displaying results.',
+          'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
           'Versions 1, 2 and 3 are validated before migrating to version 4. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
       {
+        title: 'Auto-save to the project file',
+        paragraphs: [
+          'In the desktop app, Auto-save is on by default. After the first Save associates a file, validated changes are written to that file after a 1.5-second editing pause. The project bar shows the file name and whether changes are pending, saving or saved.',
+          'Turn Auto-save off in the project bar to save manually. Invalid numeric drafts pause automatic writes; complete or revert them before saving. Auto-save also waits while an analysis, file operation or project confirmation is active.',
+          'If an automatic write fails, the project remains open with unsaved changes and a failure message. Use Save to retry. A browser preview cannot write native project files.',
+        ],
+      },
+      {
+        title: 'Home, tabs and closing',
+        paragraphs: [
+          'Home contains examples and project-start actions. Switching to Home keeps the current project open; its tab and Open in this session row return to the workbench. Changing tabs does not trigger a save; enabled Auto-save continues independently.',
+          'Close the project with its tab’s ×, File → Close project or Ctrl/⌘ W. A saved project closes directly. A dirty project offers Save, Discard and Cancel: Save closes only after a successful write, Discard closes without retaining those changes, and Cancel keeps the project open.',
+          'An automatic write already in progress finishes before close or replacement is considered. Opening a file or starting another project uses the same unsaved-change choice. Cancelling the first file-location dialog keeps the draft open.',
+        ],
+      },
+      {
         title: 'Recover an unsaved project',
         paragraphs: [
-          'The desktop preserves a valid, dirty project definition after a short editing pause. Recovery pauses while numeric drafts or the project definition are invalid; save manually if recovery is unavailable.',
+          'Recovery is separate from Auto-save. The desktop keeps a recovery copy of a valid, dirty definition after a short editing pause, including drafts that have no project file yet. Recovery pauses while numeric drafts or the definition are invalid; save manually if recovery is unavailable.',
           'At a later launch, review available copies and choose Restore, Discard copy or Review later. Active desktop sessions remain separate. Restore opens an unsaved definition and clears its original file association; it does not overwrite that file.',
-          'Recovery contains no result buffers, trained weights or optimizer state. Recompute the restored study, then use Save as to choose its project file. A recovery copy is not a substitute for a saved .phyra archive or backup.',
+          'Recovery contains no result buffers, trained weights or optimizer state. Recompute the restored study, then use Save to choose its project file. Auto-save starts after that first Save. A recovery copy is not a substitute for a saved .phyra archive or backup.',
         ],
       },
       {
@@ -1086,7 +1109,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: '1 · Define the problem before the network',
         paragraphs: [
-          'Open 2D plane-stress tension. Read geometry, physical thickness, Young’s modulus, Poisson’s ratio, supports and total force. These define an in-plane, homogeneous, small-strain equilibrium problem; selecting a learning method does not change that problem.',
+          'On Home, choose Plate in tension. Read geometry, physical thickness, Young’s modulus, Poisson’s ratio, supports and total force. These define an in-plane, homogeneous, small-strain equilibrium problem; selecting a learning method does not change that problem.',
         ],
         steps: [
           'Run Classical FEM and inspect displacement, element stress, reactions and force/moment balance.',

@@ -93,3 +93,6 @@ p {
   display: flex;
   flex-direction: column;
 }
+.app-shell.home-open {
+  min-width: 0;
+}
