@@ -127,15 +127,34 @@ describe('independent assistant request transactions', () => {
     expect(turn.sequence).toBe(2);
   });
 
-  it('cancellation during the first history write never contacts the provider', async () => {
+  it('cancellation during the first history write saves the cancelled turn without accepting it', async () => {
     const turn = prepare();
     const services = ports(turn);
-    services.write = vi.fn(async () => {
-      turn.cancelled = true;
+    const written: AssistantConversation[] = [];
+    let finishFirstWrite!: () => void;
+    services.write = vi.fn(async (value) => {
+      written.push(structuredClone(value));
+      if (written.length === 1)
+        await new Promise<void>((resolve) => {
+          finishFirstWrite = resolve;
+        });
     });
-    expect(await runConversationTurn(turn, services)).toBe(false);
+    const running = runConversationTurn(turn, services);
+    expect(services.accepted).not.toHaveBeenCalled();
+    expect(services.stream).not.toHaveBeenCalled();
+    turn.cancelled = true;
+    finishFirstWrite();
+    expect(await running).toBe(false);
+    expect(services.accepted).not.toHaveBeenCalled();
     expect(services.stream).not.toHaveBeenCalled();
     expect(services.write).toHaveBeenCalledTimes(2);
+    expect(written[0].messages[1].status).toBe('interrupted');
+    expect(written[1].messages[1].status).toBe('cancelled');
+    for (const value of written)
+      expect(value.messages.map((message) => message.context)).toEqual([context, context]);
+    expect(written[1]).toEqual(turn.conversation);
+    expect(services.saved).toHaveBeenCalledTimes(2);
+    expect(services.publish).toHaveBeenLastCalledWith(turn.conversation, false);
     expect(turn.conversation.messages[1].status).toBe('cancelled');
   });
 

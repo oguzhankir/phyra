@@ -159,7 +159,15 @@ export function useAssistantConversationSession({
         error: (message) => {
           if (live.current && ownerRef.current === key) setError(message);
         },
-        accepted: onAccepted,
+        accepted: () => {
+          if (
+            live.current &&
+            ownerRef.current === key &&
+            requestRef.current === running &&
+            !running.cancelled
+          )
+            onAccepted?.();
+        },
       });
     } finally {
       if (requestRef.current === running) requestRef.current = null;

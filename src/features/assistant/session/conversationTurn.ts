@@ -168,11 +168,11 @@ export async function runConversationTurn(
     accepted = true;
     ports.publish(turn.conversation, false);
     ports.saved(turn.conversation);
-    ports.accepted?.();
     if (turn.cancelled) {
       replaceAnswer({ status: 'cancelled' });
       return false;
     }
+    ports.accepted?.();
     const completion = await ports.stream(turn.request, (event) => {
       if (
         event.requestId !== turn.id ||

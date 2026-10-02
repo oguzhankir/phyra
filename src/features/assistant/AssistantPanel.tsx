@@ -7,6 +7,7 @@ import { saveAssistantSettings } from '../../platform/desktop/assistant';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import { ASSISTANT_SYSTEM, assistantContext, type AssistantStudyContext } from './context';
 import { providerNames } from './providers';
+import { DraftAcceptance } from './draftAcceptance';
 import type { AssistantViewModel } from './session/contract';
 import AssistantComposer from './AssistantComposer';
 import AssistantHistory from './AssistantHistory';
@@ -37,7 +38,13 @@ export default function AssistantPanel({
   onModalChange?: (open: boolean) => void;
 }) {
   const consumedDraft = useRef<string | null>(null);
+  const draftAcceptance = useRef(new DraftAcceptance());
+  draftAcceptance.current.adopt(study?.documentId ?? null, session.conversation.id);
   const [question, setQuestion] = useState('');
+  function updateQuestion(value: string) {
+    draftAcceptance.current.change();
+    setQuestion(value);
+  }
   const [includeStudy, setIncludeStudy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
@@ -67,7 +74,7 @@ export default function AssistantPanel({
     approval ? 'share-context' : 'integrations',
   );
   useEffect(() => {
-    setQuestion('');
+    updateQuestion('');
     setIncludeStudy(false);
     setUiError(null);
     setApproval(null);
@@ -80,7 +87,7 @@ export default function AssistantPanel({
       draft.documentId === (study?.documentId ?? null)
     ) {
       consumedDraft.current = draft.id;
-      setQuestion(draft.question);
+      updateQuestion(draft.question);
       setIncludeStudy(draft.includeStudy && !!study);
       setApproval(null);
     }
@@ -113,7 +120,8 @@ export default function AssistantPanel({
   const settings = session.configuration?.settings;
   async function transmit(text: string, context: AssistantContext) {
     setUiError(null);
-    await session.send(text.trim(), context, true, () => setQuestion(''));
+    const accepted = draftAcceptance.current.capture(() => updateQuestion(''));
+    await session.send(text.trim(), context, true, accepted);
   }
   async function submit() {
     if (!settings?.model || (!settings.local && !session.configuration?.credentialPresent)) {
@@ -234,7 +242,7 @@ export default function AssistantPanel({
           desktop={desktop}
           onSource={onSource}
           onPrompt={(text, attach) => {
-            setQuestion(text);
+            updateQuestion(text);
             setIncludeStudy(attach);
           }}
           onError={setUiError}
@@ -280,7 +288,7 @@ export default function AssistantPanel({
       )}
       <AssistantComposer
         question={question}
-        onQuestion={setQuestion}
+        onQuestion={updateQuestion}
         configuration={session.configuration}
         desktop={desktop}
         pending={session.pending}
