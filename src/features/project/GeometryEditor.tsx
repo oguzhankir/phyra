@@ -83,6 +83,28 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
               }
             />
           ))}
+        {is2D && project.geometry.kind === 'box' && (
+          <button
+            type="button"
+            className="full"
+            onClick={() => {
+              if (invalidDraftsRef.current.size) {
+                setError('Complete or revert the numeric input before opening the sketch.');
+                return;
+              }
+              edit((next) => {
+                changeGeometryKind(next, 'profile');
+                next.geometry.profile!.holes = [];
+              });
+              setSelected([]);
+              setNotice(
+                'Rectangle opened as an exact plane sketch. Existing outer boundary IDs are preserved.',
+              );
+            }}
+          >
+            Edit rectangle as sketch
+          </button>
+        )}
       </Group>
       {project.geometry.kind === 'profile' && <ProfileEditor workbench={workbench} />}
       <Group title="Display units">

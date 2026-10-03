@@ -3,31 +3,30 @@ import { useEffect, useRef } from 'react';
 import {
   Check,
   ChevronDown,
-  CircleHelp,
   FilePlus2,
   FolderOpen,
+  MessageCircle,
   Redo2,
   Save,
   Search,
   Undo2,
+  X,
 } from 'lucide-react';
 import phyraLogo from '../../../assets/phyra.svg';
-import type { Theme, ThemePreference } from './theme';
+import type { ThemePreference } from './theme';
 
 type Props = {
-  name: string;
-  path: string | null;
-  dirty: boolean;
+  hasProject: boolean;
+  canClose: boolean;
   locked: boolean;
   canUseFiles: boolean;
   canSave: boolean;
   canExport: boolean;
-  device: string;
-  theme: Theme;
   preference: ThemePreference;
   onTheme: (theme: ThemePreference) => void;
   onNew: () => void;
   onOpen: () => void;
+  onClose: () => void;
   onSave: (saveAs?: boolean) => void;
   onExport: () => void;
   onHelp: () => void;
@@ -39,6 +38,7 @@ type Props = {
   onUndo: () => void;
   onRedo: () => void;
   onCommands?: () => void;
+  onAssistantOpen?: () => void;
 };
 
 export default function WorkbenchHeader(props: Props) {
@@ -112,14 +112,16 @@ export default function WorkbenchHeader(props: Props) {
               <span className="menu-icon" />
               Save as…<kbd>⇧ ⌘/Ctrl S</kbd>
             </button>
+            <button
+              disabled={!props.hasProject || !props.canClose}
+              onClick={() => action(props.onClose)}
+            >
+              <X size={15} /> Close project<kbd>⌘/Ctrl W</kbd>
+            </button>
             <div className="menu-divider" />
             <button disabled={!props.canExport} onClick={() => action(props.onExport)}>
               <span className="menu-icon" />
               Export physical fields…
-            </button>
-            <button onClick={() => action(props.onFilesHelp)}>
-              <CircleHelp size={15} />
-              Project file help
             </button>
           </div>
         </details>
@@ -176,70 +178,37 @@ export default function WorkbenchHeader(props: Props) {
         </details>
         <button
           className="menu-help"
-          title="Contextual help · F1"
-          aria-label="Open contextual help"
+          title="Workbench help · F1"
+          aria-label="Open workbench help"
           onClick={props.onHelp}
         >
           Help
         </button>
-      </div>
-      <div className="project-title" title={props.path ?? props.name}>
-        <div className="project-name-row">
-          <strong>{props.name}</strong>
-          <span className={`project-save-status${props.dirty ? ' dirty' : ''}`}>
-            {props.dirty ? 'Unsaved changes' : props.path ? 'Saved' : 'Not saved'}
-          </span>
-        </div>
-        <span className="project-file-name">
-          {props.path ? props.path.split(/[\\/]/).pop() : 'Unsaved local project'}
-        </span>
       </div>
       <div className="header-end">
         {props.onCommands && (
           <button
             className="command-trigger"
             data-modal-focus-fallback
-            title="Find a command · Ctrl/⌘ K"
-            aria-label="Find a command"
+            title="Search actions and editors · Ctrl/⌘ K"
+            aria-label="Search actions and editors"
             onClick={props.onCommands}
           >
             <Search size={15} />
-            <span>Find…</span>
+            <span>Search actions</span>
+            <kbd>⌘/Ctrl K</kbd>
           </button>
         )}
-        <div className="file-actions">
+        {props.onAssistantOpen && (
           <button
-            title="New project · Ctrl/⌘ N"
-            aria-label="New project"
-            disabled={props.locked}
-            onClick={props.onNew}
+            className="assistant-launcher"
+            title="Open chat · Ctrl/⌘ J"
+            aria-label="Open AI assistant"
+            onClick={() => props.onAssistantOpen?.()}
           >
-            <FilePlus2 size={17} />
-            <span>New</span>
+            <MessageCircle size={18} aria-hidden="true" />
           </button>
-          <button
-            title="Open project · Ctrl/⌘ O"
-            aria-label="Open project"
-            disabled={props.locked || !props.canUseFiles}
-            onClick={props.onOpen}
-          >
-            <FolderOpen size={17} />
-            <span>Open</span>
-          </button>
-          <button
-            className="save-action"
-            title="Save project · Ctrl/⌘ S"
-            aria-label="Save project"
-            disabled={!props.canSave}
-            onClick={() => props.onSave()}
-          >
-            <Save size={17} />
-            <span>Save</span>
-          </button>
-        </div>
-        <span className="device-badge" title="Local execution device">
-          {props.device}
-        </span>
+        )}
       </div>
     </header>
   );

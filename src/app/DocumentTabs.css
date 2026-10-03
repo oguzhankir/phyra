@@ -1,0 +1,41 @@
+.project-document-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.project-document-workspace[hidden] {
+  display: none;
+}
+.project-document-tabs {
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.project-document-tab {
+  white-space: nowrap;
+}
+.project-document-tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+}
+.document-worker-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.app-shell {
+  --assistant-width: 420px;
+}
+@media (min-width: 1080px) {
+  .app-shell.with-assistant .project-document-workspace,
+  .app-shell.with-assistant .project-start-tab {
+    margin-right: var(--assistant-width);
+  }
+}
+
+.app-shell.with-assistant .properties-panel,
+.app-shell.with-assistant [aria-label='Resize properties panel'] {
+  display: none;
+}

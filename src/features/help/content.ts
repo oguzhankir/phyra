@@ -38,6 +38,9 @@ export type HelpArticleId =
   | 'errors'
   | 'scope'
   | 'learning-path'
+  | 'assistant'
+  | 'local-mcp'
+  | 'about'
   | 'scientific-references';
 
 export interface HelpSection {
@@ -109,9 +112,9 @@ export const helpArticles: readonly HelpArticle[] = [
         screenshots: [
           {
             src: '/help/preparation-workbench.jpg',
-            alt: 'Current workbench with a saved boundary set, standard camera tools and an undeformed node-distance measurement.',
+            alt: 'Preceding workbench with a saved boundary set, standard camera tools and an undeformed node-distance measurement.',
             caption:
-              'Saved boundary groups and preparation tools in the current interface. Measurement uses undeformed SI node or preview-vertex coordinates; it is not a CAD sketch dimension.',
+              'Preceding interface showing saved boundary groups and preparation tools. Measurement uses undeformed SI node or preview-vertex coordinates; it is not a CAD sketch dimension.',
           },
         ],
       },
@@ -147,13 +150,14 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'From model to results',
         steps: [
-          'Choose an editable example from Example projects, or use New to start a project.',
-          'In Prepare, review Study definition, Geometry and Material. The right inspector edits the selected task; Next moves to the following task.',
+          'On Home, choose an editable example, or use New project to enter a name and choose 3D solid or 2D plane stress. File → New project and Ctrl/⌘ N open the same dialog.',
+          'Use Save project to choose a .phyra file location. In the desktop app, Auto-save then keeps that file up to date after a short editing pause. Pending and failed writes remain visible; a successful write briefly shows confirmation. The Save button tooltip identifies the associated file.',
+          'In Prepare, review the seven-item definition checklist. Open a check to inspect Study definition, Geometry, Material, Supports, Loads, Mesh or Method. Review actions lead to an editor; they do not certify that the preceding task is complete.',
           'In Supports and Loads, select named boundaries and define their physical conditions. Check visible units before entering values.',
           'Open Solve, choose a mesh size and use Generate mesh above the viewport. Inspect the element count and minimum quality.',
           'Open Solution method and use Run FEM. The main action above the viewport follows the selected task.',
           'In Inspect, choose a field from the viewport toolbar and review physical values and reference errors. Open details for equilibrium, assumptions and provenance; use Export fields for SI CSV data.',
-          'Use Save to retain the study and current results. Find… or Ctrl/⌘ K searches existing editors and actions; F1 opens the current screen’s help.',
+          'Use Save to retain the study and compatible current results. A filled dot on the project tab marks unsaved edits; watch for pending or failed automatic writes. Find… or Ctrl/⌘ K searches existing editors and actions; F1 opens the current screen’s help.',
         ],
         screenshots: [
           {
@@ -167,7 +171,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Try Physics ML next',
         paragraphs: [
-          'Open 2D plane-stress tension, run its FEM reference, then select PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
+          'On Home, choose Plate in tension, run its FEM reference, then select PINN or Compare FEM / PINN. Comparison evaluates both methods at shared physical locations.',
         ],
         note: {
           tone: 'warning',
@@ -177,16 +181,19 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Inspect a saved reference in the browser',
         paragraphs: [
-          'Use Inspect 3D reference or Inspect 2D comparison to load recorded CPU results. Select result sources and fields, then probe values in the viewport.',
+          'On Home, use 3D FEM or 2D FEM / PINN under Explore recorded CPU results. Select result sources and fields, then probe values in the viewport.',
           'Both references contain saved fields and run provenance; the 2D comparison also contains recorded training history. Loading one starts no numerical worker. Editing physical inputs makes its fields stale; use the desktop application to mesh, solve, train and use native project files.',
         ],
       },
       {
         title: 'Read the workspace',
         paragraphs: [
+          'The Home tab contains New, Open and examples. Each open project has its own tab, file association, edits and retained result. Selecting Home or another tab keeps projects open; return through a project tab or the Open in this session list. Up to 32 documents can be open.',
+          'Use a project tab’s ×, File → Close project or Ctrl/⌘ W to close the active project. Unsaved changes offer Save, Discard and Cancel. Run and result ownership remain tied to the document that started the work.',
           'The left workflow separates Prepare, Solve and Inspect. Expand an existing stage to find its editors; the right inspector edits that selection while the central viewport shows the model or current fields.',
           'Problems keeps actionable diagnostics visible without opening every interpretation warning. Run overview retains execution evidence; training and comparison views appear only for supported studies. Advanced settings and scientific details remain available in disclosures.',
           'Light and dark themes change presentation, not physical values, units or the contour mapping.',
+          'Ctrl/⌘ J opens the assistant. F1 opens offline help for the current task; the assistant uses the same versioned help articles.',
         ],
         screenshots: [
           {
@@ -197,8 +204,15 @@ export const helpArticles: readonly HelpArticle[] = [
           },
         ],
       },
+      {
+        title: 'Check preparation before running',
+        paragraphs: [
+          'The preparation checklist covers study, geometry, material, supports, loads, mesh settings and solution method. Open an item to inspect its definition. A well-formed definition can be saved before its analysis is ready.',
+          'The support check tests whether selected boundary components remove rigid translation and rotation in the current geometry. After meshing, the numerical worker applies its own rank check using singular values of the restrained rigid modes. Neither preparation status nor equilibrium alone establishes physical accuracy.',
+        ],
+      },
     ],
-    related: ['study', 'supports', 'results', 'learning-path'],
+    related: ['study', 'supports', 'results', 'learning-path', 'assistant'],
   },
   {
     id: 'geometry',
@@ -227,6 +241,13 @@ export const helpArticles: readonly HelpArticle[] = [
           '3D: a box, an X-axis cylinder, or a connected L bracket. Bracket thickness must be smaller than both in-plane dimensions.',
           '2D: a rectangle or one closed counterclockwise profile of 2–64 straight edges/circular arcs and up to 16 enclosed circular holes in X–Y. Each arc is at most 180°. Physical thickness belongs to the study.',
           'A cylinder spans X = 0 to length, with its axis centered at Y = Z = 0.',
+        ],
+      },
+      {
+        title: 'Draft a 2D profile',
+        paragraphs: [
+          'In 2D Geometry, the sketch canvas supports bounded rectangle and polyline construction, grid snapping, and circular holes. Select an edge to convert between a line and a circular arc, edit its radius/center/direction, or move shared vertices. Work in the displayed length unit and inspect the line/arc definitions before applying them.',
+          'Apply sketch validates and replaces the project geometry; Revert discards the draft. Leaving Geometry also discards unapplied changes. Drafting does not remesh or solve. Closed-loop orientation, intersections, arc limits and hole containment must pass validation. This editor does not provide a general geometric constraint solver, feature history or imported CAD.',
         ],
       },
       {
@@ -491,13 +512,71 @@ export const helpArticles: readonly HelpArticle[] = [
     summary: 'A sparse finite-element reference for supported linear elastic solids.',
     category: 'Solve',
     kind: 'Method',
-    keywords: ['FEM', '3D', 'classical', 'equations', 'tetra4', 'solid', 'stress', 'strain', 'CPU'],
+    keywords: [
+      'FEM',
+      '3D',
+      'classical',
+      'equations',
+      'tetra4',
+      'solid',
+      'stress',
+      'strain',
+      'CPU',
+      'Lamé',
+      'Dirichlet',
+      'Neumann',
+      'weak form',
+    ],
     sections: [
       {
         title: 'Physical and numerical model',
         paragraphs: [
-          'The model enforces static equilibrium, ∇ · σ = 0, with linear isotropic stress–strain response and small strain ε = (∇u + ∇uᵀ)/2. Surface loads and prescribed displacement define the supported problem.',
+          String.raw`For displacement $\mathbf u$ in the solid domain $\Omega$, the implemented small-strain equilibrium and homogeneous isotropic law are
+
+$$
+\nabla\!\cdot\boldsymbol\sigma=\mathbf0,\qquad
+\boldsymbol\varepsilon(\mathbf u)=\tfrac12(\nabla\mathbf u+\nabla\mathbf u^{T}),\qquad
+\boldsymbol\sigma=\lambda\,\operatorname{tr}(\boldsymbol\varepsilon)\mathbf I+2\mu\boldsymbol\varepsilon.
+$$
+
+$$
+\mu=\frac{E}{2(1+\nu)},\qquad
+\lambda=\frac{E\nu}{(1+\nu)(1-2\nu)}.
+$$
+
+$E$ is Young’s modulus in Pa and $\nu$ is Poisson’s ratio. Displacement uses m; strain is dimensionless; stress uses Pa. Volume body force is zero in this implementation; no body-load editor is exposed.`,
           'First-order tetrahedra interpolate nodal displacement linearly. Stress is constant within each element and transported without smoothing. A local CPU sparse solve computes displacement; reactions are recovered at prescribed components.',
+          String.raw`The strain vector is $[\varepsilon_{xx},\varepsilon_{yy},\varepsilon_{zz},2\varepsilon_{xy},2\varepsilon_{yz},2\varepsilon_{xz}]^T$. The corresponding stress vector is $[\sigma_{xx},\sigma_{yy},\sigma_{zz},\sigma_{xy},\sigma_{yz},\sigma_{xz}]^T$: strain uses engineering shear, stress uses tensor shear.`,
+        ],
+        references: [
+          {
+            title: 'The step-8 elasticity tutorial',
+            authors: 'deal.II contributors',
+            url: 'https://dealii.org/current/doxygen/deal.II/step_8.html',
+            scope:
+              'Mathematical background for symmetric strain, isotropic elasticity and the weak form. Phyra uses its own tetrahedral implementation, not deal.II.',
+          },
+        ],
+      },
+      {
+        title: 'Boundary conditions and weak form',
+        paragraphs: [
+          String.raw`On a prescribed component $i$, $u_i=\bar u_i$ on $\Gamma_{D,i}$ (Dirichlet). On its free boundary portion, $(\boldsymbol\sigma\mathbf n)_i=\bar t_i$ (Neumann), with outward unit normal $\mathbf n$. Conditions can differ by component on the same face. A boundary component with no applied load is traction-free. Positive pressure gives $\bar{\mathbf t}=-p\mathbf n$. A total force is distributed across the selected physical area.`,
+          String.raw`For admissible test displacement $\mathbf v$ that vanishes on prescribed components, FEM solves
+
+$$
+\int_\Omega\boldsymbol\varepsilon(\mathbf v):\boldsymbol\sigma(\mathbf u)\,dV
+=\int_{\Gamma_N}\mathbf v\cdot\bar{\mathbf t}\,dA.
+$$
+
+Element assembly gives $\mathbf K_e=V_e\mathbf B_e^T\mathbf D\mathbf B_e$. Prescribed degrees of freedom are eliminated:
+
+$$
+\mathbf K_{ff}\mathbf u_f=\mathbf f_f-\mathbf K_{fc}\bar{\mathbf u}_c,\qquad
+\mathbf r_c=(\mathbf K\mathbf u-\mathbf f)_c.
+$$
+
+$\mathbf r_c$ are reactions at prescribed components. The worker rejects insufficient rigid-body restraints and unexplained sparse-solve warnings; it adds no hidden constraints.`,
         ],
       },
       {
@@ -530,7 +609,34 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'What plane stress means',
         paragraphs: [
           'The domain lies in X–Y. The model assumes σzz = τyz = τxz = 0 and solves Ux/Uy. Out-of-plane strain may still occur; plane stress is not plane strain.',
+          String.raw`The implemented plane-stress constitutive matrix uses engineering shear $\gamma_{xy}=\partial_yu_x+\partial_xu_y=2\varepsilon_{xy}$:
+
+$$
+\begin{bmatrix}\sigma_{xx}\\\sigma_{yy}\\\sigma_{xy}\end{bmatrix}
+=\frac{E}{1-\nu^2}
+\begin{bmatrix}1&\nu&0\\\nu&1&0\\0&0&(1-\nu)/2\end{bmatrix}
+\begin{bmatrix}\partial_xu_x\\\partial_yu_y\\\gamma_{xy}\end{bmatrix}.
+$$
+
+The shear stress $\sigma_{xy}$ is a tensor component; it is not doubled. For the constitutive reduction, $\varepsilon_{zz}=-\nu(\sigma_{xx}+\sigma_{yy})/E$ even though transported out-of-plane stress is zero.`,
           'First-order triangles assembled through scikit-fem provide the FEM discretization. Thickness scales stiffness, edge-load area and strain energy. It is an explicit physical input, not a display setting.',
+          String.raw`For constant physical thickness $h$ and the in-plane domain $\Omega_2$, the weak form is
+
+$$
+h\int_{\Omega_2}\boldsymbol\varepsilon(\mathbf v):\boldsymbol\sigma(\mathbf u)\,dA
+=h\int_{\Gamma_N}\mathbf v\cdot\bar{\mathbf t}\,ds.
+$$
+
+The tensor contraction counts both symmetric shear entries. With the engineering-strain vector, the same integrand is $\boldsymbol\varepsilon_{\mathrm{eng}}(\mathbf v)^T\mathbf D_{\mathrm{ps}}\boldsymbol\varepsilon_{\mathrm{eng}}(\mathbf u)$. There is no volume body-force term.`,
+        ],
+        references: [
+          {
+            title: 'scikit-fem API documentation',
+            authors: 'scikit-fem contributors',
+            url: 'https://scikit-fem.readthedocs.io/en/latest/api.html',
+            scope:
+              'Basis, vector elements, bilinear forms and facet quadrature used by the plane-stress adapter. The explicit matrix and thickness conventions above describe Phyra’s implementation.',
+          },
         ],
       },
       {
@@ -588,9 +694,26 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        title: 'Analytical stress and reference assumptions',
+        paragraphs: [
+          String.raw`The independent Kirsch field describes an infinite homogeneous isotropic plane-stress plate with a traction-free circular cavity of radius $a$, under remote X tension $T$. Set $r=\|\mathbf x-\mathbf c\|$, polar angle $\theta$ measured from +X, and $q=a^2/r^2$:
+
+$$
+\begin{aligned}
+\sigma_{rr}&=\tfrac T2\left[(1-q)+(1-4q+3q^2)\cos2\theta\right],\\
+\sigma_{\theta\theta}&=\tfrac T2\left[(1+q)-(1+3q^2)\cos2\theta\right],\\
+\sigma_{r\theta}&=-\tfrac T2(1+2q-3q^2)\sin2\theta.
+\end{aligned}
+$$
+
+At $r=a$, radial and shear traction vanish. The classical maximum hoop stress is $3T$ for remote uniaxial tension; a coarse FEM contour need not attain that analytical limit.`,
+          'Phyra restricts this field to the finite second-quadrant domain using exact σn on its outer edges and component symmetry supports. This is not a finite plate loaded with uniform edge tension. The physical analytical reference is outside the cavity; its evaluator is undefined at the cavity center. Reference eligibility requires matching geometry and conditions.',
+        ],
+      },
+      {
         title: 'Edit, solve and inspect',
         steps: [
-          'Open the Kirsch quarter example. Inspect the clockwise circular cutout arc in the counterclockwise outer loop. Bottom uy = 0 and vertical ux = 0 are symmetry conditions; the cutout is free.',
+          'On Home, choose Plate with a hole for the Kirsch quarter example. Inspect the clockwise circular cutout arc in the counterclockwise outer loop. Bottom uy = 0 and vertical ux = 0 are symmetry conditions; the cutout is free.',
           'Inspect Loads: the outer left and top edges use the exact spatial vector traction σn, not uniform tension on both edges. Review the stated center, radius and remote tension.',
           'Generate a mesh, then run FEM. Inspect displacement/stress, reactions, force/moment balance and Independent Kirsch reference in Results.',
           'Reduce target and boundary sizes and repeat. Compare area-weighted displacement/stress errors across at least three meshes. Free-hole traction from first-order element stress also needs refinement.',
@@ -631,6 +754,67 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'What is trained',
         paragraphs: [
           'A displacement network learns the supported rectangular plane-stress problem. Automatic differentiation evaluates equilibrium and boundary terms; training does not use FEM displacement labels. Prescribed displacement is enforced through the network construction and remaining physical conditions enter training losses.',
+        ],
+      },
+      {
+        title: 'Physical normalization and autograd residual',
+        paragraphs: [
+          String.raw`For the rectangular domain, let $L$ be its largest in-plane span, $E$ the modulus and $u_D$ the largest absolute prescribed component. The current scales are
+
+$$
+S=\max\left(\max_{\partial\Omega}\|\bar{\mathbf t}\|,\frac{E u_D}{L},E\,10^{-8}\right),\qquad
+U=\frac{SL}{E},\qquad
+\hat{\mathbf x}=\frac{\mathbf x-\mathbf x_{\min}}L,\qquad
+\hat{\mathbf u}=\frac{\mathbf u}U.
+$$
+
+$S$ has units Pa and $U$ has units m. With derivatives taken in $\hat{\mathbf x}$, the normalized engineering strain is $[\partial_{\hat x}\hat u_x,\partial_{\hat y}\hat u_y,\partial_{\hat y}\hat u_x+\partial_{\hat x}\hat u_y]^T$ and $\hat{\boldsymbol\sigma}=(\mathbf D_{\mathrm{ps}}/E)\hat{\boldsymbol\varepsilon}_{\mathrm{eng}}$. PyTorch autograd evaluates first displacement derivatives and second derivatives through stress.`,
+          String.raw`The strong-form equilibrium residual is
+
+$$
+\hat{\mathbf r}=\begin{bmatrix}
+\partial_{\hat x}\hat\sigma_{xx}+\partial_{\hat y}\hat\sigma_{xy}\\
+\partial_{\hat x}\hat\sigma_{xy}+\partial_{\hat y}\hat\sigma_{yy}
+\end{bmatrix}.
+$$
+
+The tanh network receives each coordinate mapped to $[-1,1]$. Its displacement construction combines compatible constant/linear prescribed-displacement lifting with products of edge-distance factors. These factors vanish on the prescribed edges, enforcing supported constant component values exactly.`,
+        ],
+        references: [
+          {
+            title:
+              'Physics-informed neural networks: a deep learning framework for forward and inverse PDE problems',
+            authors: 'M. Raissi, P. Perdikaris and G. E. Karniadakis',
+            year: 2019,
+            url: 'https://doi.org/10.1016/j.jcp.2018.10.045',
+            scope:
+              'General strong-form residual method adapted to the narrower Phyra elasticity problem; not a reproduction of the paper experiments.',
+          },
+          {
+            title: 'Automatic differentiation with torch.autograd',
+            authors: 'PyTorch contributors',
+            url: 'https://docs.pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html',
+            scope:
+              'Framework derivatives used for displacement gradients and equilibrium residuals.',
+          },
+        ],
+      },
+      {
+        title: 'Exact loss convention',
+        paragraphs: [
+          String.raw`For $N$ interior points and $M$ boundary points, let $C_{ji}$ be 1 when boundary component $i$ is prescribed, and $F_{ji}=1-C_{ji}$. Traction and prescribed displacement are scaled by $S$ and $U$:
+
+$$
+\begin{aligned}
+\mathcal L_{\mathrm{PDE}}&=\frac1{2N}\sum_{j=1}^N\sum_{i=1}^2\hat r_{ji}^{\,2},\\
+\mathcal L_t&=\frac{\sum_{j,i}F_{ji}\left[(\hat{\boldsymbol\sigma}_j\mathbf n_j)_i-\hat t_{ji}\right]^2}{\max(1,\sum_{j,i}F_{ji})},\\
+\mathcal L_u&=\frac{\sum_{j,i}C_{ji}(\hat u_{ji}-\hat u_{D,ji})^2}{\max(1,\sum_{j,i}C_{ji})},\\
+\mathcal L_{\mathrm{boundary}}&=\mathcal L_t+\mathcal L_u,\qquad
+\mathcal L=\mathcal L_{\mathrm{PDE}}+\mathcal L_{\mathrm{boundary}}.
+\end{aligned}
+$$
+
+All weights are 1. Traction is penalized only on free components; the displacement loss checks the prescribed components despite their exact lifting. Adam minimizes this dimensionless objective at the seeded training samples. FEM fields do not enter the loss.`,
         ],
       },
       {
@@ -837,8 +1021,9 @@ export const helpArticles: readonly HelpArticle[] = [
   },
   {
     id: 'files',
-    title: 'Save, reopen and export',
-    summary: 'Keep project definitions and physical fields with explicit units and run identity.',
+    title: 'Save, close, recover and export',
+    summary:
+      'Choose a project file, understand auto-save and recovery, and retain physical fields.',
     category: 'Inspect',
     kind: 'Guide',
     keywords: [
@@ -854,23 +1039,42 @@ export const helpArticles: readonly HelpArticle[] = [
       'checkpoint',
       'recovery',
       'autosave',
+      'close',
+      'discard',
+      'tab',
       'crash',
     ],
     sections: [
       {
         title: 'Project files',
         paragraphs: [
-          'Save or Save as creates a .phyra archive with the project definition and available compatible cached fields. Reopening validates metadata and binary arrays before displaying results.',
+          'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
           'Versions 1, 2 and 3 are validated before migrating to version 4. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
       {
+        title: 'Auto-save to the project file',
+        paragraphs: [
+          'In the desktop app, Auto-save is on by default. After the first Save associates a file, validated changes are written to that file after a 1.5-second editing pause. Pending, saving, paused and failed states remain visible; successful saves briefly show confirmation. The Save button tooltip identifies the associated file.',
+          'Turn Auto-save off in the project bar to save manually. Invalid numeric drafts pause automatic writes; complete or revert them before saving. Auto-save also waits while an analysis, file operation or project confirmation is active.',
+          'If an automatic write fails, the project remains open with unsaved changes and a failure message. Use Save to retry. A browser preview cannot write native project files.',
+        ],
+      },
+      {
+        title: 'Home, tabs and closing',
+        paragraphs: [
+          'Home contains examples and project-start actions. Switching to Home or another project preserves each open document’s definition, edit history, file association and retained result. Up to 32 project tabs are supported. Changing tabs does not trigger a save; enabled Auto-save continues independently.',
+          'Close the project with its tab’s ×, File → Close project or Ctrl/⌘ W. A saved project closes directly. A dirty project offers Save, Discard and Cancel: Save closes only after a successful write, Discard closes without retaining those changes, and Cancel keeps the project open.',
+          'An automatic write already in progress finishes before closing is considered. New and Open create another document tab. Cancelling the first file-location dialog keeps the draft open. Each document owns its execution and result identity; a run started in another tab cannot publish into the active project.',
+        ],
+      },
+      {
         title: 'Recover an unsaved project',
         paragraphs: [
-          'The desktop preserves a valid, dirty project definition after a short editing pause. Recovery pauses while numeric drafts or the project definition are invalid; save manually if recovery is unavailable.',
+          'Recovery is separate from Auto-save. The desktop keeps a recovery copy of a valid, dirty definition after a short editing pause, including drafts that have no project file yet. Recovery pauses while numeric drafts or the definition are invalid; save manually if recovery is unavailable.',
           'At a later launch, review available copies and choose Restore, Discard copy or Review later. Active desktop sessions remain separate. Restore opens an unsaved definition and clears its original file association; it does not overwrite that file.',
-          'Recovery contains no result buffers, trained weights or optimizer state. Recompute the restored study, then use Save as to choose its project file. A recovery copy is not a substitute for a saved .phyra archive or backup.',
+          'Recovery contains no result buffers, trained weights or optimizer state. Recompute the restored study, then use Save to choose its project file. Auto-save starts after that first Save. A recovery copy is not a substitute for a saved .phyra archive or backup.',
         ],
       },
       {
@@ -1029,6 +1233,146 @@ export const helpArticles: readonly HelpArticle[] = [
     related: ['supports', 'mesh', 'devices'],
   },
   {
+    id: 'assistant',
+    title: 'Ask the documentation and study assistant',
+    summary: 'Connect your own provider, inspect the context, and keep explanations traceable.',
+    category: 'Get started',
+    kind: 'Guide',
+    keywords: [
+      'AI',
+      'assistant',
+      'chat',
+      'BYOK',
+      'Gemini',
+      'OpenAI',
+      'Anthropic',
+      'Ollama',
+      'API',
+      'key',
+      'provider',
+      'model',
+      'context',
+      'citation',
+      'Ctrl J',
+    ],
+    sections: [
+      {
+        title: 'Connect and select a model',
+        steps: [
+          'Open Chat with the speech-bubble icon or Ctrl/⌘ J, then open Models & connections.',
+          'Choose Gemini, OpenAI, Anthropic, an OpenAI-compatible HTTPS endpoint, or a user-managed Ollama/local loopback endpoint. Remote connections use your own provider key.',
+          'Choose a featured model, paste your key and Connect. The app checks the models reported by that account before applying a first connection. Additional reported models are selectable from a list; no model ID text entry is needed. Use the composer model selector for subsequent model changes. Discovery does not prove every listed model supports this text-stream request.',
+          'Choose Help only or This study in the composer and inspect Context. The first remote send asks you to approve the conversation, provider origin and data scope. Continued messages reuse that approval; changing the recipient or expanding from help to study needs approval again.',
+        ],
+        paragraphs: [
+          'The implemented transport supports streaming text: Gemini streamGenerateContent, OpenAI Responses, Anthropic Messages, and OpenAI-compatible Chat Completions for compatible/Ollama endpoints. This assistant does not invoke model tools, browse the web, edit a definition, start numerical work or export fields. Model limits and usage are shown only when the provider supplies them; pricing and cost estimates are unknown.',
+          'Local endpoints must use an explicit loopback address. Remote endpoints require HTTPS; named providers use their fixed official endpoints. Authentication is added by the native layer. Redirects are blocked. Keys are scoped by provider and endpoint origin, and the interface receives only credential-presence status.',
+        ],
+      },
+      {
+        title: 'What the context contains',
+        paragraphs: [
+          'Documentation context retrieves articles from this installed application’s offline help. Study context adds the exact SI definition, preparation status, available run/result summaries, measured diagnostics and project/study/revision identity. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
+          'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. The preview reports included and omitted turns. Those messages may contain an earlier study explanation. Review the context and start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
+          'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source and inspect Context sent for the original snapshot. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
+        ],
+        note: {
+          tone: 'warning',
+          text: 'An answer describes the context supplied for that turn. Editing a study or changing tabs does not update earlier answers. A citation or a preparation check is not a physical guarantee; check current solver provenance, independent references and numerical diagnostics.',
+        },
+      },
+      {
+        title: 'Local history and cancellation',
+        paragraphs: [
+          'Conversation history is stored separately from .phyra archives in the application’s local assistant storage, in version 1 format. The bounds are 160 messages and 2 MiB per conversation, 100 conversations and 32 MiB total history. History may contain private study definitions and summaries you chose to attach; it is not encrypted project backup.',
+          'The app saves the question before contacting a provider. If this initial write fails, the question stays in the composer and no remote request starts. If the response cannot be saved, its text stays in the panel with Retry save. Repair credential authorization or local storage, then retry. Restore saved copy requires confirmation before discarding unsaved response changes; a failed restore keeps the text. A conversation opened in two document tabs shares its latest text. A response reaching the local history limit stops with its partial text marked cancelled.',
+          'Provider connections persist across application restarts. Models & connections → Disconnect removes the active provider key and model selection after confirmation, preserving local conversations and projects. Removing a stored key does not revoke it at the provider. On macOS, changed ad hoc development builds can require renewed Keychain authorization; a stable signing identity is part of the packaged-product setup.',
+          'Stop cancels the native provider stream and preserves the visible partial response with its cancellation status. A provider may already have processed submitted input; cancellation does not establish a billing refund. Delete a conversation through the history control when it is no longer wanted.',
+          'Offline help and all numerical analysis remain available without a provider account or key. The browser preview exposes offline help; provider connections and native credential storage require the desktop app.',
+        ],
+      },
+    ],
+    related: ['local-mcp', 'scope', 'runs', 'scientific-references', 'about'],
+  },
+  {
+    id: 'local-mcp',
+    title: 'Grant local MCP inspection access',
+    summary: 'Expose selected read-only snapshots to a local stdio client with revocable consent.',
+    category: 'Reference',
+    kind: 'Guide',
+    keywords: [
+      'MCP',
+      'stdio',
+      'protocol',
+      'permission',
+      'scope',
+      'audit',
+      'lease',
+      'client',
+      'read only',
+      '2025-11-25',
+    ],
+    sections: [
+      {
+        title: 'Choose the scope and register a client',
+        steps: [
+          'Open Integrations in the chat header. Phyra MCP offers Documentation access or Current project access, which includes help, the active definition and run summary.',
+          'Enable MCP for the selected access level. Copy configuration into a local MCP client that supports stdio; the configuration uses the application-selected executable and session arguments.',
+          'Restart the client for a new session. Open Access log to inspect allowed and denied requests. Disconnect in Phyra to revoke that access.',
+        ],
+        paragraphs: [
+          'The implemented server is pinned to MCP protocol 2025-11-25. It exposes versioned capability/help/project/run inspection and resources, with project/revision and run provenance where the granted scope permits them. Access follows the active project tab; the client should inspect each returned identity before using a snapshot.',
+          'Consent is native-enforced and refreshed by the active application session. Its lease expires after 90 seconds without refresh, and closing/releasing the session revokes it. Enabling access authorizes that local client to read the selected snapshots until revoked or expired; a client’s own provider may handle data under its separate configuration.',
+          'The current MCP surface has no model mutations, geometry changes, mesh/run/export actions, arbitrary file reads, general shell or public network listener. Approved agent workflows and parameter sweeps remain future work. Read-only access does not establish that an external client’s interpretation is scientifically correct.',
+        ],
+      },
+    ],
+    related: ['assistant', 'scope', 'files', 'runs'],
+  },
+  {
+    id: 'about',
+    title: 'Source, license and product evidence',
+    summary: 'Find the product source and distinguish implementation from verification evidence.',
+    category: 'Reference',
+    kind: 'Reference',
+    keywords: [
+      'about',
+      'GitHub',
+      'source',
+      'GPL',
+      'license',
+      'copyright',
+      'notice',
+      'evidence',
+      'screenshots',
+    ],
+    sections: [
+      {
+        title: 'Source and license',
+        paragraphs: [
+          'Phyra is distributed under GPL-3.0-or-later. The source repository contains LICENSE, canonical README/CONTRIBUTING/ROADMAP/SECURITY and citation metadata, plus required upstream notices in notices/THIRD_PARTY.txt. Target-specific redistribution and Corresponding Source obligations remain relevant to packaged binaries.',
+          'Provider marks identify optional connections. The four bundled SVG marks are a subset of @lobehub/icons-static-svg 1.95.1, with its MIT license and provenance notice under public/providers. Names and marks belong to their respective owners; their appearance does not imply endorsement.',
+        ],
+        references: [
+          {
+            title: 'Phyra source repository',
+            authors: 'Oğuzhan Kır and contributors',
+            url: 'https://github.com/oguzhankir/phyra',
+            scope:
+              'Product source, license, canonical documentation, issue reporting and implementation evidence.',
+          },
+        ],
+      },
+      {
+        title: 'Evidence and media',
+        paragraphs: [
+          'The help screenshots and promotional video record a preceding interface iteration using genuine saved CPU references. They do not show the new tab, sketch or assistant workflows. Packaged checks, actual device tests and clean-machine installation are distinct evidence; a configured adapter or test fixture does not establish live provider or platform verification.',
+        ],
+      },
+    ],
+    related: ['scope', 'scientific-references', 'assistant'],
+  },
+  {
     id: 'scope',
     title: 'Supported physics and future work',
     summary:
@@ -1056,6 +1400,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Homogeneous isotropic small-strain linear static elasticity: supported 3D primitives and bounded line/arc/circular-hole profiles with FEM; rectangular 2D plane stress with FEM and experimental PINN.',
           'Global component displacement supports, distributed total force and inward/outward pressure on supported boundaries; typed affine/Kirsch spatial traction for 2D FEM.',
           'Local offline execution, same-location comparison, physical fields, safe project persistence, CSV export and owned-worker cancellation.',
+          'Bounded 2D profile drafting, a preparation checklist, independent project tabs, optional BYOK documentation/study chat and opt-in local read-only MCP snapshots.',
         ],
       },
       {
@@ -1065,7 +1410,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Thermal/fluid, plane strain, dynamics, nonlinear materials, contact and coupled physics.',
           'Reusable learned operators, inverse studies, validated uncertainty and resumable model checkpoints.',
           'Optional external Physics ML framework adapters and distributed/HPC execution. Current local device capability does not establish framework or distributed support.',
-          'Optional BYOK chat and controlled engineering-assistant workflows. This help panel is offline documentation, not AI.',
+          'Assistant-driven model changes, solver actions, approved parameter sweeps and research agents. Current chat explains supplied documentation/study summaries; local MCP exposes read-only snapshots.',
         ],
         note: {
           tone: 'info',
@@ -1073,7 +1418,7 @@ export const helpArticles: readonly HelpArticle[] = [
         },
       },
     ],
-    related: ['study', 'fem-3d', 'pinn', 'scientific-references'],
+    related: ['study', 'fem-3d', 'pinn', 'assistant', 'local-mcp', 'scientific-references'],
   },
   {
     id: 'learning-path',
@@ -1086,7 +1431,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: '1 · Define the problem before the network',
         paragraphs: [
-          'Open 2D plane-stress tension. Read geometry, physical thickness, Young’s modulus, Poisson’s ratio, supports and total force. These define an in-plane, homogeneous, small-strain equilibrium problem; selecting a learning method does not change that problem.',
+          'On Home, choose Plate in tension. Read geometry, physical thickness, Young’s modulus, Poisson’s ratio, supports and total force. These define an in-plane, homogeneous, small-strain equilibrium problem; selecting a learning method does not change that problem.',
         ],
         steps: [
           'Run Classical FEM and inspect displacement, element stress, reactions and force/moment balance.',

@@ -1,0 +1,11 @@
+Provider identification marks
+
+The following SVG files are a subset of @lobehub/icons-static-svg 1.95.1:
+anthropic.svg, gemini-color.svg, ollama.svg and openai.svg.
+
+Upstream: https://github.com/lobehub/lobe-icons
+Copyright (c) 2023 LobeHub. The upstream MIT license is retained in LICENSE
+in this directory. These assets do not change Phyra's GPL-3.0-or-later license.
+
+Provider names and marks belong to their respective owners. They identify
+optional user-configured connections and do not imply endorsement of Phyra.

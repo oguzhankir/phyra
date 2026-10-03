@@ -1,4 +1,4 @@
-import { CircleHelp, LockKeyhole } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { sectionTitles } from '../workbench/navigation';
 import GeometryEditor from './GeometryEditor';
 import NamedSelectionEditor from './NamedSelectionEditor';
@@ -11,28 +11,22 @@ import StudyEditor from './StudyEditor';
 import SupportEditor from './SupportEditor';
 
 import type { ProjectInspectorModel } from './model';
-export default function PropertyInspector({ workbench }: { workbench: ProjectInspectorModel }) {
-  const { rightWidth, section, showHelp, locked, project, fileBusy, busy, dirty } = workbench;
+export default function PropertyInspector({
+  workbench,
+  panelId = 'workbench-properties-panel',
+}: {
+  workbench: ProjectInspectorModel;
+  panelId?: string;
+}) {
+  const { rightWidth, section, locked, project, busy } = workbench;
   return (
-    <aside
-      id="workbench-properties-panel"
-      className="properties-panel"
-      style={{ width: rightWidth }}
-    >
+    <aside id={panelId} className="properties-panel" style={{ width: rightWidth }}>
       <div className="panel-heading">
         <span>
           {section === 'results'
             ? 'Result details'
             : `Edit ${sectionTitles[section].toLowerCase()}`}
         </span>
-        <button
-          className="property-help"
-          aria-label={`Help with ${sectionTitles[section].toLowerCase()}`}
-          title="Help with this editor"
-          onClick={() => showHelp()}
-        >
-          <CircleHelp size={16} />
-        </button>
       </div>
       <div className="properties-scroll">
         <fieldset disabled={locked} key={`${project.id}:${project.displayUnits}`}>
@@ -47,24 +41,11 @@ export default function PropertyInspector({ workbench }: { workbench: ProjectIns
         </fieldset>
         {section === 'results' && <ResultsInspector workbench={workbench} />}
       </div>
-      <div className="properties-footer">
-        {fileBusy ? (
-          <>
-            <LockKeyhole size={12} />
-            Project file operation in progress
-          </>
-        ) : busy ? (
-          <>
-            <LockKeyhole size={12} />
-            Inputs locked while worker runs
-          </>
-        ) : (
-          <>
-            REV {project.revision}
-            <span>{dirty ? 'Modified' : 'Unchanged'}</span>
-          </>
-        )}
-      </div>
+      {busy && (
+        <div className="properties-footer">
+          <LockKeyhole size={12} /> Inputs locked while worker runs
+        </div>
+      )}
     </aside>
   );
 }

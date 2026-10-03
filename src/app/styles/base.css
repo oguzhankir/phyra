@@ -93,3 +93,19 @@ p {
   display: flex;
   flex-direction: column;
 }
+.app-shell.home-open {
+  min-width: 0;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+  min-height: 28px;
+}
+.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+}

@@ -1,10 +1,14 @@
 use super::{
     events::RunRequestId,
-    state::{cancel_child, owned_directory, retain_job, EngineState},
+    state::{
+        activate_result_owner, cancel_child, owned_document_directory, retain_document_job,
+        EngineState,
+    },
     worker::{job_directory, remember_failure, worker},
 };
 use crate::{
     platform::files::{read_bounded, MAX_BLOB},
+    project::state::{document_identity, ProjectState},
     verification::trace_verification,
 };
 use serde_json::Value;
@@ -16,6 +20,8 @@ pub(crate) async fn run_job(
     operation: String,
     project: Value,
     request_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<Value, String> {
     if !matches!(operation.as_str(), "mesh" | "solve" | "train" | "compare") {
         return Err("Unsupported analysis operation".into());
@@ -23,6 +29,14 @@ pub(crate) async fn run_job(
     let request_id = RunRequestId::parse(request_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EngineState>();
+        let document = document_identity(document_id.as_deref())?;
+        let project_state = app.state::<ProjectState>();
+        {
+            let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+            documents.activate_owner(owner_id.as_deref())?;
+            documents.require_open(document)?;
+            activate_result_owner(&state, owner_id.as_deref())?;
+        }
         let directory = job_directory(&app)?;
         let id = uuid::Uuid::new_v4().to_string();
         let result = worker(
@@ -37,7 +51,16 @@ pub(crate) async fn run_job(
         match result {
             Ok(manifest) => {
                 trace_verification("run-job-retaining-result");
-                retain_job(&state, id, directory)?;
+                let publication = (|| {
+                    let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+                    documents.require_owner(owner_id.as_deref())?;
+                    documents.require_open(document)?;
+                    retain_document_job(&state, document, id, directory.clone())
+                })();
+                if let Err(error) = publication {
+                    let _ = fs::remove_dir_all(directory);
+                    return Err(error);
+                }
                 trace_verification("run-job-returned");
                 Ok(manifest)
             }
@@ -90,11 +113,18 @@ pub(crate) fn cancel_job(state: State<EngineState>) -> Result<(), String> {
 pub(crate) async fn read_buffer(
     app: tauri::AppHandle,
     job_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<tauri::ipc::Response, String> {
     trace_verification("read-buffer-requested");
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EngineState>();
-        let path = owned_directory(&state, &job_id)?.join("buffer.bin");
+        let document = document_identity(document_id.as_deref())?;
+        let project_state = app.state::<ProjectState>();
+        let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+        documents.require_owner(owner_id.as_deref())?;
+        documents.require_open(document)?;
+        let path = owned_document_directory(&state, document, &job_id)?.join("buffer.bin");
         trace_verification("read-buffer-reading");
         let bytes = read_bounded(&path, MAX_BLOB)?;
         trace_verification(&format!("read-buffer-returned:{}", bytes.len()));

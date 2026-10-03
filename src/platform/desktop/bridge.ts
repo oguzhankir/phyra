@@ -5,6 +5,7 @@ import {
 } from '../../domain/contracts/metadata';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { recoveryOwnerId } from './recovery';
 import type {
   Project,
   Manifest,
@@ -25,8 +26,15 @@ export async function runJob(
   operation: Operation,
   project: Project,
   requestId: string,
+  documentId?: string,
 ): Promise<Manifest> {
-  const manifest = await invoke<Manifest>('run_job', { operation, project, requestId });
+  const manifest = await invoke<Manifest>('run_job', {
+    operation,
+    project,
+    requestId,
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+  });
   assertTrainingMetadata(manifest);
   assertReferenceMetadata(manifest);
   return manifest;
@@ -43,45 +51,77 @@ export function subscribeMetrics(
     callback(event.payload),
   );
 }
-export async function readBuffer(jobId: string): Promise<ArrayBuffer> {
-  const value = await invoke<ArrayBuffer | number[]>('read_buffer', { jobId });
+export async function readBuffer(jobId: string, documentId?: string): Promise<ArrayBuffer> {
+  const value = await invoke<ArrayBuffer | number[]>('read_buffer', {
+    jobId,
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+  });
   return value instanceof ArrayBuffer ? value : new Uint8Array(value).buffer;
 }
 export function cancelJob(): Promise<void> {
   return invoke('cancel_job');
 }
-export async function openProject(): Promise<{
+export type OpenedProject = {
   project: Project;
   path: string;
   manifest?: Manifest;
   buffer?: ArrayBuffer;
   notice?: string;
-} | null> {
-  const opened = await invoke<{
-    project: Project;
-    path: string;
-    manifest?: Manifest;
-    notice?: string;
-  } | null>('open_project');
+};
+export type ExistingProjectDocument = { existingDocumentId: string; path: string };
+export async function openProject(
+  documentId?: string,
+): Promise<OpenedProject | ExistingProjectDocument | null> {
+  const opened = await invoke<
+    | {
+        project: Project;
+        path: string;
+        manifest?: Manifest;
+        notice?: string;
+      }
+    | ExistingProjectDocument
+    | null
+  >('open_project', {
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+  });
   if (!opened) return null;
+  if ('existingDocumentId' in opened) return opened;
   if (opened.manifest) {
     assertTrainingMetadata(opened.manifest);
     assertReferenceMetadata(opened.manifest);
   }
   return {
     ...opened,
-    buffer: opened.manifest ? await readBuffer(opened.manifest.jobId) : undefined,
+    buffer: opened.manifest ? await readBuffer(opened.manifest.jobId, documentId) : undefined,
   };
 }
 export function saveProject(
   project: Project,
   jobId?: string,
   saveAs = false,
+  automatic = false,
+  documentId?: string,
 ): Promise<string | null> {
-  return invoke('save_project', { project, jobId: jobId ?? null, saveAs });
+  return invoke('save_project', {
+    project,
+    jobId: jobId ?? null,
+    saveAs,
+    automatic,
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+  });
 }
-export function exportResults(jobId: string): Promise<string | null> {
-  return invoke('export_results', { jobId });
+export function closeProject(documentId: string): Promise<void> {
+  return invoke('close_project', { documentId, ownerId: recoveryOwnerId });
+}
+export function exportResults(jobId: string, documentId?: string): Promise<string | null> {
+  return invoke('export_results', {
+    jobId,
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+  });
 }
 export function subscribeProgress(
   callback: (value: ExecutionEvent<Progress>) => void,

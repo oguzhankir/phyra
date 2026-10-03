@@ -12,11 +12,12 @@ import {
   Settings2,
 } from 'lucide-react';
 import type { Project } from '../../domain/contracts/types';
+import { prepareStudy } from '../../domain/project/readiness';
 import { selectionIsCompatible } from '../../domain/project/namedSelections';
-import type { ExampleId } from '../examples/projects';
 import { stageForSection, workflowStages, type Section } from './navigation';
 
 type Props = {
+  documentId?: string;
   project: Project;
   section: Section;
   constraintId: string | null;
@@ -28,7 +29,6 @@ type Props = {
   solved: boolean;
   stale: boolean;
   onSection: (section: Section, id?: string) => void;
-  onExample: (id: ExampleId) => void;
   onAddSupport: () => void;
   onAddLoad: () => void;
   onAddSelection: () => void;
@@ -36,8 +36,11 @@ type Props = {
 
 export default function ModelTree(props: Props) {
   const { project, section, onSection } = props;
+  const stagePanelId = (stageId: string) =>
+    `workflow-stage-${props.documentId ? `${props.documentId}-` : ''}${stageId}-sections`;
   const is2D = project.study.dimension === '2d';
   const activeStage = stageForSection(section);
+  const preparation = prepareStudy(project);
   const resultStatus = props.solved
     ? 'Current solution'
     : props.stale
@@ -60,32 +63,7 @@ export default function ModelTree(props: Props) {
   return (
     <>
       <div className="panel-heading">
-        <span>Study workflow</span>
-      </div>
-      <div className="example-picker">
-        <label className="example-picker-label" htmlFor="workbench-example">
-          Example projects
-        </label>
-        <select
-          id="workbench-example"
-          aria-label="Load example"
-          disabled={props.locked}
-          value=""
-          onChange={(event) => {
-            if (event.target.value) props.onExample(event.target.value as ExampleId);
-          }}
-        >
-          <option value="">Choose an example…</option>
-          <option value="plane-stress-tension">2D plane-stress tension</option>
-          <option value="kirsch-quarter">Kirsch quarter plate · SI realization</option>
-          <option value="cantilever">3D cantilever beam</option>
-          <option value="cylinder">Axial cylinder</option>
-          <option value="bracket">L bracket</option>
-          <option value="extension">Prescribed extension</option>
-        </select>
-        <p className="model-starter-hint">
-          Editable starter models with illustrative material values.
-        </p>
+        <span>Model</span>
       </div>
       <nav className="model-tree workflow-stages" aria-label="Study workflow">
         {workflowStages.map((stage) => {
@@ -96,7 +74,7 @@ export default function ModelTree(props: Props) {
                 className={`workflow-stage ${active ? 'active' : ''}`}
                 aria-current={active ? 'step' : undefined}
                 aria-expanded={active}
-                aria-controls={`workflow-stage-${stage.id}-sections`}
+                aria-controls={stagePanelId(stage.id)}
                 title={`${stage.title}: ${stage.description}`}
                 onClick={() => onSection(stage.entrySection)}
               >
@@ -104,6 +82,13 @@ export default function ModelTree(props: Props) {
                 <span className="workflow-stage-copy">
                   <strong>{stage.title}</strong>
                   <small>{stage.description}</small>
+                  {stage.id === 'prepare' && (
+                    <span className="workflow-stage-status">
+                      {preparation.canRun
+                        ? 'Definition complete'
+                        : `${preparation.completed}/${preparation.total} checks complete`}
+                    </span>
+                  )}
                   {stage.id === 'inspect' && (
                     <span className={`workflow-stage-status ${props.stale ? 'stale' : ''}`}>
                       {resultStatus}
@@ -113,7 +98,7 @@ export default function ModelTree(props: Props) {
                 <ChevronRight size={13} aria-hidden="true" />
               </button>
               <div
-                id={`workflow-stage-${stage.id}-sections`}
+                id={stagePanelId(stage.id)}
                 className="stage-sections"
                 data-stage={stage.id}
                 hidden={!active}
@@ -159,6 +144,7 @@ export default function ModelTree(props: Props) {
                           section === 'selections' && !props.namedSelectionId ? 'page' : undefined
                         }
                         onClick={() => onSection('selections')}
+                        aria-expanded={section === 'selections'}
                       >
                         <Bookmark size={15} />
                         Named boundaries <span>{project.namedSelections.length}</span>
@@ -176,29 +162,30 @@ export default function ModelTree(props: Props) {
                         <Plus size={14} />
                       </button>
                     </div>
-                    {project.namedSelections.map((item) => (
-                      <button
-                        key={item.id}
-                        className={`tree-row child ${section === 'selections' && props.namedSelectionId === item.id ? 'active' : ''}`}
-                        aria-current={
-                          section === 'selections' && props.namedSelectionId === item.id
-                            ? 'page'
-                            : undefined
-                        }
-                        onClick={() => onSection('selections', item.id)}
-                        title={item.name}
-                      >
-                        <span className="tree-branch" />
-                        <span>
-                          {item.name}
-                          <small>
-                            {selectionIsCompatible(project, item)
-                              ? `${item.regions.length} ${item.regions.length === 1 ? 'boundary' : 'boundaries'}`
-                              : 'Repair required · geometry changed'}
-                          </small>
-                        </span>
-                      </button>
-                    ))}
+                    {section === 'selections' &&
+                      project.namedSelections.map((item) => (
+                        <button
+                          key={item.id}
+                          className={`tree-row child ${section === 'selections' && props.namedSelectionId === item.id ? 'active' : ''}`}
+                          aria-current={
+                            section === 'selections' && props.namedSelectionId === item.id
+                              ? 'page'
+                              : undefined
+                          }
+                          onClick={() => onSection('selections', item.id)}
+                          title={item.name}
+                        >
+                          <span className="tree-branch" />
+                          <span>
+                            {item.name}
+                            <small>
+                              {selectionIsCompatible(project, item)
+                                ? `${item.regions.length} ${item.regions.length === 1 ? 'boundary' : 'boundaries'}`
+                                : 'Repair required · geometry changed'}
+                            </small>
+                          </span>
+                        </button>
+                      ))}
                     <div className="tree-category">Boundary conditions</div>
                     <div
                       className={`tree-group-label ${section === 'constraints' ? 'selected-group' : ''}`}
@@ -207,7 +194,7 @@ export default function ModelTree(props: Props) {
                         aria-current={
                           section === 'constraints' && !props.constraintId ? 'page' : undefined
                         }
-                        aria-expanded={section === 'constraints'}
+                        aria-expanded={true}
                         onClick={() => onSection('constraints')}
                       >
                         <LockKeyhole size={15} />
@@ -222,23 +209,26 @@ export default function ModelTree(props: Props) {
                         <Plus size={14} />
                       </button>
                     </div>
-                    {section === 'constraints' &&
-                      project.study.constraints.map((item) => (
-                        <button
-                          key={item.id}
-                          className={`tree-row child ${props.constraintId === item.id ? 'active' : ''}`}
-                          aria-current={props.constraintId === item.id ? 'page' : undefined}
-                          onClick={() => onSection('constraints', item.id)}
-                          title={item.name}
-                        >
-                          <span className="tree-branch" />
-                          <span>
-                            {item.name}
-                            <small>{item.regions.join(', ')}</small>
-                          </span>
-                        </button>
-                      ))}
-                    {section === 'constraints' && !project.study.constraints.length && (
+                    {project.study.constraints.map((item) => (
+                      <button
+                        key={item.id}
+                        className={`tree-row child ${section === 'constraints' && props.constraintId === item.id ? 'active' : ''}`}
+                        aria-current={
+                          section === 'constraints' && props.constraintId === item.id
+                            ? 'page'
+                            : undefined
+                        }
+                        onClick={() => onSection('constraints', item.id)}
+                        title={item.name}
+                      >
+                        <span className="tree-branch" />
+                        <span>
+                          {item.name}
+                          <small>{item.regions.join(', ')}</small>
+                        </span>
+                      </button>
+                    ))}
+                    {!project.study.constraints.length && (
                       <p className="condition-empty">Add a support, then choose its boundaries.</p>
                     )}
                     <div
@@ -246,7 +236,7 @@ export default function ModelTree(props: Props) {
                     >
                       <button
                         aria-current={section === 'loads' && !props.loadId ? 'page' : undefined}
-                        aria-expanded={section === 'loads'}
+                        aria-expanded={true}
                         onClick={() => onSection('loads')}
                       >
                         <ArrowUpRight size={15} />
@@ -261,31 +251,32 @@ export default function ModelTree(props: Props) {
                         <Plus size={14} />
                       </button>
                     </div>
-                    {section === 'loads' &&
-                      project.study.loads.map((item) => (
-                        <button
-                          key={item.id}
-                          className={`tree-row child ${props.loadId === item.id ? 'active' : ''}`}
-                          aria-current={props.loadId === item.id ? 'page' : undefined}
-                          onClick={() => onSection('loads', item.id)}
-                          title={item.name}
-                        >
-                          <span className="tree-branch" />
-                          <span>
-                            {item.name}
-                            <small>
-                              {item.kind === 'force'
-                                ? is2D
-                                  ? 'Total edge force'
-                                  : 'Total surface force'
-                                : item.kind === 'pressure'
-                                  ? 'Normal pressure'
-                                  : 'Spatial vector traction'}
-                            </small>
-                          </span>
-                        </button>
-                      ))}
-                    {section === 'loads' && !project.study.loads.length && (
+                    {project.study.loads.map((item) => (
+                      <button
+                        key={item.id}
+                        className={`tree-row child ${section === 'loads' && props.loadId === item.id ? 'active' : ''}`}
+                        aria-current={
+                          section === 'loads' && props.loadId === item.id ? 'page' : undefined
+                        }
+                        onClick={() => onSection('loads', item.id)}
+                        title={item.name}
+                      >
+                        <span className="tree-branch" />
+                        <span>
+                          {item.name}
+                          <small>
+                            {item.kind === 'force'
+                              ? is2D
+                                ? 'Total edge force'
+                                : 'Total surface force'
+                              : item.kind === 'pressure'
+                                ? 'Normal pressure'
+                                : 'Spatial vector traction'}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
+                    {!project.study.loads.length && (
                       <p className="condition-empty">Add a load, then choose its boundaries.</p>
                     )}
                   </>
@@ -329,14 +320,6 @@ export default function ModelTree(props: Props) {
           );
         })}
       </nav>
-      <div className="model-footer">
-        <span className="scope-label">Linear static elasticity</span>
-        <p>
-          Small strain · isotropic material
-          <br />
-          Local execution · authoritative SI fields
-        </p>
-      </div>
     </>
   );
 }

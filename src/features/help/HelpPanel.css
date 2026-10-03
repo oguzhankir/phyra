@@ -44,8 +44,7 @@
   background: var(--hover, #edf1f4);
   color: var(--text, #20262f);
 }
-.help-panel button:focus-visible,
-.help-panel input:focus-visible {
+.help-panel button:focus-visible {
   outline: 2px solid var(--accent, #3d667e);
   outline-offset: 2px;
 }
@@ -81,6 +80,14 @@
   background: transparent;
   color: var(--text, #20262f);
   box-shadow: none;
+}
+.help-search-field:has(input:focus-visible) {
+  border-color: var(--accent, #3d667e);
+  outline: 1px solid var(--accent, #3d667e);
+  outline-offset: -1px;
+}
+.help-search-field input:focus-visible {
+  outline: none;
 }
 .help-search-field input::placeholder {
   color: var(--muted, #606e7a);

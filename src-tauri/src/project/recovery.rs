@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
+    collections::{HashMap, HashSet},
     fs::{self, File, TryLockError},
     io::Write,
     path::{Path, PathBuf},
@@ -13,11 +14,11 @@ use std::{
 use tauri::Manager;
 
 use super::{
-    state::ProjectState,
+    state::{document_identity, ProjectState, LEGACY_DOCUMENT_ID},
     validation::{migrate_project, validate_project},
 };
 use crate::{
-    execution::state::EngineState,
+    execution::state::{activate_result_owner, EngineState},
     platform::files::{read_bounded, MAX_JSON},
     verification::verification_enabled,
 };
@@ -29,7 +30,23 @@ const MAX_CLIENT_GENERATIONS: usize = 256;
 
 #[derive(Default)]
 pub(crate) struct RecoveryState {
+    // Kept for headless/native verification callers without document identity.
     session: Mutex<RecoverySession>,
+    documents: Mutex<DocumentRecovery>,
+}
+
+#[derive(Default)]
+struct DocumentRecovery {
+    owner: Option<String>,
+    retired_owners: HashSet<String>,
+    sessions: HashMap<String, RecoverySession>,
+    retired_clients: HashSet<String>,
+}
+
+struct DocumentClient<'a> {
+    owner: &'a str,
+    document: &'a str,
+    client: &'a str,
 }
 
 struct RecoverySession {
@@ -50,6 +67,163 @@ impl Default for RecoverySession {
             retired_clients: std::collections::HashSet::new(),
         }
     }
+}
+
+fn recovery_identity(id: &str) -> Result<(), String> {
+    let parsed = uuid::Uuid::parse_str(id).map_err(|_| "Invalid recovery client identity")?;
+    if parsed.to_string() != id {
+        return Err("Invalid recovery client identity".into());
+    }
+    Ok(())
+}
+
+fn activate_document(
+    state: &RecoveryState,
+    owner: &str,
+    document: &str,
+    client: &str,
+) -> Result<(), String> {
+    recovery_identity(owner)?;
+    recovery_identity(client)?;
+    document_identity(Some(document))?;
+    let mut documents = state.documents.lock().map_err(|e| e.to_string())?;
+    if documents.retired_owners.contains(owner) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    if documents.owner.as_deref() != Some(owner) {
+        if documents.retired_owners.len() >= MAX_CLIENT_GENERATIONS {
+            return Err("Recovery session limit reached. Save projects and restart Phyra.".into());
+        }
+        if let Some(prior) = documents.owner.replace(owner.into()) {
+            documents.retired_owners.insert(prior);
+        }
+        // A webview reload releases every document lease, making unsaved
+        // definitions discoverable without permitting stale renderer writes.
+        documents.sessions.clear();
+        documents.retired_clients.clear();
+    }
+    if documents.retired_clients.contains(client) {
+        return Err("Recovery request belongs to a superseded project document".into());
+    }
+    if !documents.sessions.contains_key(document) && documents.sessions.len() >= MAX_RECORDS {
+        return Err("Too many open recovery sessions".into());
+    }
+    if documents
+        .sessions
+        .get(document)
+        .and_then(|session| session.client.as_deref())
+        != Some(client)
+    {
+        if documents.retired_clients.len() >= MAX_CLIENT_GENERATIONS {
+            return Err("Recovery session limit reached. Save projects and restart Phyra.".into());
+        }
+        if let Some(prior) = documents
+            .sessions
+            .remove(document)
+            .and_then(|session| session.client)
+        {
+            documents.retired_clients.insert(prior);
+        }
+        let session = RecoverySession {
+            client: Some(client.into()),
+            ..RecoverySession::default()
+        };
+        documents.sessions.insert(document.into(), session);
+    }
+    Ok(())
+}
+
+fn with_document<T>(
+    state: &RecoveryState,
+    owner: &str,
+    document: &str,
+    client: &str,
+    operation: impl FnOnce(&mut RecoverySession) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut documents = state.documents.lock().map_err(|e| e.to_string())?;
+    if documents.owner.as_deref() != Some(owner) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    let session = documents
+        .sessions
+        .get_mut(document)
+        .ok_or("Recovery request belongs to a closed project document")?;
+    require_client(session, client)?;
+    operation(session)
+}
+
+fn clear_document_checkpoint(
+    root: &Path,
+    state: &RecoveryState,
+    identity: DocumentClient<'_>,
+    sequence: u64,
+    recovery_id: Option<&str>,
+    release: bool,
+) -> Result<(), String> {
+    let DocumentClient {
+        owner,
+        document,
+        client,
+    } = identity;
+    let mut documents = state.documents.lock().map_err(|e| e.to_string())?;
+    if documents.owner.as_deref() != Some(owner) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    if release && recovery_id.is_some() {
+        return Err("Closing a document cannot discard another recovery copy".into());
+    }
+    if release && documents.retired_clients.len() >= MAX_CLIENT_GENERATIONS {
+        return Err("Recovery session limit reached. Save projects and restart Phyra.".into());
+    }
+    let session = documents
+        .sessions
+        .get_mut(document)
+        .ok_or("Recovery request belongs to a closed project document")?;
+    require_client(session, client)?;
+    if release {
+        if sequence == 0 || sequence > MAX_SEQUENCE || sequence <= session.sequence {
+            return Err("Invalid recovery release sequence".into());
+        }
+        session.sequence = sequence;
+    } else {
+        clear_session_checkpoint(root, session, sequence, recovery_id)?;
+    }
+    if release {
+        documents.sessions.remove(document);
+        documents.retired_clients.insert(client.into());
+    }
+    Ok(())
+}
+
+fn commit_document_checkpoint(
+    root: &Path,
+    state: &RecoveryState,
+    identity: DocumentClient<'_>,
+    project: &Value,
+    sequence: u64,
+    restored_project: Option<&ProjectState>,
+) -> Result<Value, String> {
+    with_document(
+        state,
+        identity.owner,
+        identity.document,
+        identity.client,
+        |session| {
+            let mut association = restored_project
+                .map(|state| state.documents.lock().map_err(|e| e.to_string()))
+                .transpose()?;
+            if let Some(documents) = association.as_ref() {
+                documents.require_owner(Some(identity.owner))?;
+            }
+            let receipt = write_session_checkpoint(root, session, project, sequence)?;
+            if receipt["accepted"] == true {
+                if let Some(documents) = association.as_mut() {
+                    documents.forget(identity.document);
+                }
+            }
+            Ok(receipt)
+        },
+    )
 }
 
 #[derive(Serialize, Deserialize)]
@@ -282,14 +456,44 @@ fn directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 pub(crate) async fn get_recovery(
     app: tauri::AppHandle,
     client_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<Value, String> {
     if verification_enabled() {
         return Ok(json!({"records":[],"unreadableCount":0}));
     }
-    activate_client(&app.state::<RecoveryState>(), &client_id)?;
+    if let Some(document) = document_id.as_deref() {
+        activate_document(
+            &app.state::<RecoveryState>(),
+            owner_id
+                .as_deref()
+                .ok_or("Missing recovery owner identity")?,
+            document,
+            &client_id,
+        )?;
+        let project_state = app.state::<ProjectState>();
+        let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+        documents.activate_owner(owner_id.as_deref())?;
+        activate_result_owner(&app.state::<EngineState>(), owner_id.as_deref())?;
+    } else {
+        activate_client(&app.state::<RecoveryState>(), &client_id)?;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<RecoveryState>();
-        client_inventory(&directory(&app)?, &state, &client_id)
+        let root = directory(&app)?;
+        if let Some(document) = document_id.as_deref() {
+            with_document(
+                &state,
+                owner_id
+                    .as_deref()
+                    .ok_or("Missing recovery owner identity")?,
+                document,
+                &client_id,
+                |session| session_inventory(&root, session),
+            )
+        } else {
+            client_inventory(&root, &state, &client_id)
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -366,10 +570,11 @@ fn commit_client_checkpoint(
         if let Some(project_state) = restored_project {
             // Keep generation ownership through association adoption; a reload
             // cannot interleave and let an old restore clear a new file path.
-            *project_state
-                .current_path
+            project_state
+                .documents
                 .lock()
-                .map_err(|e| e.to_string())? = None;
+                .map_err(|e| e.to_string())?
+                .forget(LEGACY_DOCUMENT_ID);
         }
     }
     Ok(receipt)
@@ -501,6 +706,8 @@ pub(crate) async fn write_recovery(
     sequence: u64,
     restored: Option<bool>,
     client_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if app
@@ -524,14 +731,33 @@ pub(crate) async fn write_recovery(
             None
         };
         let project_state = app.state::<ProjectState>();
-        let receipt = commit_client_checkpoint(
-            &directory(&app)?,
-            &app.state::<RecoveryState>(),
-            &client_id,
-            &project,
-            sequence,
-            restored.then_some(&project_state),
-        )?;
+        let root = directory(&app)?;
+        let recovery = app.state::<RecoveryState>();
+        let receipt = if let Some(document) = document_id.as_deref() {
+            commit_document_checkpoint(
+                &root,
+                &recovery,
+                DocumentClient {
+                    owner: owner_id
+                        .as_deref()
+                        .ok_or("Missing recovery owner identity")?,
+                    document,
+                    client: &client_id,
+                },
+                &project,
+                sequence,
+                restored.then_some(&project_state),
+            )?
+        } else {
+            commit_client_checkpoint(
+                &root,
+                &recovery,
+                &client_id,
+                &project,
+                sequence,
+                restored.then_some(&project_state),
+            )?
+        };
         drop(active_guard);
         Ok(receipt)
     })
@@ -544,6 +770,8 @@ pub(crate) async fn read_recovery(
     app: tauri::AppHandle,
     recovery_id: String,
     client_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if app
@@ -556,12 +784,24 @@ pub(crate) async fn read_recovery(
             return Err("Wait for or cancel the analysis before restoring a recovery copy".into());
         }
         let root = directory(&app)?;
-        let record = read_client_record(
-            &root,
-            &app.state::<RecoveryState>(),
-            &client_id,
-            &recovery_id,
-        )?;
+        let recovery = app.state::<RecoveryState>();
+        let record = if let Some(document) = document_id.as_deref() {
+            with_document(
+                &recovery,
+                owner_id
+                    .as_deref()
+                    .ok_or("Missing recovery owner identity")?,
+                document,
+                &client_id,
+                |_| {
+                    let _lease = lock_record(&root, &recovery_id)?
+                        .ok_or("This recovery copy belongs to an open application")?;
+                    read_record(&record_path(&root, &recovery_id)?)
+                },
+            )?
+        } else {
+            read_client_record(&root, &recovery, &client_id, &recovery_id)?
+        };
         Ok(json!({"project":record.project,"savedAt":record.saved_at}))
     })
     .await
@@ -574,15 +814,34 @@ pub(crate) async fn clear_recovery(
     sequence: u64,
     recovery_id: Option<String>,
     client_id: String,
+    document_id: Option<String>,
+    owner_id: Option<String>,
+    release: Option<bool>,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        clear_client_checkpoint(
-            &directory(&app)?,
-            &app.state::<RecoveryState>(),
-            &client_id,
-            sequence,
-            recovery_id.as_deref(),
-        )
+        let root = directory(&app)?;
+        let state = app.state::<RecoveryState>();
+        if let Some(document) = document_id.as_deref() {
+            clear_document_checkpoint(
+                &root,
+                &state,
+                DocumentClient {
+                    owner: owner_id
+                        .as_deref()
+                        .ok_or("Missing recovery owner identity")?,
+                    document,
+                    client: &client_id,
+                },
+                sequence,
+                recovery_id.as_deref(),
+                release.unwrap_or(false),
+            )
+        } else {
+            if release.unwrap_or(false) {
+                return Err("Recovery release requires a project document identity".into());
+            }
+            clear_client_checkpoint(&root, &state, &client_id, sequence, recovery_id.as_deref())
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -944,12 +1203,28 @@ mod tests {
         let definition = project(1);
         let project_state = ProjectState::default();
         let association = Some((
-            definition["id"].as_str().unwrap().into(),
+            definition["id"].as_str().unwrap().to_owned(),
             temp.path().join("original.phyra"),
         ));
-        *project_state.current_path.lock().unwrap() = association.clone();
+        project_state
+            .documents
+            .lock()
+            .unwrap()
+            .associate(
+                LEGACY_DOCUMENT_ID,
+                definition["id"].as_str().unwrap(),
+                association.as_ref().unwrap().1.clone(),
+            )
+            .unwrap();
         write_client_checkpoint(temp.path(), &state, &client, &definition, 2).unwrap();
-        assert_eq!(*project_state.current_path.lock().unwrap(), association);
+        assert_eq!(
+            project_state
+                .documents
+                .lock()
+                .unwrap()
+                .path(LEGACY_DOCUMENT_ID, definition["id"].as_str().unwrap()),
+            association.as_ref().map(|(_, path)| path.clone())
+        );
         assert_eq!(
             commit_client_checkpoint(
                 temp.path(),
@@ -962,7 +1237,14 @@ mod tests {
             .unwrap()["accepted"],
             false
         );
-        assert_eq!(*project_state.current_path.lock().unwrap(), association);
+        assert_eq!(
+            project_state
+                .documents
+                .lock()
+                .unwrap()
+                .path(LEGACY_DOCUMENT_ID, definition["id"].as_str().unwrap()),
+            association.as_ref().map(|(_, path)| path.clone())
+        );
         assert_eq!(
             commit_client_checkpoint(
                 temp.path(),
@@ -975,8 +1257,22 @@ mod tests {
             .unwrap()["accepted"],
             true
         );
-        assert!(project_state.current_path.lock().unwrap().is_none());
-        *project_state.current_path.lock().unwrap() = association.clone();
+        assert!(project_state
+            .documents
+            .lock()
+            .unwrap()
+            .path(LEGACY_DOCUMENT_ID, definition["id"].as_str().unwrap())
+            .is_none());
+        project_state
+            .documents
+            .lock()
+            .unwrap()
+            .associate(
+                LEGACY_DOCUMENT_ID,
+                definition["id"].as_str().unwrap(),
+                association.as_ref().unwrap().1.clone(),
+            )
+            .unwrap();
         activate_client(&state, &uuid::Uuid::new_v4().to_string()).unwrap();
         assert!(commit_client_checkpoint(
             temp.path(),
@@ -987,7 +1283,14 @@ mod tests {
             Some(&project_state)
         )
         .is_err());
-        assert_eq!(*project_state.current_path.lock().unwrap(), association);
+        assert_eq!(
+            project_state
+                .documents
+                .lock()
+                .unwrap()
+                .path(LEGACY_DOCUMENT_ID, definition["id"].as_str().unwrap()),
+            association.as_ref().map(|(_, path)| path.clone())
+        );
     }
 
     #[test]
@@ -1011,5 +1314,211 @@ mod tests {
         expected["namedSelections"] = json!([]);
         assert_eq!(restored.project, expected);
         assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn project_tabs_have_independent_ordered_journals_and_active_leases() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let owner = uuid::Uuid::new_v4().to_string();
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let ca = uuid::Uuid::new_v4().to_string();
+        let cb = uuid::Uuid::new_v4().to_string();
+        activate_document(&state, &owner, &a, &ca).unwrap();
+        activate_document(&state, &owner, &b, &cb).unwrap();
+        let identity = |document, client| DocumentClient {
+            owner: &owner,
+            document,
+            client,
+        };
+        commit_document_checkpoint(temp.path(), &state, identity(&a, &ca), &project(1), 9, None)
+            .unwrap();
+        commit_document_checkpoint(temp.path(), &state, identity(&b, &cb), &project(2), 1, None)
+            .unwrap();
+        let ids = with_document(&state, &owner, &a, &ca, |s| Ok(s.id.clone())).unwrap();
+        let bid = with_document(&state, &owner, &b, &cb, |s| Ok(s.id.clone())).unwrap();
+        assert_ne!(ids, bid);
+        let inventory = with_document(&state, &owner, &a, &ca, |s| {
+            session_inventory(temp.path(), s)
+        })
+        .unwrap();
+        assert!(inventory["records"].as_array().unwrap().is_empty());
+        clear_document_checkpoint(temp.path(), &state, identity(&a, &ca), 10, None, false).unwrap();
+        assert_eq!(
+            commit_document_checkpoint(
+                temp.path(),
+                &state,
+                identity(&a, &ca),
+                &project(3),
+                9,
+                None
+            )
+            .unwrap()["accepted"],
+            false
+        );
+        assert_eq!(
+            read_record(&record_path(temp.path(), &bid).unwrap())
+                .unwrap()
+                .project,
+            project(2)
+        );
+        assert!(lock_record(temp.path(), &bid).unwrap().is_none());
+    }
+
+    #[test]
+    fn document_release_preserves_definition_and_rejects_late_client_requests() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let owner = uuid::Uuid::new_v4().to_string();
+        let doc = uuid::Uuid::new_v4().to_string();
+        let client = uuid::Uuid::new_v4().to_string();
+        let identity = || DocumentClient {
+            owner: &owner,
+            document: &doc,
+            client: &client,
+        };
+        activate_document(&state, &owner, &doc, &client).unwrap();
+        commit_document_checkpoint(temp.path(), &state, identity(), &project(5), 1, None).unwrap();
+        let id = with_document(&state, &owner, &doc, &client, |s| Ok(s.id.clone())).unwrap();
+        let path = record_path(temp.path(), &id).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        assert!(clear_document_checkpoint(temp.path(), &state, identity(), 1, None, true).is_err());
+        assert!(lock_record(temp.path(), &id).unwrap().is_none());
+        clear_document_checkpoint(temp.path(), &state, identity(), 2, None, true).unwrap();
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        assert!(lock_record(temp.path(), &id).unwrap().is_some());
+        assert!(activate_document(&state, &owner, &doc, &client).is_err());
+        assert!(
+            commit_document_checkpoint(temp.path(), &state, identity(), &project(6), 3, None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn page_reload_offers_every_prior_tab_without_reactivating_old_owners() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let before = uuid::Uuid::new_v4().to_string();
+        let after = uuid::Uuid::new_v4().to_string();
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let ca = uuid::Uuid::new_v4().to_string();
+        let cb = uuid::Uuid::new_v4().to_string();
+        activate_document(&state, &before, &a, &ca).unwrap();
+        activate_document(&state, &before, &b, &cb).unwrap();
+        for (document, client) in [(&a, &ca), (&b, &cb)] {
+            commit_document_checkpoint(
+                temp.path(),
+                &state,
+                DocumentClient {
+                    owner: &before,
+                    document,
+                    client,
+                },
+                &project(4),
+                100,
+                None,
+            )
+            .unwrap();
+        }
+        activate_document(&state, &after, &a, &ca).unwrap();
+        let offered = with_document(&state, &after, &a, &ca, |s| {
+            session_inventory(temp.path(), s)
+        })
+        .unwrap();
+        assert_eq!(offered["records"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            commit_document_checkpoint(
+                temp.path(),
+                &state,
+                DocumentClient {
+                    owner: &after,
+                    document: &a,
+                    client: &ca
+                },
+                &project(5),
+                1,
+                None
+            )
+            .unwrap()["accepted"],
+            true
+        );
+        assert!(activate_document(&state, &before, &b, &cb).is_err());
+        assert!(with_document(&state, &before, &b, &cb, |_| Ok(())).is_err());
+        assert_eq!(
+            with_document(&state, &after, &a, &ca, |s| Ok(s.sequence)).unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn restored_tab_forgets_only_its_archive_after_accepted_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = RecoveryState::default();
+        let archives = ProjectState::default();
+        let owner = uuid::Uuid::new_v4().to_string();
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let client = uuid::Uuid::new_v4().to_string();
+        let definition = project(1);
+        let project_id = definition["id"].as_str().unwrap();
+        {
+            let mut documents = archives.documents.lock().unwrap();
+            documents.activate_owner(Some(&owner)).unwrap();
+            documents
+                .associate(&a, project_id, temp.path().join("a.phyra"))
+                .unwrap();
+            documents
+                .associate(&b, project_id, temp.path().join("b.phyra"))
+                .unwrap();
+        }
+        activate_document(&state, &owner, &a, &client).unwrap();
+        let identity = || DocumentClient {
+            owner: &owner,
+            document: &a,
+            client: &client,
+        };
+        commit_document_checkpoint(temp.path(), &state, identity(), &definition, 2, None).unwrap();
+        assert_eq!(
+            commit_document_checkpoint(
+                temp.path(),
+                &state,
+                identity(),
+                &definition,
+                1,
+                Some(&archives)
+            )
+            .unwrap()["accepted"],
+            false
+        );
+        assert!(archives
+            .documents
+            .lock()
+            .unwrap()
+            .path(&a, project_id)
+            .is_some());
+        assert_eq!(
+            commit_document_checkpoint(
+                temp.path(),
+                &state,
+                identity(),
+                &definition,
+                3,
+                Some(&archives)
+            )
+            .unwrap()["accepted"],
+            true
+        );
+        assert!(archives
+            .documents
+            .lock()
+            .unwrap()
+            .path(&a, project_id)
+            .is_none());
+        assert_eq!(
+            archives.documents.lock().unwrap().path(&b, project_id),
+            Some(temp.path().join("b.phyra"))
+        );
     }
 }

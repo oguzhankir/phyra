@@ -1,4 +1,10 @@
-import { cameraOrientation, planeFitDistance, boxFitDistance, type CameraView } from './camera';
+import {
+  cameraOrientation,
+  planeFitDistance,
+  boxFitDistance,
+  cameraResizeFactor,
+  type CameraView,
+} from './camera';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -21,9 +27,28 @@ import { surfaceData, type SurfaceData } from './surface';
 import { pickedRegion, nearestHitNode, displayedNode, visibleTriangles } from './picking';
 import { nextSelection, selectionIntent, type SelectionMode } from './selection';
 import { geometryDistance } from './measurement';
+import {
+  boundaryAnchors,
+  supportColor,
+  loadColor,
+  supportDescription,
+  loadDescription,
+} from './boundaryMarkers';
 
 import type { Probe } from '../../domain/results/probe';
+type ConditionAnnotation = {
+  key: string;
+  kind: 'constraint' | 'load';
+  id: string;
+  name: string;
+  region: RegionId;
+  point: [number, number, number];
+  detail: string;
+  offset: number;
+};
 type Props = {
+  active?: boolean;
+  onCondition?: (kind: 'constraint' | 'load', id: string) => void;
   project: Project;
   data: ResultData | null;
   field: Field | null;
@@ -50,6 +75,7 @@ type Runtime = {
   grid?: THREE.GridHelper;
   invalidate: () => void;
   fit: (view?: CameraView) => void;
+  activate: (active: boolean) => void;
   data?: SurfaceData;
   displayedTriangles: Uint32Array;
   visibleRegions: ReadonlySet<RegionId> | null;
@@ -130,6 +156,9 @@ function regionOverlay(state: Runtime, region: RegionId, color: number) {
 export default function Viewport(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const runtime = useRef<Runtime | null>(null);
+  const labelElements = useRef(new Map<string, HTMLButtonElement>());
+  const [annotations, setAnnotations] = useState<ConditionAnnotation[]>([]);
+  const annotationPositions = useRef<ConditionAnnotation[]>([]);
   const current = useRef(props);
   current.current = props;
   const [error, setError] = useState<string | null>(null);
@@ -230,7 +259,9 @@ export default function Viewport(props: Props) {
       displayedTriangles: new Uint32Array(),
       visibleRegions: null,
       hoverRegion: null,
+      activate: () => {},
       fit: (view) => {
+        if (current.current.active === false) return;
         // Drain any damped orbit/pan before applying an exact named orientation.
         controls.enableDamping = false;
         controls.update();
@@ -287,22 +318,43 @@ export default function Viewport(props: Props) {
       },
     };
     runtime.current = state;
-    const resize = new ResizeObserver(() => {
+    const resizeCanvas = () => {
+      if (current.current.active === false) return;
       const { width, height } = element.getBoundingClientRect();
       if (width < 1 || height < 1) return;
       renderer.setSize(width, height);
-      camera.aspect = width / height;
+      const aspect = width / height;
+      if (viewportSizeInitialized && state.data) {
+        const span = state.viewBounds.getSize(new THREE.Vector3());
+        const offset = camera.position.clone().sub(controls.target);
+        const factor = cameraResizeFactor(
+          [span.x, span.y, span.z],
+          [offset.x, offset.y, offset.z],
+          [camera.up.x, camera.up.y, camera.up.z],
+          camera.aspect,
+          aspect,
+          camera.fov,
+          current.current.project.study.dimension === '2d',
+        );
+        camera.position.copy(controls.target).addScaledVector(offset, factor);
+        const distance = offset.length() * factor;
+        camera.far = Math.max(camera.far, distance * 10);
+        controls.maxDistance = Math.max(controls.maxDistance, distance * 5);
+      }
+      camera.aspect = aspect;
       camera.updateProjectionMatrix();
       if (!viewportSizeInitialized) {
         viewportSizeInitialized = true;
         if (state.data) state.fit();
       }
       invalidate();
-    });
+    };
+    const resize = new ResizeObserver(resizeCanvas);
     resize.observe(element);
     controls.addEventListener('change', invalidate);
     const fitKey = (event: KeyboardEvent) => {
       if (
+        current.current.active !== false &&
         event.key.toLowerCase() === 'f' &&
         !event.ctrlKey &&
         !event.metaKey &&
@@ -320,6 +372,8 @@ export default function Viewport(props: Props) {
     };
     window.addEventListener('keydown', fitKey);
     const animate = (now = performance.now()) => {
+      frame = 0;
+      if (current.current.active === false) return;
       controls.update();
       if (current.current.animate && state.data?.displacement && state.maximumScale > 0) {
         state.animationStart ??= now;
@@ -336,11 +390,35 @@ export default function Viewport(props: Props) {
       } else state.animationStart = null;
       if (dirty) {
         renderer.render(scene, camera);
+        for (const annotation of annotationPositions.current) {
+          const label = labelElements.current.get(annotation.key);
+          if (!label) continue;
+          const point = new THREE.Vector3(...annotation.point).project(camera);
+          const visible =
+            point.z >= -1 && point.z <= 1 && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1;
+          label.style.visibility = visible ? 'visible' : 'hidden';
+          const x = ((point.x + 1) * element.clientWidth) / 2;
+          const y = ((1 - point.y) * element.clientHeight) / 2 + annotation.offset * 25;
+          label.style.left = `${Math.max(12, Math.min(x, element.clientWidth - label.offsetWidth - 16))}px`;
+          label.style.top = `${Math.max(60, Math.min(y, element.clientHeight - label.offsetHeight - 64))}px`;
+        }
         dirty = false;
       }
       frame = requestAnimationFrame(animate);
     };
-    animate();
+    state.activate = (active) => {
+      controls.enabled = active;
+      if (!active) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        state.animationStart = null;
+      } else {
+        resizeCanvas();
+        invalidate();
+        if (!frame) frame = requestAnimationFrame(animate);
+      }
+    };
+    state.activate(current.current.active !== false);
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let down = [0, 0];
@@ -509,6 +587,11 @@ export default function Viewport(props: Props) {
   }, []);
 
   useEffect(() => {
+    runtime.current?.activate(props.active !== false);
+  }, [props.active]);
+
+  useEffect(() => {
+    if (props.active === false) return;
     const state = runtime.current;
     if (!state) {
       if (initializationError.current) failVerification(initializationError.current);
@@ -581,9 +664,9 @@ export default function Viewport(props: Props) {
           selectedRegions.has(region)
             ? '#ce912c'
             : supportedRegions.has(region)
-              ? '#688675'
+              ? supportColor
               : loadedRegions.has(region)
-                ? '#c49455'
+                ? loadColor
                 : dark
                   ? '#a6aaa8'
                   : '#b2b8b4',
@@ -705,13 +788,9 @@ export default function Viewport(props: Props) {
               color: selectedRegions.has(region)
                 ? '#d79b35'
                 : supportedRegions.has(region)
-                  ? dark
-                    ? '#a1bea9'
-                    : '#426e54'
+                  ? supportColor
                   : loadedRegions.has(region)
-                    ? dark
-                      ? '#dbb46e'
-                      : '#9c6823'
+                    ? loadColor
                     : dark
                       ? '#c0c4c1'
                       : '#626965',
@@ -744,46 +823,100 @@ export default function Viewport(props: Props) {
         state.moving.push(...overlay.moving);
       }
     }
-    // Region markings come from the same authoritative boundary mapping used for picking.
-    for (const region of data.regionIds) {
+    // Glyphs and labels use the same boundary facet mapping as selection.
+    const nextAnnotations: ConditionAnnotation[] = [];
+    const names = regionNames(
+      props.project.geometry.kind,
+      props.project.study.dimension,
+      props.project.geometry.profile,
+    );
+    for (const anchor of boundaryAnchors(data)) {
+      const region = anchor.region;
       if (state.visibleRegions && !state.visibleRegions.has(region)) continue;
-      const index = data.regionIds.indexOf(region);
-      const triangle = data.regions.findIndex((candidate) => candidate === index);
-      const boundary = data.edgeRegions?.findIndex((candidate) => candidate === index) ?? -1;
-      if (triangle < 0 && boundary < 0) continue;
-      const ids =
-        data.boundaryEdges && boundary >= 0
-          ? Array.from(data.boundaryEdges.slice(boundary * 2, boundary * 2 + 2))
-          : [
-              data.triangles[triangle * 3],
-              data.triangles[triangle * 3 + 1],
-              data.triangles[triangle * 3 + 2],
-            ];
-      const points = ids.map(
-        (node) =>
-          new THREE.Vector3(
-            data.positions[node * 3],
-            data.positions[node * 3 + 1],
-            data.positions[node * 3 + 2],
-          ),
-      );
-      const center = points
-        .reduce((sum, value) => sum.add(value), new THREE.Vector3())
-        .multiplyScalar(1 / points.length);
-      const normal = data.boundaryEdges
-        ? new THREE.Vector3(points[1].y - points[0].y, points[0].x - points[1].x, 0).normalize()
-        : points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])).normalize();
-      if (props.project.study.constraints.some((item) => item.regions.includes(region))) {
-        const marker = new THREE.Mesh(
-          new THREE.BoxGeometry(length * 0.022, length * 0.022, length * 0.022),
-          new THREE.MeshBasicMaterial({ color: dark ? 0xa1bea9 : 0x426e54 }),
-        );
-        marker.position.copy(center).addScaledVector(normal, length * 0.014);
-        state.model.add(marker);
-      }
-      for (const load of props.project.study.loads.filter((item) =>
+      const center = new THREE.Vector3(...anchor.point);
+      const normal = new THREE.Vector3(...anchor.normal);
+      const constraints = props.project.study.constraints.filter((item) =>
         item.regions.includes(region),
-      )) {
+      );
+      const loads = props.project.study.loads.filter((item) => item.regions.includes(region));
+      if (constraints.length || loads.length) {
+        const overlay = regionOverlay(
+          state,
+          region,
+          new THREE.Color(constraints.length ? supportColor : loadColor).getHex(),
+        );
+        state.model.add(overlay.group);
+        state.moving.push(...overlay.moving);
+      }
+      let offset = 0;
+      const annotate = (
+        kind: 'constraint' | 'load',
+        item: { id: string; name: string },
+        detail: string,
+      ) => {
+        nextAnnotations.push({
+          key: `${kind}:${item.id}:${region}`,
+          kind,
+          id: item.id,
+          name: item.name,
+          region,
+          point: anchor.point,
+          offset: offset++,
+          detail: `${names.find((item) => item.id === region)?.name ?? region} · ${detail}`,
+        });
+      };
+      if (constraints.length) {
+        const constraint = constraints[0];
+        annotate(
+          'constraint',
+          {
+            ...constraint,
+            name: `${constraint.name}${constraints.length > 1 ? ` +${constraints.length - 1}` : ''}`,
+          },
+          supportDescription(constraint, props.project.study.dimension),
+        );
+        const size = length * 0.028;
+        if (props.project.study.dimension === '3d') {
+          const marker = new THREE.Mesh(
+            new THREE.BoxGeometry(size, size, size),
+            new THREE.MeshBasicMaterial({ color: supportColor, wireframe: true, depthTest: false }),
+          );
+          marker.position.copy(center).addScaledVector(normal, size / 2);
+          marker.renderOrder = 8;
+          state.model.add(marker);
+        } else {
+          const tangent = new THREE.Vector3(-normal.y, normal.x, 0);
+          if (tangent.lengthSq() < 0.01) tangent.set(1, 0, 0);
+          tangent.normalize();
+          const base = center.clone().addScaledVector(normal, size * 2);
+          const left = base.clone().addScaledVector(tangent, size);
+          const right = base.clone().addScaledVector(tangent, -size);
+          const values = new Float32Array([
+            ...center.toArray(),
+            ...left.toArray(),
+            ...right.toArray(),
+            ...center.toArray(),
+            ...left.toArray(),
+            ...right.toArray(),
+          ]);
+          const glyph = new THREE.LineSegments(
+            new THREE.BufferGeometry().setAttribute(
+              'position',
+              new THREE.BufferAttribute(values, 3),
+            ),
+            new THREE.LineBasicMaterial({ color: supportColor, depthTest: false }),
+          );
+          glyph.renderOrder = 8;
+          state.model.add(glyph);
+        }
+      }
+      for (const [loadIndex, load] of loads.entries()) {
+        if (loadIndex === 0)
+          annotate(
+            'load',
+            { ...load, name: `${load.name}${loads.length > 1 ? ` +${loads.length - 1}` : ''}` },
+            loadDescription(load, props.project.study.dimension),
+          );
         const traction =
           load.kind === 'traction'
             ? tractionGlyph(load.traction, center.x, center.y, normal.x, normal.y)
@@ -797,15 +930,21 @@ export default function Viewport(props: Props) {
         if (direction.lengthSq() === 0) continue;
         const arrow = new THREE.ArrowHelper(
           direction,
-          center.clone().addScaledVector(direction, -length * 0.18),
-          length * 0.18,
-          dark ? 0xdbb46e : 0x9c6823,
-          length * 0.045,
-          length * 0.027,
+          center.clone().addScaledVector(direction, -length * 0.14),
+          length * 0.14,
+          new THREE.Color(loadColor).getHex(),
+          length * 0.035,
+          length * 0.022,
         );
+        for (const mesh of [arrow.line, arrow.cone])
+          for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+            material.depthTest = false;
+        arrow.renderOrder = 8;
         state.model.add(arrow);
       }
     }
+    annotationPositions.current = nextAnnotations;
+    setAnnotations(nextAnnotations);
     if (
       measuredNodes.length &&
       measuredNodes.every((node) => node * 3 + 2 < data.positions.length)
@@ -980,6 +1119,7 @@ export default function Viewport(props: Props) {
       verificationDone = true;
     };
   }, [
+    props.active,
     props.project,
     props.data,
     props.field,
@@ -1007,6 +1147,12 @@ export default function Viewport(props: Props) {
           props.project.displayUnits,
         )
       : null;
+  const supportSymbol = props.project.study.dimension === '2d' ? '△' : '▣';
+  const boundaryNames = regionNames(
+    props.project.geometry.kind,
+    props.project.study.dimension,
+    props.project.geometry.profile,
+  );
   const regionLabel = hovered
     ? (regionNames(
         props.project.geometry.kind,
@@ -1031,6 +1177,71 @@ export default function Viewport(props: Props) {
             : 'Interactive 3D model. Drag to orbit, scroll to zoom, click boundaries to select.'
         }
       />
+      <div className="viewport-condition-markers" aria-label="Located supports and loads">
+        {annotations.map((annotation) => (
+          <button
+            key={annotation.key}
+            ref={(element) => {
+              if (element) labelElements.current.set(annotation.key, element);
+              else labelElements.current.delete(annotation.key);
+            }}
+            className={`viewport-condition-marker ${annotation.kind}`}
+            title={`${annotation.name} · ${annotation.detail}. Click to edit.`}
+            aria-label={`${annotation.kind === 'constraint' ? 'Support' : 'Load'} ${annotation.name} on ${annotation.detail}`}
+            onClick={() => {
+              props.onSelectionChange?.([annotation.region]);
+              if (!props.onSelectionChange) props.onSelect(annotation.region);
+              props.onCondition?.(annotation.kind, annotation.id);
+            }}
+          >
+            <span aria-hidden="true">{annotation.kind === 'constraint' ? supportSymbol : '↗'}</span>
+            {annotation.name}
+          </button>
+        ))}
+      </div>
+      {(props.project.study.constraints.length > 0 || props.project.study.loads.length > 0) && (
+        <details className="viewport-condition-legend">
+          <summary>
+            <span className="support-key">{supportSymbol} Supports</span>
+            <span className="load-key">↗ Loads</span>
+          </summary>
+          <p>Symbols mark undeformed boundaries. Arrows show direction; lengths are schematic.</p>
+          {[
+            ...props.project.study.constraints.map((item) => ({
+              item,
+              kind: 'constraint' as const,
+              detail: supportDescription(item, props.project.study.dimension),
+            })),
+            ...props.project.study.loads.map((item) => ({
+              item,
+              kind: 'load' as const,
+              detail: loadDescription(item, props.project.study.dimension),
+            })),
+          ].map(({ item, kind, detail }) => (
+            <button
+              key={`${kind}:${item.id}`}
+              onClick={() => {
+                props.onSelectionChange?.(item.regions);
+                if (!props.onSelectionChange && item.regions[0]) props.onSelect(item.regions[0]);
+                props.onCondition?.(kind, item.id);
+              }}
+            >
+              <strong className={kind === 'constraint' ? 'support-key' : 'load-key'}>
+                {kind === 'constraint' ? supportSymbol : '↗'} {item.name}
+              </strong>
+              <span>
+                {item.regions
+                  .map(
+                    (id) =>
+                      boundaryNames.find((region) => region.id === id)?.name ?? `${id} (missing)`,
+                  )
+                  .join(', ') || 'No boundary assigned'}
+              </span>
+              <small>{detail}</small>
+            </button>
+          ))}
+        </details>
+      )}
       {error && <div className="viewport-error">{error}</div>}
       <ViewportTools
         dimension={props.project.study.dimension}
@@ -1080,7 +1291,26 @@ export default function Viewport(props: Props) {
       )}
       {regionLabel && !measuring && (
         <div className="viewport-hover" role="status">
-          {regionLabel}
+          <strong>{regionLabel}</strong> <code>{hovered}</code>
+          <span>
+            {props.project.study.constraints
+              .filter((item) => item.regions.includes(hovered!))
+              .map((item) => `${supportSymbol} ${item.name}`)
+              .concat(
+                props.project.study.loads
+                  .filter((item) => item.regions.includes(hovered!))
+                  .map((item) => `↗ ${item.name}`),
+              )
+              .join(' · ') || 'Unassigned boundary'}
+          </span>
+        </div>
+      )}
+      {props.selected.length > 0 && !measuring && (
+        <div className="viewport-selection-label" role="status">
+          Selected:{' '}
+          {props.selected
+            .map((id) => boundaryNames.find((region) => region.id === id)?.name ?? id)
+            .join(', ')}
         </div>
       )}
       {(measuring || measuredNodes.length > 0) && (

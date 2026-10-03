@@ -19,7 +19,8 @@ export function articleText(article: HelpArticle): string {
       ...(section.facts ?? []).map((fact) => `${fact.label} ${fact.value}`),
       section.note?.text ?? '',
       ...(section.references ?? []).map(
-        (reference) => `${reference.title} ${reference.authors} ${reference.scope}`,
+        (reference) =>
+          `${reference.title} ${reference.authors} ${reference.year ?? ''} ${reference.scope} ${reference.url}`,
       ),
       ...(section.screenshots ?? []).map((image) => `${image.alt} ${image.caption}`),
     ])

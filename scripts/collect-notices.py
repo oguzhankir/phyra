@@ -47,6 +47,19 @@ inventory["python"].append(
         "expatVersion": pyexpat.EXPAT_VERSION,
     }
 )
+# This checked-in asset subset is not a runtime npm dependency.
+provider_assets = ROOT / "public" / "providers"
+for name in ("LICENSE", "NOTICE"):
+    copy_file(
+        provider_assets / name, Path("frontend") / "lobehub-provider-icons" / name
+    )
+inventory["frontend"].append(
+    {
+        "name": "@lobehub/icons-static-svg (selected assets)",
+        "version": "1.95.1",
+        "license": "MIT",
+    }
+)
 names = [
     "gmsh",
     "numpy",

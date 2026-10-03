@@ -3,6 +3,8 @@ import type { Profile, Point2 } from '../../domain/contracts/project.generated';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
 import { freshBoundaryId, setArcRadius } from '../../domain/project/profile';
 import type { ProjectInspectorModel } from './model';
+import SketchCanvas from './SketchCanvas';
+import { moveSketchVertex } from '../../domain/project/sketch';
 
 export default function ProfileEditor({ workbench }: { workbench: ProjectInspectorModel }) {
   const { project, factor, edit } = workbench;
@@ -32,6 +34,36 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
   );
   return (
     <>
+      <Group title="Interactive plane sketch">
+        <SketchCanvas
+          profile={profile}
+          factor={factor}
+          unit={project.displayUnits}
+          reservedIds={[...project.study.constraints, ...project.study.loads].flatMap(
+            (item) => item.regions,
+          )}
+          onSelectBoundary={(id) => {
+            if ([...profile.outer, ...profile.holes].some((item) => item.id === id))
+              workbench.setSelected([id]);
+          }}
+          onApply={(draft) => {
+            if (workbench.invalidDraftsRef.current.size) {
+              workbench.setError(
+                'Complete or revert the numeric input before applying the sketch.',
+              );
+              return false;
+            }
+            edit((next) => {
+              next.geometry.profile = structuredClone(draft);
+            });
+            workbench.setSelected([]);
+            workbench.setNotice(
+              'Sketch applied · remesh before solving. Review supports and loads after topology changes.',
+            );
+            return true;
+          }}
+        />
+      </Group>
       <Group
         title="Outer line / arc loop"
         action={
@@ -117,12 +149,16 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
             </label>
             {pointEditor('Start', segment.start, (value, axis) =>
               change((next) => {
-                next.outer[index].start[axis] = value;
+                const point = [...next.outer[index].start] as Point2;
+                point[axis] = value;
+                Object.assign(next, moveSketchVertex(next, index, point));
               }),
             )}
             {pointEditor('End', segment.end, (value, axis) =>
               change((next) => {
-                next.outer[index].end[axis] = value;
+                const point = [...next.outer[index].end] as Point2;
+                point[axis] = value;
+                Object.assign(next, moveSketchVertex(next, (index + 1) % next.outer.length, point));
               }),
             )}
             {segment.kind === 'arc' && segment.center && (

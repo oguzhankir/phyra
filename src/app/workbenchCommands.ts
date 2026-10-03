@@ -12,6 +12,8 @@ type CommandModel = Pick<
   | 'project'
   | 'isPinn'
   | 'locked'
+  | 'nativeLocked'
+  | 'preparation'
   | 'desktop'
   | 'validation'
   | 'solved'
@@ -30,6 +32,8 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
     project,
     isPinn,
     locked,
+    nativeLocked,
+    preparation,
     desktop,
     validation,
     solved,
@@ -41,7 +45,8 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
     exportFields,
     showHelp,
   } = model;
-  const canCompute = !locked && !validation && desktop;
+  const canCompute = !locked && !nativeLocked && preparation.canRun && desktop;
+  const canMesh = !locked && !nativeLocked && preparation.canMesh && desktop;
   return [
     ...workflowStages.flatMap((item) =>
       item.sections.map((target) => ({
@@ -66,7 +71,7 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
       label: 'Open project',
       description: desktop ? 'Reopen a local .phyra archive.' : 'Requires the desktop app.',
       group: 'Project',
-      disabled: locked || !desktop,
+      disabled: locked || nativeLocked || !desktop,
       action: () => void open(),
     },
     {
@@ -76,7 +81,7 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
         ? 'Save the definition and current fields.'
         : 'Requires the desktop app.',
       group: 'Project',
-      disabled: locked || !!validation || !desktop,
+      disabled: locked || nativeLocked || !!validation || !desktop,
       action: () => void save(),
     },
     {
@@ -84,7 +89,7 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
       label: 'Generate mesh',
       description: 'Build a mesh from the current geometry.',
       group: 'Solve',
-      disabled: !canCompute,
+      disabled: !canMesh,
       action: () => void execute('mesh'),
     },
     {
@@ -112,7 +117,7 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
       label: 'Export physical fields',
       description: 'Export current nodal and element fields in SI units.',
       group: 'Inspect',
-      disabled: locked || !solved || !desktop,
+      disabled: locked || nativeLocked || !solved || !desktop,
       action: () => void exportFields(),
     },
     {

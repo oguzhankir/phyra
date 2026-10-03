@@ -7,12 +7,14 @@ import type { Workbench } from './useWorkbench';
 interface Props {
   workbench: Pick<
     Workbench,
+    | 'project'
     | 'recovery'
     | 'confirmation'
     | 'help'
     | 'helpContext'
     | 'validation'
     | 'desktop'
+    | 'nativeLocked'
     | 'setConfirmation'
     | 'confirmResolver'
     | 'setHelp'
@@ -30,12 +32,14 @@ export default function WorkbenchOverlays({
   onCommandsClose,
 }: Props) {
   const {
+    project,
     recovery,
     confirmation,
     help,
     helpContext,
     validation,
     desktop,
+    nativeLocked,
     setConfirmation,
     confirmResolver,
     setHelp,
@@ -60,16 +64,17 @@ export default function WorkbenchOverlays({
             <div className="modal-icon">
               <Save size={23} />
             </div>
-            <h2 id="unsaved-title">Save your changes?</h2>
+            <h2 id="unsaved-title">Save changes to “{project.name}”?</h2>
             <p>
-              Your current project has unsaved changes. Save before continuing, or discard them.
+              This project has changes that are not saved to a file. Save before continuing, or
+              discard these changes.
             </p>
             <div className="modal-actions">
               {(['cancel', 'discard', 'save'] as const).map((choice) => (
                 <button
                   key={choice}
                   className={choice === 'save' ? 'primary' : 'secondary'}
-                  disabled={choice === 'save' && (!!validation || !desktop)}
+                  disabled={choice === 'save' && (!!validation || nativeLocked || !desktop)}
                   onClick={() => {
                     setConfirmation(false);
                     confirmResolver.current?.(choice);

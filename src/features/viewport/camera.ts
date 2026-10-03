@@ -88,3 +88,23 @@ export function boxFitDistance(
       }
   return Math.max(distance, frontDepth + Math.max(Math.hypot(...span), 1e-6) / 5000);
 }
+
+/** Keep the current zoom relative to the fitted model when the viewport's aspect changes.
+ * Applying this factor to the camera-to-target offset preserves orbit and pan.
+ */
+export function cameraResizeFactor(
+  span: [number, number, number],
+  direction: [number, number, number],
+  up: [number, number, number],
+  oldAspect: number,
+  newAspect: number,
+  verticalFovDegrees: number,
+  plane: boolean,
+): number {
+  if (oldAspect === newAspect || !(oldAspect > 0 && newAspect > 0)) return 1;
+  const fit = (aspect: number) =>
+    plane
+      ? planeFitDistance(span[0], span[1], aspect, verticalFovDegrees)
+      : boxFitDistance(span, direction, up, aspect, verticalFovDegrees);
+  return fit(newAspect) / fit(oldAspect);
+}

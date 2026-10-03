@@ -254,3 +254,131 @@
   color: var(--muted);
   margin-top: 6px;
 }
+.viewport-condition-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.viewport-condition-marker {
+  position: absolute;
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 6px;
+  margin: 7px 0 0 8px;
+  border: 1px solid var(--line);
+  border-left: 2px solid #367f72;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 2px 8px #00000008;
+  font-size: 10px;
+  line-height: 1.3;
+  pointer-events: auto;
+}
+.viewport-condition-marker.load {
+  border-left-color: #bb712e;
+}
+.viewport-condition-marker.constraint > span,
+.support-key {
+  color: #367f72;
+}
+.viewport-condition-marker.load > span,
+.load-key {
+  color: #bb712e;
+}
+.viewport-condition-marker:hover,
+.viewport-condition-marker:focus-visible {
+  background: var(--surface-subtle);
+  outline: 2px solid var(--border-strong);
+}
+.viewport-condition-legend {
+  position: absolute;
+  top: 57px;
+  right: 15px;
+  width: min(245px, calc(100% - 30px));
+  max-height: min(60%, 430px);
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px #00000006;
+  font-size: 10px;
+}
+.viewport-condition-legend > summary {
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.viewport-condition-legend > summary > span + span {
+  margin-left: 13px;
+}
+.viewport-condition-legend > p {
+  padding: 0 9px 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.viewport-condition-legend > button {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  text-align: left;
+  border-top: 1px solid var(--line);
+}
+.viewport-condition-legend > button:hover {
+  background: var(--surface-subtle);
+}
+.viewport-condition-legend strong,
+.viewport-condition-legend button > span,
+.viewport-condition-legend small {
+  display: block;
+  line-height: 1.5;
+}
+.viewport-condition-legend strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.viewport-condition-legend small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.viewport-hover strong {
+  font-weight: 600;
+}
+.viewport-hover code {
+  color: var(--muted);
+  margin-left: 5px;
+}
+.viewport-hover > span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.viewport-selection-label {
+  position: absolute;
+  bottom: 112px;
+  left: 18px;
+  max-width: min(440px, calc(100% - 36px));
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.viewport-hover {
+  max-width: min(420px, calc(100% - 36px));
+}
+.viewport-hover > span,
+.viewport-selection-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

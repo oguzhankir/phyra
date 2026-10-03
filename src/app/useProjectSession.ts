@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Project } from '../domain/contracts/types';
 import { resultIsCurrent } from '../domain/execution/presentation';
 import {
@@ -13,12 +13,26 @@ import { makeProject, type ExampleId } from '../features/examples/projects';
 import { loadReference, type ReferenceId } from '../features/examples/references';
 import { exportResults, openProject, saveProject } from '../platform/desktop/bridge';
 import type { FileOperation, WorkbenchActivity } from './workbenchActivity';
+import {
+  closeProjectDocument,
+  persistProjectSnapshot,
+  scheduleProjectAutosave,
+} from './projectPersistence';
+
+export type AutosaveStatus =
+  'off' | 'needs-save' | 'waiting' | 'saving' | 'saved' | 'paused' | 'error';
 
 interface Props {
+  documentId: string;
+  initialProject: Project;
+  initialPath?: string | null;
+  initialDirty?: boolean;
+  initialReferenceId?: ReferenceId | null;
   desktop: boolean;
   activity: WorkbenchActivity;
   currentResult: () => ResultData | null;
   clearRecovery: () => Promise<void>;
+  retireDocument: () => Promise<void>;
   beforeConfirmation: () => void;
   onReplace: (project: Project, data: ResultData | null) => void;
   onReference: (id: ReferenceId) => void;
@@ -39,15 +53,22 @@ export function useProjectSession(props: Props) {
   const deviceBusyRef = activity.device;
   const recoveryBusyRef = activity.recovery;
   const confirmationRef = activity.confirmation;
-  const [project, setProject] = useState<Project>(() => makeProject('plane-stress-tension'));
+  const [project, setProject] = useState<Project>(() => structuredClone(props.initialProject));
   const projectRef = useRef(project);
   projectRef.current = project;
   const historyRef = useRef(createHistory(project));
   const [, setHistoryRevision] = useState(0);
-  const [dirty, setDirtyState] = useState(false);
+  const [dirty, setDirtyState] = useState(props.initialDirty ?? false);
+  const documentGeneration = useRef(0);
+  const editGeneration = useRef(0);
+  const [saveRevision, setSaveRevision] = useState(0);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const setDirty = useCallback((value: boolean) => {
+    if (value) {
+      editGeneration.current += 1;
+      setSaveRevision((revision) => revision + 1);
+    }
     dirtyRef.current = value;
     setDirtyState(value);
   }, []);
@@ -64,8 +85,19 @@ export function useProjectSession(props: Props) {
     }
     setInvalidDraftLabels(Array.from(drafts.values()));
   }, []);
-  const [path, setPath] = useState<string | null>(null);
-  const [referenceId, setReferenceId] = useState<ReferenceId | null>(null);
+  const [path, setPath] = useState<string | null>(props.initialPath ?? null);
+  const pathRef = useRef(path);
+  pathRef.current = path;
+  const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+  const [autosavePhase, setAutosavePhase] = useState<AutosaveStatus>('saved');
+  const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  const automaticSave = useRef(false);
+  const pendingSave = useRef<Promise<boolean> | null>(null);
+  const transitionPending = useRef(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [referenceId, setReferenceId] = useState<ReferenceId | null>(
+    props.initialReferenceId ?? null,
+  );
   const [fileBusy, setFileBusy] = useState<FileOperation | null>(null);
   const [confirmation, setConfirmation] = useState(false);
   const confirmResolver = useRef<((choice: 'save' | 'discard' | 'cancel') => void) | null>(null);
@@ -81,7 +113,13 @@ export function useProjectSession(props: Props) {
           ? 'Loading saved CPU reference'
           : 'Exporting fields';
   const edit = useCallback((change: (next: Project) => void, physical = true) => {
-    if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return;
+    if (
+      busyRef.current ||
+      fileBusyRef.current ||
+      recoveryBusyRef.current ||
+      transitionPending.current
+    )
+      return;
     try {
       const previous = projectRef.current;
       const next = structuredClone(previous);
@@ -107,6 +145,7 @@ export function useProjectSession(props: Props) {
       recoveryBusyRef.current ||
       deviceBusyRef.current ||
       confirmationRef.current ||
+      transitionPending.current ||
       invalidDraftsRef.current.size
     )
       return;
@@ -134,47 +173,147 @@ export function useProjectSession(props: Props) {
       callbacks.current.onError(String(cause));
     }
   }, []);
-  const save = useCallback(
-    async (saveAs = false): Promise<boolean> => {
-      if (!desktop || busyRef.current || fileBusyRef.current || recoveryBusyRef.current)
+  const writeSnapshot = useCallback(
+    async (saveAs = false, automatic = false): Promise<boolean> => {
+      if (
+        !desktop ||
+        busyRef.current ||
+        fileBusyRef.current ||
+        recoveryBusyRef.current ||
+        deviceBusyRef.current
+      )
+        return false;
+      if (
+        activity.native.execution.current ||
+        activity.native.file.current ||
+        activity.native.device.current
+      )
+        return false;
+      if (
+        automatic &&
+        (confirmationRef.current ||
+          transitionPending.current ||
+          activity.native.closing.current ||
+          !pathRef.current)
+      )
         return false;
       if (invalidDraftsRef.current.size) {
         callbacks.current.onError('Complete or revert the invalid numeric input before saving.');
         return false;
       }
       fileBusyRef.current = 'save';
+      activity.native.file.current = 'save';
       setFileBusy('save');
+      automaticSave.current = automatic;
+      if (automatic) setAutosavePhase('saving');
+      setAutosaveError(null);
       try {
         const current = structuredClone(projectRef.current);
-        const invalid = inputError(current);
-        if (invalid) {
-          callbacks.current.onError(invalid);
-          return false;
-        }
+        const document = documentGeneration.current;
+        const edit = editGeneration.current;
         const data = callbacks.current.currentResult();
         const cache = data && resultIsCurrent(current, data) ? data.manifest.jobId : undefined;
-        const saved = await saveProject(current, cache, saveAs);
-        if (!saved) return false;
-        setPath(saved);
-        setDirty(false);
-        try {
-          await callbacks.current.clearRecovery();
-        } catch (cause) {
-          callbacks.current.onError(`Recovery cleanup failed after saving: ${String(cause)}`);
+        const saved = await persistProjectSnapshot(
+          { project: current, path: pathRef.current, jobId: cache, saveAs, automatic },
+          {
+            write: (definition, jobId, as, automaticWrite) =>
+              saveProject(definition, jobId, as, automaticWrite, props.documentId),
+            sameDocument: () => documentGeneration.current === document,
+            current: () => editGeneration.current === edit && invalidDraftsRef.current.size === 0,
+            associate: (savedPath) => {
+              pathRef.current = savedPath;
+              setPath(savedPath);
+            },
+            markSaved: () => setDirty(false),
+            clearRecovery: () => callbacks.current.clearRecovery(),
+            cleanupFailed: (cause) =>
+              callbacks.current.onError(`Recovery cleanup failed after saving: ${String(cause)}`),
+          },
+        );
+        if (saved) {
+          setAutosavePhase('saved');
+          if (!automatic)
+            callbacks.current.onNotice(`Saved ${pathRef.current?.split(/[\\/]/).pop()}`);
+        } else if (automatic) {
+          setAutosavePhase('waiting');
         }
-        callbacks.current.onNotice(`Saved ${saved.split(/[\\/]/).pop()}`);
-        return true;
+        return saved;
       } catch (cause) {
-        callbacks.current.onError(String(cause));
+        const message = String(cause);
+        if (automatic) {
+          setAutosaveError(message);
+          setAutosavePhase('error');
+          callbacks.current.onError(`Autosave failed · Save manually to retry. ${message}`);
+        } else callbacks.current.onError(message);
         return false;
       } finally {
+        automaticSave.current = false;
         fileBusyRef.current = null;
+        activity.native.file.current = null;
         setFileBusy(null);
       }
     },
     [activity, desktop],
   );
+  const save = useCallback(
+    (saveAs = false): Promise<boolean> => {
+      if (pendingSave.current) return pendingSave.current;
+      const writing = writeSnapshot(saveAs);
+      pendingSave.current = writing;
+      void writing.finally(() => {
+        if (pendingSave.current === writing) pendingSave.current = null;
+      });
+      return writing;
+    },
+    [writeSnapshot],
+  );
+  useEffect(() => {
+    if (!desktop || !autosaveEnabled || !path || !dirty) return;
+    if (validation) {
+      setAutosavePhase('paused');
+      return;
+    }
+    setAutosaveError(null);
+    return scheduleProjectAutosave({
+      dirty: () => dirtyRef.current,
+      blocked: () =>
+        !!busyRef.current ||
+        !!fileBusyRef.current ||
+        !!activity.native.execution.current ||
+        !!activity.native.file.current ||
+        activity.native.device.current ||
+        activity.native.closing.current ||
+        recoveryBusyRef.current ||
+        deviceBusyRef.current ||
+        confirmationRef.current ||
+        transitionPending.current,
+      waiting: () => setAutosavePhase('waiting'),
+      paused: () => setAutosavePhase('paused'),
+      save: () => {
+        const writing = writeSnapshot(false, true);
+        pendingSave.current = writing;
+        void writing.finally(() => {
+          if (pendingSave.current === writing) pendingSave.current = null;
+        });
+      },
+    });
+  }, [desktop, autosaveEnabled, path, dirty, project, validation, saveRevision, writeSnapshot]);
+  const autosaveStatus: AutosaveStatus =
+    !desktop || !autosaveEnabled
+      ? 'off'
+      : !path
+        ? 'needs-save'
+        : automaticSave.current
+          ? 'saving'
+          : !dirty
+            ? 'saved'
+            : validation
+              ? 'paused'
+              : autosavePhase;
   const canReplace = useCallback(async (): Promise<boolean> => {
+    // Closing/replacing waits for an already-owned automatic write. No later
+    // completion can clear the next document's dirty state or recovery journal.
+    if (automaticSave.current && pendingSave.current) await pendingSave.current;
     if (
       busyRef.current ||
       fileBusyRef.current ||
@@ -189,20 +328,23 @@ export function useProjectSession(props: Props) {
       confirmResolver.current = resolve;
       setConfirmation(true);
     });
-    confirmationRef.current = false;
-    if (choice === 'cancel') return false;
-    if (choice === 'save') return await save();
     try {
+      if (choice === 'cancel') return false;
+      if (choice === 'save') return await save();
       await callbacks.current.clearRecovery();
       return true;
     } catch (cause) {
       callbacks.current.onError(`Recovery cleanup failed: ${String(cause)}`);
       return false;
+    } finally {
+      confirmationRef.current = false;
     }
   }, [save]);
   const canReplaceRef = useRef(canReplace);
   canReplaceRef.current = canReplace;
   const replace = (next: Project, result: ResultData | null = null) => {
+    documentGeneration.current += 1;
+    editGeneration.current = 0;
     // A confirmed replacement owns a fresh definition. Drafts from the old
     // editor must not leak into the new project or rely on React unmount timing.
     invalidDraftsRef.current.clear();
@@ -212,31 +354,93 @@ export function useProjectSession(props: Props) {
     setHistoryRevision((revision) => revision + 1);
     setProject(next);
     setDirty(false);
+    pathRef.current = null;
     setPath(null);
+    setAutosavePhase('saved');
+    setAutosaveError(null);
     setReferenceId(null);
     callbacks.current.onReplace(next, result);
   };
-  const create = useCallback(
-    async (example?: ExampleId) => {
-      if (await canReplace()) {
-        try {
+  const close = async (): Promise<boolean> => {
+    if (deviceBusyRef.current || transitionPending.current) return false;
+    transitionPending.current = true;
+    setTransitioning(true);
+    try {
+      return await closeProjectDocument({
+        canReplace,
+        clearRecovery: async () => {
           await callbacks.current.clearRecovery();
-          replace(makeProject(example));
-        } catch (cause) {
-          callbacks.current.onError(`Recovery cleanup failed: ${String(cause)}`);
+          await callbacks.current.retireDocument();
+        },
+        close: () => {
+          replace(makeProject());
+          callbacks.current.onNotice('Project closed');
+        },
+      });
+    } catch (cause) {
+      callbacks.current.onError(
+        `Project remains open because recovery cleanup failed: ${String(cause)}`,
+      );
+      return false;
+    } finally {
+      transitionPending.current = false;
+      setTransitioning(false);
+    }
+  };
+  const create = useCallback(
+    async (
+      example?: ExampleId,
+      name?: string,
+      dimension: Project['study']['dimension'] = '3d',
+    ): Promise<boolean> => {
+      if (transitionPending.current || deviceBusyRef.current) return false;
+      transitionPending.current = true;
+      setTransitioning(true);
+      try {
+        if (!(await canReplace())) return false;
+        await callbacks.current.clearRecovery();
+        let next = makeProject(example);
+        if (!example && dimension === '2d') {
+          next = makeProject('plane-stress-tension');
+          next.study.constraints = [];
+          next.study.loads = [];
+          next.namedSelections = [];
         }
+        if (name?.trim()) next.name = name.trim();
+        replace(next);
+        setDirty(true);
+        return true;
+      } catch (cause) {
+        callbacks.current.onError(`Recovery cleanup failed: ${String(cause)}`);
+        return false;
+      } finally {
+        transitionPending.current = false;
+        setTransitioning(false);
       }
     },
     [canReplace],
   );
   const open = useCallback(async () => {
-    if (!desktop || !(await canReplace())) return;
-    if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return;
-    fileBusyRef.current = 'open';
-    setFileBusy('open');
+    if (!desktop || transitionPending.current || deviceBusyRef.current) return false;
+    transitionPending.current = true;
+    setTransitioning(true);
+    let ownsFileOperation = false;
     try {
-      const opened = await openProject();
-      if (!opened) return;
+      if (!(await canReplace())) return false;
+      if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return false;
+      if (
+        activity.native.execution.current ||
+        activity.native.file.current ||
+        activity.native.device.current
+      )
+        return false;
+      fileBusyRef.current = 'open';
+      activity.native.file.current = 'open';
+      setFileBusy('open');
+      ownsFileOperation = true;
+      const opened = await openProject(props.documentId);
+      if (!opened) return false;
+      if ('existingDocumentId' in opened) return false;
       replace(
         opened.project,
         opened.manifest && opened.buffer
@@ -244,6 +448,7 @@ export function useProjectSession(props: Props) {
           : null,
       );
       setPath(opened.path ?? null);
+      pathRef.current = opened.path ?? null;
       callbacks.current.onNotice(opened.notice ?? 'Project opened');
       try {
         await callbacks.current.clearRecovery();
@@ -252,30 +457,48 @@ export function useProjectSession(props: Props) {
           `Recovery cleanup: the opened project is active; the earlier recovery copy was preserved. ${String(cause)}`,
         );
       }
+      return true;
     } catch (cause) {
       callbacks.current.onError(String(cause));
+      return false;
     } finally {
-      fileBusyRef.current = null;
-      setFileBusy(null);
+      transitionPending.current = false;
+      setTransitioning(false);
+      if (ownsFileOperation) {
+        fileBusyRef.current = null;
+        activity.native.file.current = null;
+        setFileBusy(null);
+      }
     }
   }, [canReplace, desktop]);
-  const inspectReference = async (id: ReferenceId) => {
-    if (desktop || deviceBusyRef.current || !(await canReplace())) return;
-    if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return;
-    fileBusyRef.current = 'reference';
-    setFileBusy('reference');
-    callbacks.current.onError(null);
+  const inspectReference = async (id: ReferenceId): Promise<boolean> => {
+    if (desktop || deviceBusyRef.current || transitionPending.current) return false;
+    transitionPending.current = true;
+    setTransitioning(true);
+    let ownsFileOperation = false;
     try {
+      if (!(await canReplace())) return false;
+      if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return false;
+      fileBusyRef.current = 'reference';
+      setFileBusy('reference');
+      ownsFileOperation = true;
+      callbacks.current.onError(null);
       const saved = await loadReference(id);
       replace(saved.project, saved.data);
       setReferenceId(id);
       callbacks.current.onReference(id);
       callbacks.current.onNotice('Saved CPU reference loaded');
+      return true;
     } catch (cause) {
       callbacks.current.onError(`Reference result could not be opened: ${String(cause)}`);
+      return false;
     } finally {
-      fileBusyRef.current = null;
-      setFileBusy(null);
+      transitionPending.current = false;
+      setTransitioning(false);
+      if (ownsFileOperation) {
+        fileBusyRef.current = null;
+        setFileBusy(null);
+      }
     }
   };
   const exportFields = async () => {
@@ -288,15 +511,23 @@ export function useProjectSession(props: Props) {
       fileBusyRef.current
     )
       return;
+    if (
+      activity.native.execution.current ||
+      activity.native.file.current ||
+      activity.native.device.current
+    )
+      return;
     fileBusyRef.current = 'export';
+    activity.native.file.current = 'export';
     setFileBusy('export');
     try {
-      const saved = await exportResults(currentData.manifest.jobId);
+      const saved = await exportResults(currentData.manifest.jobId, props.documentId);
       if (saved) callbacks.current.onNotice('Physical fields exported');
     } catch (cause) {
       callbacks.current.onError(String(cause));
     } finally {
       fileBusyRef.current = null;
+      activity.native.file.current = null;
       setFileBusy(null);
     }
   };
@@ -318,6 +549,7 @@ export function useProjectSession(props: Props) {
     invalidDraftLabels,
     reportDraftValidity,
     validation,
+    transitioning,
     path,
     referenceId,
     fileBusy,
@@ -329,6 +561,11 @@ export function useProjectSession(props: Props) {
     create,
     open,
     save,
+    close,
+    autosaveEnabled,
+    setAutosaveEnabled,
+    autosaveStatus,
+    autosaveError,
     inspectReference,
     exportFields,
   };
