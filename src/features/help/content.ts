@@ -29,6 +29,7 @@ export type HelpArticleId =
   | 'fem-2d'
   | 'kirsch-quarter'
   | 'pinn'
+  | 'energy-pinn'
   | 'devices'
   | 'comparison'
   | 'results'
@@ -94,7 +95,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Select and inspect',
         paragraphs: [
           'In 3D, selection addresses supported boundary faces; in 2D, it addresses boundary edges. Click replaces the selection, Shift adds, and Control/Command toggles. The selection-mode menu offers the same choices. Hover identifies a boundary before committing it.',
-          'Use standard camera directions and Fit to inspect the model. Isolate preserves a visible snapshot of the chosen boundaries; Restore all returns the full domain. Isolation changes presentation only, never the mesh, physics or solved domain.',
+          'Use explicit Zoom in/out, standard camera directions, Fit model and Fit selection to inspect the model. F fits the model; Shift+F fits the selection. Middle-drag or Shift+drag pans. Right-click a boundary to create a support/load or boundary set from its selection. Isolate preserves a visible snapshot of the chosen boundaries; Restore all returns the full domain. Isolation changes presentation only, never the mesh, physics or solved domain.',
         ],
       },
       {
@@ -190,7 +191,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The Home tab contains New, Open and examples. Each open project has its own tab, file association, edits and retained result. Selecting Home or another tab keeps projects open; return through a project tab or the Open in this session list. Up to 32 documents can be open.',
           'Use a project tab’s ×, File → Close project or Ctrl/⌘ W to close the active project. Unsaved changes offer Save, Discard and Cancel. Run and result ownership remain tied to the document that started the work.',
-          'The left workflow separates Prepare, Solve and Inspect. Expand an existing stage to find its editors; the right inspector edits that selection while the central viewport shows the model or current fields.',
+          'Prepare, Solve and Inspect sit above the viewport. The left model tree and Properties share one dock: selecting an object highlights its row and shows its name and settings directly below. The central viewport displays the model, fields or active 2D sketch. Right-click a boundary or object, or use its actions button, to find available operations.',
           'Problems keeps actionable diagnostics visible without opening every interpretation warning. Run overview retains execution evidence; training and comparison views appear only for supported studies. Advanced settings and scientific details remain available in disclosures.',
           'Light and dark themes change presentation, not physical values, units or the contour mapping.',
           'Ctrl/⌘ J opens the assistant. F1 opens offline help for the current task; the assistant uses the same versioned help articles.',
@@ -246,7 +247,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Draft a 2D profile',
         paragraphs: [
-          'In 2D Geometry, the sketch canvas supports bounded rectangle and polyline construction, grid snapping, and circular holes. Select an edge to convert between a line and a circular arc, edit its radius/center/direction, or move shared vertices. Work in the displayed length unit and inspect the line/arc definitions before applying them.',
+          'In 2D Geometry, the sketch canvas supports bounded rectangle, polyline and exact rounded-slot construction, grid snapping, circular holes and midpoint splitting of a straight boundary. Select an edge to convert between a line and a circular arc, edit its radius/center/direction, or move shared vertices. Work in the displayed length unit and inspect the line/arc definitions before applying them.',
           'Apply sketch validates and replaces the project geometry; Revert discards the draft. Leaving Geometry also discards unapplied changes. Drafting does not remesh or solve. Closed-loop orientation, intersections, arc limits and hole containment must pass validation. This editor does not provide a general geometric constraint solver, feature history or imported CAD.',
         ],
       },
@@ -323,7 +324,7 @@ export const helpArticles: readonly HelpArticle[] = [
           {
             label: '2D plane stress',
             value:
-              'In-plane displacement in a rectangle or line/arc profile with explicit physical thickness. FEM supports both; experimental PINN supports rectangular force/pressure studies.',
+              'In-plane displacement in a rectangle or line/arc profile with explicit physical thickness. FEM supports both; experimental strong-form PINN supports rectangular force/pressure studies and potential-energy PINN supports profiles with supported straight-edge displacement conditions.',
           },
           {
             label: 'Linear static',
@@ -490,7 +491,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Choose an available method',
         steps: [
           'Check the study dimension and formulation. Classical FEM supports both current 3D solid and 2D plane-stress problems.',
-          'For rectangular 2D plane stress, select PINN and review its network, sampling, step and device settings.',
+          'For 2D plane stress, choose the Physics ML formulation in Solution method: Strong-form residual for rectangles, or Potential energy for rectangles/profiles. Review its stated boundary eligibility, network, quadrature/sampling, step and device settings.',
           'Run the selected method, or use Compare FEM / PINN to solve both on the same physical problem.',
           'Inspect the run status, actual fields and warnings. A completed run is not a substitute for an accuracy check.',
         ],
@@ -834,11 +835,100 @@ All weights are 1. Traction is penalized only on free components; the displaceme
         ],
         note: {
           tone: 'warning',
-          text: 'PINN is available only for rectangular 2D plane stress. It is a numerical learning method, not a chat assistant or a guarantee of faster solving.',
+          text: 'The strong-form formulation is available only for rectangular force/pressure 2D plane stress. Potential energy extends training to profiles and typed traction, with restricted prescribed boundaries. It is a numerical learning method, not a chat assistant or a guarantee of faster solving.',
         },
       },
     ],
-    related: ['devices', 'comparison', 'learning-path', 'scientific-references'],
+    related: ['energy-pinn', 'devices', 'comparison', 'learning-path', 'scientific-references'],
+  },
+  {
+    id: 'energy-pinn',
+    title: 'Physics ML · potential energy and partial supports',
+    summary:
+      'Train the same plane-stress definition using an integral objective and exact displacement conditions.',
+    category: 'Solve',
+    kind: 'Method',
+    experimental: true,
+    keywords: [
+      'energy',
+      'variational',
+      'EPINN',
+      'Wang',
+      'partial support',
+      'quadrature',
+      'profile',
+      'hole',
+    ],
+    sections: [
+      {
+        title: 'Reusable method and scope',
+        paragraphs: [
+          'Potential energy uses the ordinary rectangle/profile geometry, homogeneous isotropic material, physical thickness, component supports and total force/pressure/affine or Kirsch traction. A dense tanh displacement network uses first-order autograd strain; FEM fields are never training labels.',
+          'Prescribed components can have compatible constant values on finite straight exterior segments. The displacement construction vanishes only on those segments, so a free collinear neighboring segment remains free. Curved prescribed edges, intersecting incompatible values and non-supporting interior lines are rejected explicitly. Natural traction conditions enter through external work.',
+          'This is experimental small-strain elasticity, not a large-displacement, nonlinear, contact or reusable operator model.',
+        ],
+      },
+      {
+        title: 'Objective and independent integration audit',
+        paragraphs: [
+          String.raw`For physical thickness $h$, the admissible displacement minimizes
+
+$$
+\Pi(\mathbf u)=\frac h2\int_\Omega \boldsymbol\varepsilon_{\rm eng}^T\mathbf D_{\rm ps}\boldsymbol\varepsilon_{\rm eng}\,dA-h\int_{\Gamma_t}\bar{\mathbf t}\cdot\mathbf u\,ds.
+$$
+
+The reported normalized potential is strain energy minus external work. It may be negative and is plotted on a linear signed axis. Its physical scale is $SULh$ joules, with stress/displacement/length scales $S,U,L$ recorded by the method.`,
+          'Training integrates over actual mesh triangles and boundary chords using deterministic composite quadrature. Point settings are minimum quadrature counts; actual counts are reported. A separate finer quadrature recomputes strain, work and potential after optimization. A relative discrepancy above 1% rejects publication. Its relative integration difference measures integration sensitivity of the trained field; it does not measure error against the physical solution.',
+          'Live total/PDE/boundary curves remain nonnegative strong-form residual diagnostics, not the minimized energy objective. Read them with independent-point residuals, FEM field differences and force/moment balance. Mesh refinement, quadrature refinement, network/step changes and seed variation test distinct error sources.',
+        ],
+      },
+      {
+        title: 'Paper-informed eccentric-displacement case',
+        paragraphs: [
+          'Home → Eccentric displacement opens a square profile with a split top edge, a fixed bottom and prescribed displacement on only the left top half. It follows the boundary pattern in Wang et al. (2023), Section 3.2. The source used large-displacement reference analysis; Phyra solves an explicitly disclosed small-strain adaptation.',
+          'The editable SI realization uses side 1 m, E = 10 MPa, ν = 0.2 and driven ux = 0, uy = 0.1 m. SI length/modulus conventions follow the same author’s 2024 follow-up; thickness 0.01 m is a Phyra choice. The original tensor-decomposed architecture, finite-difference derivatives and Modulus/GPU runtime are not reproduced.',
+          'The driven displacement is 10% of the side. Treat this as a mathematical linear-model comparison; it does not validate physical large-deformation behavior. Reduce the displacement to study smaller-strain loading.',
+        ],
+        steps: [
+          'Inspect Geometry in the central sketch. Draw a rectangle and split a selected straight edge at its midpoint to build a partial boundary in any valid profile. Apply and explicitly repair assignments after changing IDs.',
+          'Inspect the bottom and driven-half support components, then Compare FEM / PINN from Solution method. Choose the same physical problem for both paths.',
+          'Inspect signed energy/audit, independent residuals, field differences, actual CPU/device precision and balance. Corner mixed-boundary behavior and a short optimization run can leave substantial error.',
+          'Change driven displacement, geometry or material; remesh and compare again. Save/reopen retains measured fields and history, not resumable neural weights.',
+        ],
+        references: [
+          {
+            title:
+              'Exact Dirichlet Boundary Physics-informed Neural Network EPINN for Solid Mechanics',
+            authors: 'Jiaji Wang, Y. L. Mo, Bassam Izzuddin and Chul-Woo Kim',
+            year: 2023,
+            url: 'https://doi.org/10.1016/j.cma.2023.116184',
+            scope:
+              'Energy/exact-boundary ideas and Section 3.2 boundary pattern; disclosed method and small-strain deviations.',
+          },
+          {
+            title: 'Author manuscript · Section 3.2',
+            authors: 'Jiaji Wang and coauthors',
+            url: 'https://hub.hku.hk/bitstream/10722/331900/1/content.pdf',
+            scope: 'Primary accessible paper source; no paper data or software is bundled.',
+          },
+          {
+            title: 'Author follow-up · SI conventions',
+            authors: 'Jiaji Wang and coauthors',
+            year: 2024,
+            url: 'https://doi.org/10.1111/mice.13292',
+            scope:
+              'Section 3.2 gives the 1 m / 10 MPa conventions; it does not establish Phyra accuracy.',
+          },
+        ],
+      },
+      {
+        title: 'Other geometries through the same path',
+        paragraphs: [
+          'Energy · plate in tension provides an analytical axial patch baseline. Energy · circular cutout uses the existing Kirsch profile/traction contract. These are ordinary editable projects, not special solvers. The repository research-case manifest records provenance, deviations, reference policy and repeatable measurement commands.',
+        ],
+      },
+    ],
+    related: ['pinn', 'geometry', 'supports', 'loads', 'comparison', 'kirsch-quarter'],
   },
   {
     id: 'devices',
@@ -1049,7 +1139,7 @@ All weights are 1. Traction is penalized only on free components; the displaceme
         title: 'Project files',
         paragraphs: [
           'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
-          'Versions 1, 2 and 3 are validated before migrating to version 4. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
+          'Versions 1–4 are validated against frozen schemas before migrating to version 5 with the strong-form formulation. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
@@ -1443,7 +1533,7 @@ All weights are 1. Traction is penalized only on free components; the displaceme
         paragraphs: [
           'The current PINN represents displacement with a smooth neural network. Automatic differentiation computes strain, material stress and equilibrium residuals at sampled interior points. Boundary terms evaluate the prescribed physical conditions.',
           'The displacement construction enforces supported prescribed components. Traction and remaining free-component conditions enter the boundary objective. Coordinates, displacement and stress scales normalize the problem; reported training losses are dimensionless, not field errors in metres or pascals.',
-          'This is per-problem strong-form training without FEM labels. The FEM solution is used for comparison, not supplied as training data.',
+          'Both formulations train one physical problem without FEM labels; energy training uses an integral objective while strong-form training minimizes residuals. The FEM solution is used for comparison, not supplied as training data.',
         ],
       },
       {
@@ -1470,9 +1560,9 @@ All weights are 1. Traction is penalized only on free components; the displaceme
         },
       },
       {
-        title: '4 · Recognize different future methods',
+        title: '4 · Recognize distinct method families',
         bullets: [
-          'Deep Ritz minimizes a variational energy using admissible trial fields and quadrature. It is a future method, not the current residual PINN.',
+          'Potential-energy PINN minimizes integrated elastic energy minus external work with admissible displacement fields. Inspect its signed objective and independent finer-quadrature audit separately from strong-form residual diagnostics.',
           'FNO and DeepONet learn reusable mappings across a defined problem family. Their dataset and held-out physical instances differ from fitting one problem.',
           'Learned constitutive models approximate a material law inside an actual solver; they need load-path, tangent and physical-admissibility checks.',
           'External frameworks, GPU acceleration and distributed execution are separate runtime capabilities. None makes a numerical method automatically accurate or supported.',
@@ -1558,7 +1648,8 @@ All weights are 1. Traction is penalized only on free components; the displaceme
             authors: 'Weinan E and Bing Yu',
             year: 2018,
             url: 'https://arxiv.org/abs/1710.00211',
-            scope: 'Variational/energy method research; not implemented in this release.',
+            scope:
+              'Variational neural approximation foundation. Phyra implements a restricted small-strain elasticity potential-energy adaptation, not all paper examples.',
           },
           {
             title: 'Fourier Neural Operator for Parametric Partial Differential Equations',

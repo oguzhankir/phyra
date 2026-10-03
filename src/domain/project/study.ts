@@ -22,7 +22,7 @@ export function changeStudySolver(
 ): void {
   if (kind === 'pinn' && !supportsPinn(project))
     throw new Error(
-      'PINN requires a rectangular 2D plane-stress study with force or pressure loads.',
+      'Choose a compatible 2D plane-stress PINN formulation: strong-form for rectangular domains, potential energy for rectangles and profiles.',
     );
   project.study.solver.kind = kind;
 }
@@ -33,7 +33,9 @@ export function primaryOperation(project: Project): Operation {
 export function supportsPinn(project: Project): boolean {
   return (
     project.study.dimension === '2d' &&
-    project.geometry.kind === 'box' &&
-    project.study.loads.every((load) => load.kind !== 'traction')
+    (project.study.solver.pinn.formulation === 'potential-energy'
+      ? ['box', 'profile'].includes(project.geometry.kind)
+      : project.geometry.kind === 'box' &&
+        project.study.loads.every((load) => load.kind !== 'traction'))
   );
 }

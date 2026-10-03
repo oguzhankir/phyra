@@ -65,6 +65,27 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
   return (
     <>
       <Group title="Solution method">
+        {is2D && (
+          <label className="field-label">
+            <span>Physics ML formulation</span>
+            <select
+              value={project.study.solver.pinn.formulation}
+              onChange={(event) => {
+                if (invalidDraftsRef.current.size) {
+                  setError('Complete or revert the numeric input before changing formulation.');
+                  return;
+                }
+                edit((next) => {
+                  next.study.solver.pinn.formulation = event.target
+                    .value as Project['study']['solver']['pinn']['formulation'];
+                });
+              }}
+            >
+              <option value="strong-form">Strong-form residual · rectangle</option>
+              <option value="potential-energy">Potential energy · rectangle / profile</option>
+            </select>
+          </label>
+        )}
         <div className="segmented" role="group" aria-label="Solution method">
           <button
             className={!isPinn ? 'active' : ''}
@@ -85,7 +106,9 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
         </div>
         <p className="property-hint">
           {isPinn
-            ? 'Learn a displacement field from elasticity equilibrium and boundary-condition residuals.'
+            ? project.study.solver.pinn.formulation === 'potential-energy'
+              ? 'Minimize integrated elastic potential energy with exact supported displacement conditions. Natural conditions enter through external work.'
+              : 'Learn a displacement field from elasticity equilibrium and boundary-condition residuals.'
             : `Sparse linear elasticity using ${is2D ? 'first-order triangles' : 'first-order tetrahedra'}.`}
         </p>
         {isPinn && (
@@ -95,6 +118,14 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
           </div>
         )}
       </Group>
+      {is2D && project.study.solver.pinn.formulation === 'potential-energy' && (
+        <p className="property-hint">
+          Experimental homogeneous plane stress. Prescribed components can use compatible constant
+          values on finite straight exterior segments, including partial edges. Curved supports and
+          conflicting values at intersections are rejected. Mesh quadrature approximates curved
+          boundaries; compare with FEM and inspect the independent integration audit.
+        </p>
+      )}
       {showTrainingSettings && (
         <>
           {!configuringPinn && (
@@ -293,8 +324,8 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
       )}
       {is2D && !pinnAvailable && (
         <p className="property-hint">
-          Profiles and spatial traction use FEM. PINN training and FEM/PINN comparison support
-          rectangular force/pressure studies.
+          Select the potential-energy formulation above to train and compare profiles or spatial
+          traction. The strong-form method supports rectangular force/pressure studies.
         </p>
       )}
       {pinnAvailable && !isPinn && (

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeProject, type ExampleId } from './projects';
+import researchCases from '../../../examples/research-cases.json';
+import { inputError } from '../../domain/project/validation';
 
 describe('offline engineering examples', () => {
   it.each<ExampleId>(['cantilever', 'cylinder', 'bracket', 'extension'])(
@@ -33,6 +35,30 @@ describe('offline engineering examples', () => {
   it('retains nonzero displacement and genuinely free components without external loading', () => {
     const project = makeProject('extension');
     expect(project.study.constraints[1].components).toEqual([0.0001, null, null]);
+    expect(project.study.loads).toEqual([]);
+  });
+  it.each(researchCases.cases)('opens the reusable research case $id with provenance', (entry) => {
+    const project = makeProject(entry.id as ExampleId);
+    expect(project.schemaVersion).toBe(5);
+    expect(project.study.dimension).toBe('2d');
+    expect(project.study.solver.pinn.formulation).toBe('potential-energy');
+    expect(project.study.solver.pinn.device).toBe(entry.device);
+    expect(entry.project).toBe(`${entry.id}.json`);
+    expect(entry.seeds).toContain(project.study.solver.pinn.seed);
+    expect(entry.deviations.length).toBeGreaterThan(0);
+    expect(entry.acceptance).not.toBe('');
+    expect(inputError(project)).toBeNull();
+  });
+  it('keeps the prescribed top half independent from its free collinear neighbor', () => {
+    const project = makeProject('eccentric-displacement');
+    const profile = project.geometry.profile!;
+    expect(profile.outer.find((edge) => edge.id === 'top-driven')?.start).toEqual([0.5, 1]);
+    expect(profile.outer.find((edge) => edge.id === 'top-free')?.end).toEqual([0.5, 1]);
+    expect(project.study.constraints.map((item) => item.regions)).toEqual([
+      ['bottom'],
+      ['top-driven'],
+    ]);
+    expect(project.study.constraints[1].components).toEqual([0, 0.1, null]);
     expect(project.study.loads).toEqual([]);
   });
 });

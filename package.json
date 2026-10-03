@@ -26,7 +26,8 @@
     "check:frontend": "tsc --noEmit && npm run check:boundaries && prettier --check src scripts/*.mjs contracts/*.json examples/*.json package.json tsconfig.json vite.config.ts .prettierrc.json src-tauri/*.json src-tauri/capabilities/*.json",
     "test:desktop": "node scripts/test-desktop.mjs",
     "check:native": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
-    "check:boundaries": "node scripts/check-boundaries.mjs"
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "verify:research": "node scripts/verify-research.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.0",

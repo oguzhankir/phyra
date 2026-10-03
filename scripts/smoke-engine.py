@@ -671,12 +671,13 @@ def main() -> None:
         )
         registered = {method["id"]: method for method in methods["methods"]}
         require(
-            len(methods["methods"]) == 3
+            len(methods["methods"]) == 4
             and set(registered)
             == {
                 "fem-solid-tetra4",
                 "fem-plane-stress-tri3",
                 "pinn-plane-stress-displacement",
+                "pinn-plane-stress-energy",
             },
             "Bundled method registry differs from its implemented routes.",
         )
@@ -773,6 +774,59 @@ def main() -> None:
             f"training={manifest['training']['timings']['trainingSeconds']:.3f}s."
         )
 
+        energy_project = json.loads(
+            (ROOT / "examples" / "energy-tension.json").read_text(encoding="utf-8")
+        )
+        output = Path(directory) / "result-energy-cpu"
+        energy_manifest, messages = completed(
+            "compare", energy_project, output, "bundle-energy-cpu"
+        )
+        errors = check_2d_fields(energy_manifest, output, energy_project, "compare")
+        check_training(energy_manifest, messages, energy_project, "cpu")
+        measured_energy = energy_manifest["training"]["energy"]
+        require(
+            measured_energy["relativeIntegrationDifference"] <= 0.01
+            and measured_energy["history"][-1]["potential"] < 0
+            and measured_energy["physicalScale"] > 0,
+            "Missing signed energy or independent integration gate.",
+        )
+        # Independent axial field gates; no residual objective is an accuracy proxy.
+        require(
+            errors["pinnDisplacement"] < 0.03
+            and errors["pinnStress"] < 0.05
+            and energy_manifest["pinnSummary"]["relativeForceBalance"] < 0.05,
+            f"Bundled energy axial reference failed: {errors}",
+        )
+        reopened, _ = completed("validate", energy_project, output, "bundle-energy-cpu")
+        require(
+            reopened == energy_manifest, "Energy cache changed signed measurements."
+        )
+        energy_project["study"]["solver"]["pinn"]["formulation"] = "strong-form"
+        code, messages = invoke("validate", energy_project, output, "bundle-energy-cpu")
+        require(
+            code != 0 and messages[-1].get("code") == "stale-cache",
+            "Formulation change incorrectly reused energy fields.",
+        )
+        energy_profile = json.loads(
+            (ROOT / "examples" / "energy-hole.json").read_text(encoding="utf-8")
+        )
+        energy_profile["study"]["solver"]["pinn"].update(
+            steps=12, interiorPoints=1024, boundaryPoints=32
+        )
+        output = Path(directory) / "result-energy-profile"
+        profile_energy, messages = completed(
+            "train", energy_profile, output, "bundle-energy-profile"
+        )
+        check_training(profile_energy, messages, energy_profile, "cpu")
+        read_arrays(profile_energy, output)
+        reopened, _ = completed(
+            "validate", energy_profile, output, "bundle-energy-profile"
+        )
+        require(reopened == profile_energy, "Profile energy cache lost provenance.")
+        print(
+            "Bundled energy rectangle compare/analytical/cache and profile traction training passed."
+        )
+
         if next(entry for entry in capabilities if entry["id"] == "mps")["available"]:
             accelerator = json.loads(json.dumps(plane))
             accelerator["study"]["solver"]["pinn"].update(
@@ -793,6 +847,26 @@ def main() -> None:
                 f"loss {initial:.6g} → {final:.6g}, "
                 f"held-out residual={manifest['training']['validation']['total']:.6g}; "
                 "short-run accuracy was not asserted."
+            )
+            accelerator["study"]["solver"]["pinn"]["formulation"] = "potential-energy"
+            accelerator["study"]["solver"]["pinn"].update(
+                interiorPoints=1024, boundaryPoints=64
+            )
+            output = Path(directory) / "result-energy-mps"
+            energy_mps, messages = completed(
+                "train", accelerator, output, "bundle-energy-mps"
+            )
+            check_2d_fields(energy_mps, output, accelerator, "train")
+            check_training(energy_mps, messages, accelerator, "mps")
+            reopened, _ = completed(
+                "validate", accelerator, output, "bundle-energy-mps"
+            )
+            require(
+                reopened == energy_mps,
+                "Energy MPS cache lost measured precision or audit.",
+            )
+            print(
+                "Bundled MPS energy autograd/training/audit/cache passed; short-run accuracy not asserted."
             )
         else:
             print(
