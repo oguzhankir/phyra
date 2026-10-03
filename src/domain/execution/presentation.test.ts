@@ -156,6 +156,9 @@ describe('training updates owned by the active run', () => {
   it('ignores late updates from another job and nonfinite metrics', () => {
     expect(appendTrainingMetric([], sample, 'different')).toEqual([]);
     expect(appendTrainingMetric([], { ...sample, total: NaN }, 'current')).toEqual([]);
+    expect(appendTrainingMetric([], { ...sample, total: -0.1 }, 'current')).toEqual([]);
+    expect(appendTrainingMetric([], { ...sample, step: 1.5 }, 'current')).toEqual([]);
+    expect(appendTrainingMetric([], { ...sample, elapsed: -1 }, 'current')).toEqual([]);
   });
   it('replaces repeated step updates while preserving a bounded real history', () => {
     const history = appendTrainingMetric([], sample, 'current');

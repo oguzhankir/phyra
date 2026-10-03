@@ -102,6 +102,45 @@
 .training-plot {
   min-width: 0;
 }
+.energy-objective {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-subtle);
+}
+.energy-objective h3,
+.energy-objective h4 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.energy-objective h4 {
+  margin-top: 18px;
+}
+.energy-objective p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 7px 0;
+}
+.energy-objective .energy-plot {
+  margin-top: 14px;
+}
+.energy-audit-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 16px;
+  max-width: 450px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.energy-audit-values b {
+  color: var(--text);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
 .training-plot svg {
   width: 100%;
   height: 137px;

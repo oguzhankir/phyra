@@ -26,6 +26,23 @@ export interface TrainingValidation {
   displacement: number;
   traction: number;
 }
+export interface EnergyMeasurement {
+  potential: number;
+  strain: number;
+  work: number;
+}
+export interface TrainingEnergy {
+  schemaVersion: 1;
+  definition: string;
+  trainingQuadrature: string;
+  auditQuadrature: string;
+  interiorPoints: number;
+  boundaryPoints: number;
+  physicalScale: number;
+  history: (EnergyMeasurement & { step: number })[];
+  audit: EnergyMeasurement;
+  relativeIntegrationDifference: number;
+}
 export interface Devices {
   capabilities?: EngineCapabilities;
   devices: {
@@ -88,6 +105,7 @@ export interface Manifest {
     framework?: string;
     residualDefinition?: string;
     validation?: TrainingValidation;
+    energy?: TrainingEnergy;
   };
   comparison?: {
     mapping: string;
