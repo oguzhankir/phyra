@@ -46,8 +46,8 @@ describe('located boundary conditions', () => {
       vector: [3, 4, 12],
       pressure: 0,
     };
-    expect(loadSummary(force, '2d')).toBe('Force · 5 N');
-    expect(loadSummary(force, '3d')).toBe('Force · 13 N');
+    expect(loadSummary(force, '2d')).toBe('Total force · 5 N');
+    expect(loadSummary(force, '3d')).toBe('Total force · 13 N');
     expect(loadSummary({ ...force, kind: 'pressure', pressure: -2e6 }, '2d')).toBe(
       'Pressure · -2 MPa',
     );

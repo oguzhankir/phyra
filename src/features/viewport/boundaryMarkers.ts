@@ -125,7 +125,7 @@ export function loadSummary(
   anchor?: BoundaryAnchor,
 ) {
   if (item.kind === 'force')
-    return `Force · ${formatValue(Math.hypot(...item.vector.slice(0, dimension === '2d' ? 2 : 3)))} N`;
+    return `Total force · ${formatValue(Math.hypot(...item.vector.slice(0, dimension === '2d' ? 2 : 3)))} N`;
   if (item.kind === 'pressure') {
     const pressure = displayValue(item.pressure, 'Pa', 'm');
     return `Pressure · ${formatValue(pressure.value)} ${pressure.units}`;

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -58,6 +59,15 @@ type Target = { section: Section; id?: string; label: string };
 type Menu = Target & { x: number; y: number };
 type GroupId = 'selections' | 'constraints' | 'loads';
 
+export function revealSelectedModelObject(outline: HTMLElement) {
+  const selected = outline.querySelector<HTMLElement>('button[aria-current="page"]');
+  if (!selected?.getClientRects().length) return;
+  const bounds = outline.getBoundingClientRect();
+  const item = selected.getBoundingClientRect();
+  if (item.top < bounds.top) outline.scrollTop += item.top - bounds.top;
+  else if (item.bottom > bounds.bottom) outline.scrollTop += item.bottom - bounds.bottom;
+}
+
 export default function ModelTree(props: Props) {
   const { project, section, onSection } = props;
   const [collapsed, setCollapsed] = useState<Partial<Record<GroupId, boolean>>>({});
@@ -72,6 +82,9 @@ export default function ModelTree(props: Props) {
       previous[section as GroupId] ? { ...previous, [section]: false } : previous,
     );
   }, [section, props.constraintId, props.loadId, props.namedSelectionId]);
+  useLayoutEffect(() => {
+    if (props.active !== false && outline.current) revealSelectedModelObject(outline.current);
+  }, [section, props.constraintId, props.loadId, props.namedSelectionId, props.active, collapsed]);
   const resultStatus = props.solved
     ? 'Current solution'
     : props.stale
