@@ -770,6 +770,7 @@ U=\frac{SL}{E},\qquad
 $$
 
 $S$ has units Pa and $U$ has units m. With derivatives taken in $\hat{\mathbf x}$, the normalized engineering strain is $[\partial_{\hat x}\hat u_x,\partial_{\hat y}\hat u_y,\partial_{\hat y}\hat u_x+\partial_{\hat x}\hat u_y]^T$ and $\hat{\boldsymbol\sigma}=(\mathbf D_{\mathrm{ps}}/E)\hat{\boldsymbol\varepsilon}_{\mathrm{eng}}$. PyTorch autograd evaluates first displacement derivatives and second derivatives through stress.`,
+          'The boundary traction term uses both endpoints and five interior Gauss points on every mesh boundary edge, evaluating the sum of physical loads. The endpoint maximum is exact for affine traction and constant force/pressure on each straight edge. For the nonlinear Kirsch field it is a representative sampled maximum, not a global bound. Total force is distributed over its entire assigned boundary area.',
           String.raw`The strong-form equilibrium residual is
 
 $$

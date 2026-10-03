@@ -7,7 +7,7 @@ import numpy as np
 
 from phyra_engine.errors import EngineError
 from phyra_engine.meshing.types import Mesh2D
-from phyra_engine.physics.elasticity.plane_stress import constraint_dofs, edge_tractions
+from phyra_engine.physics.elasticity.plane_stress import boundary_traction_scale, constraint_dofs
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,10 +22,9 @@ class Normalization:
 def normalization(mesh: Mesh2D, study: dict[str, Any]) -> Normalization:
     span = np.ptp(mesh.positions[:, :2], axis=0)
     length = float(span.max())
-    traction = edge_tractions(mesh, study["loads"])
     prescribed = constraint_dofs(mesh, study["constraints"])
     stress = max(
-        float(np.linalg.norm(traction, axis=1).max()),
+        boundary_traction_scale(mesh, study["loads"]),
         study["material"]["young"] * max(map(abs, prescribed.values()), default=0) / length,
         study["material"]["young"] * 1e-8,
     )
