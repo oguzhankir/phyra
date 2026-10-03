@@ -138,6 +138,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
       setMessage(cause instanceof Error ? cause.message : 'The sketch operation failed.');
     }
   };
+  const draftReservedIds = () => [...retiredIds.current, ...reservedIds];
   const update = (change: (next: Profile) => void) =>
     perform(() => {
       const next = structuredClone(draft);
@@ -173,7 +174,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
       setMessage('Add at least three vertices before closing the loop.');
       return;
     }
-    perform(() => replaceSketchLoop(draft, pending, reservedIds));
+    perform(() => replaceSketchLoop(draft, pending, draftReservedIds()));
     setPending([]);
     setTool('select');
     setSelection(null);
@@ -212,7 +213,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
         setMessage('Choose a side point away from the centerline.');
         return;
       }
-      perform(() => slotSketchLoop(draft, a, b, radius, reservedIds));
+      perform(() => slotSketchLoop(draft, a, b, radius, draftReservedIds()));
       setPending([]);
       setTool('select');
       setSelection(null);
@@ -228,12 +229,12 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
       }
       perform(() =>
         tool === 'rectangle'
-          ? rectangleSketchLoop(draft, start, point, reservedIds)
+          ? rectangleSketchLoop(draft, start, point, draftReservedIds())
           : addSketchHole(
               draft,
               start,
               Math.hypot(point[0] - start[0], point[1] - start[1]),
-              reservedIds,
+              draftReservedIds(),
             ),
       );
       setPending([]);
@@ -261,9 +262,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   const selectedEdge = selection?.kind === 'edge' ? draft.outer[selection.index] : null;
   const splitSelected = () => {
     if (selection?.kind !== 'edge') return;
-    const next = perform(() =>
-      splitSketchEdge(draft, selection.index, [...retiredIds.current, ...reservedIds]),
-    );
+    const next = perform(() => splitSketchEdge(draft, selection.index, draftReservedIds()));
     if (next)
       setAssignmentNotice(
         'Edge split into two exact halves with new boundary IDs. Apply the sketch, then repair supports, loads and named boundaries that used the original edge.',
