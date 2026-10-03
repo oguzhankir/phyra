@@ -5,6 +5,7 @@ import {
   Square,
   Pentagon,
   Circle,
+  RectangleEllipsis,
   Focus,
   Check,
   RotateCcw,
@@ -20,13 +21,14 @@ import {
   sketchBounds,
   sketchGridSpacing,
   snapPoint,
+  slotSketchLoop,
 } from '../../domain/project/sketch';
 import { formatValue } from '../../domain/units';
 import { NumberInput, NumericDraftContext } from '../../shared/forms/PropertyControls';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import './SketchCanvas.css';
 
-type Tool = 'select' | 'rectangle' | 'polyline' | 'hole';
+type Tool = 'select' | 'rectangle' | 'polyline' | 'hole' | 'slot';
 type Selection = { kind: 'vertex' | 'edge' | 'hole'; index: number } | null;
 type Props = {
   profile: Profile;
@@ -54,6 +56,12 @@ const tools: { id: Tool; label: string; icon: typeof Square; hint: string }[] = 
     label: 'Polyline',
     icon: Pentagon,
     hint: 'Click 3–64 vertices, then Close loop or Enter. The outer loop is ordered counterclockwise.',
+  },
+  {
+    id: 'slot',
+    label: 'Slot',
+    icon: RectangleEllipsis,
+    hint: 'Click the two end centers, then the side to set the radius. Creates an exact outline with tangent lines and semicircles; review assignments after Apply.',
   },
   {
     id: 'hole',
@@ -170,6 +178,30 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
         return;
       }
       setPending([...pending, point]);
+    } else if (tool === 'slot') {
+      if (pending.length < 2) {
+        if (
+          pending.length &&
+          Math.hypot(point[0] - pending[0][0], point[1] - pending[0][1]) < view.width * 1e-7
+        ) {
+          setMessage('Choose a distinct end center.');
+          return;
+        }
+        setPending([...pending, point]);
+        return;
+      }
+      const [a, b] = pending;
+      const radius =
+        Math.abs((b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])) /
+        Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (!(radius > view.width * 1e-7)) {
+        setMessage('Choose a side point away from the centerline.');
+        return;
+      }
+      perform(() => slotSketchLoop(draft, a, b, radius, reservedIds));
+      setPending([]);
+      setTool('select');
+      setSelection(null);
     } else if (tool === 'rectangle' || tool === 'hole') {
       if (!pending.length) {
         setPending([point]);

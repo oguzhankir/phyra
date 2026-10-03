@@ -1,4 +1,4 @@
-import { LockKeyhole } from 'lucide-react';
+import { ArrowDownLeft, LockKeyhole } from 'lucide-react';
 import { sectionTitles } from '../workbench/navigation';
 import GeometryEditor from './GeometryEditor';
 import NamedSelectionEditor from './NamedSelectionEditor';
@@ -18,15 +18,46 @@ export default function PropertyInspector({
   workbench: ProjectInspectorModel;
   panelId?: string;
 }) {
-  const { rightWidth, section, locked, project, busy } = workbench;
+  const { section, locked, project, busy } = workbench;
+  const selectedName =
+    section === 'study'
+      ? project.name
+      : section === 'material'
+        ? project.study.material.name
+        : section === 'constraints'
+          ? (workbench.constraint?.name ?? 'Supports')
+          : section === 'loads'
+            ? (workbench.load?.name ?? 'Loads')
+            : section === 'selections'
+              ? (workbench.namedSelection?.name ?? 'Boundary sets')
+              : sectionTitles[section];
+  const selectedType =
+    section === 'study'
+      ? `${workbench.is2D ? '2D plane stress' : '3D solid'} · Static structural`
+      : section === 'constraints' && workbench.constraint
+        ? 'Displacement support'
+        : section === 'loads' && workbench.load
+          ? workbench.load.kind === 'force'
+            ? 'Total force'
+            : workbench.load.kind === 'pressure'
+              ? 'Normal pressure'
+              : 'Spatial vector traction'
+          : section === 'selections' && workbench.namedSelection
+            ? `${workbench.namedSelection.regions.length} saved boundaries`
+            : section === 'results'
+              ? 'Fields and diagnostics'
+              : 'Selected model object';
   return (
-    <aside id={panelId} className="properties-panel" style={{ width: rightWidth }}>
-      <div className="panel-heading">
-        <span>
-          {section === 'results'
-            ? 'Result details'
-            : `Edit ${sectionTitles[section].toLowerCase()}`}
-        </span>
+    <aside id={panelId} className="properties-panel" aria-label={`${selectedName} properties`}>
+      <div className="panel-heading inspector-heading">
+        <span>{section === 'results' ? 'Result details' : 'Properties'}</span>
+        <small>
+          <ArrowDownLeft size={11} /> From model selection
+        </small>
+      </div>
+      <div className="inspector-selection" aria-live="polite">
+        <strong>{selectedName}</strong>
+        <small>{selectedType}</small>
       </div>
       <div className="properties-scroll">
         <fieldset disabled={locked} key={`${project.id}:${project.displayUnits}`}>

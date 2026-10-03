@@ -48,8 +48,7 @@ export function useWorkbenchView({
   const [animate, setAnimate] = useState(false);
   const [fieldSource, setFieldSource] = useState<FieldSource>('primary');
   const [probe, setProbe] = useState<Probe | null>(null);
-  const [leftWidth, setLeftWidth] = useState(248);
-  const [rightWidth, setRightWidth] = useState(336);
+  const [leftWidth, setLeftWidth] = useState(350);
   const [help, setHelp] = useState(false);
   const [helpContext, setHelpContext] = useState<HelpContext>('overview');
   const { theme, preference, setPreference } = appearance;
@@ -84,39 +83,20 @@ export function useWorkbenchView({
     setFieldId(result && result.manifest.operation !== 'mesh' ? 'displacement-mag' : 'geometry');
     setProbe(null);
   };
-  const panelWidth = (side: 'left' | 'right', value: number) =>
-    Math.max(
-      side === 'left' ? 184 : 260,
-      Math.min(
-        side === 'left' ? 360 : 430,
-        window.innerWidth - (side === 'left' ? rightWidth : leftWidth) - 370,
-        value,
-      ),
-    );
-  const adjustPanel = (side: 'left' | 'right', delta: number) => {
-    const setter = side === 'left' ? setLeftWidth : setRightWidth;
-    setter((width) => panelWidth(side, width + delta));
-  };
+  const panelWidth = (value: number) =>
+    Math.max(300, Math.min(520, window.innerWidth - 370, value));
+  const adjustPanel = (delta: number) => setLeftWidth((width) => panelWidth(width + delta));
   useEffect(() => {
-    const fitPanels = () => {
-      const availableWidth = Math.max(1080, window.innerWidth) - 370;
-      const nextLeft = Math.min(leftWidth, Math.max(184, availableWidth - 260));
-      const nextRight = Math.min(rightWidth, Math.max(260, availableWidth - nextLeft));
-      setLeftWidth(nextLeft);
-      setRightWidth(nextRight);
-    };
-    window.addEventListener('resize', fitPanels);
-    fitPanels();
-    return () => window.removeEventListener('resize', fitPanels);
-  }, [leftWidth, rightWidth]);
-  const resize = (event: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
+    const fitPanel = () => setLeftWidth((width) => panelWidth(width));
+    window.addEventListener('resize', fitPanel);
+    return () => window.removeEventListener('resize', fitPanel);
+  }, []);
+  const resize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const start = event.clientX;
-    const width = side === 'left' ? leftWidth : rightWidth;
-    const move = (pointer: PointerEvent) => {
-      const next = panelWidth(side, width + (pointer.clientX - start) * (side === 'left' ? 1 : -1));
-      (side === 'left' ? setLeftWidth : setRightWidth)(next);
-    };
+    const width = leftWidth;
+    const move = (pointer: PointerEvent) =>
+      setLeftWidth(panelWidth(width + pointer.clientX - start));
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
@@ -195,7 +175,6 @@ export function useWorkbenchView({
     probe,
     setProbe,
     leftWidth,
-    rightWidth,
     resize,
     adjustPanel,
     help,

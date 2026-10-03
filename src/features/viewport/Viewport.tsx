@@ -3,6 +3,7 @@ import {
   planeFitDistance,
   boxFitDistance,
   cameraResizeFactor,
+  zoomedDistance,
   type CameraView,
 } from './camera';
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +11,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ScanLine, Focus, Ruler, X } from 'lucide-react';
 import ViewportTools from './ViewportTools';
+import ViewportMenu, { type ViewportMenuContext } from './ViewportMenu';
 import { invokeVerification as invoke } from '../../platform/desktop/verification';
 import type { Project } from '../../domain/contracts/types';
 import {
@@ -24,15 +26,24 @@ import { regionNames, type RegionId } from '../../domain/project/regions';
 import { contourColor } from './contours';
 import { tractionGlyph } from './traction';
 import { surfaceData, type SurfaceData } from './surface';
-import { pickedRegion, nearestHitNode, displayedNode, visibleTriangles } from './picking';
-import { nextSelection, selectionIntent, type SelectionMode } from './selection';
+import {
+  pickedRegion,
+  nearestHitNode,
+  displayedNode,
+  visibleTriangles,
+  selectedBoundaryBounds,
+} from './picking';
+import { nextSelection, selectionIntent, contextSelection, type SelectionMode } from './selection';
 import { geometryDistance } from './measurement';
 import {
   boundaryAnchors,
+  boundaryGlyphAnchors,
   supportColor,
   loadColor,
   supportDescription,
   loadDescription,
+  loadSummary,
+  supportSummary,
 } from './boundaryMarkers';
 
 import type { Probe } from '../../domain/results/probe';
@@ -44,11 +55,16 @@ type ConditionAnnotation = {
   region: RegionId;
   point: [number, number, number];
   detail: string;
+  summary: string;
   offset: number;
 };
 type Props = {
   active?: boolean;
+  locked?: boolean;
   onCondition?: (kind: 'constraint' | 'load', id: string) => void;
+  onEditGeometry?: () => void;
+  onAddCondition?: (kind: 'constraint' | 'load', regions: RegionId[]) => void;
+  onAddNamedSelection?: (regions: RegionId[]) => void;
   project: Project;
   data: ResultData | null;
   field: Field | null;
@@ -74,7 +90,8 @@ type Runtime = {
   surface?: THREE.Mesh;
   grid?: THREE.GridHelper;
   invalidate: () => void;
-  fit: (view?: CameraView) => void;
+  fit: (view?: CameraView, regions?: ReadonlySet<RegionId>) => void;
+  zoom: (factor: number) => void;
   activate: (active: boolean) => void;
   data?: SurfaceData;
   displayedTriangles: Uint32Array;
@@ -163,9 +180,12 @@ export default function Viewport(props: Props) {
   current.current = props;
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(0);
+  const [modelSpan, setModelSpan] = useState<[number, number, number] | null>(null);
   const [hovered, setHovered] = useState<RegionId | null>(null);
   const [isolated, setIsolated] = useState<RegionId[] | null>(null);
   const [cameraView, setCameraView] = useState<CameraView | 'custom'>('isometric');
+  const [conditionsShown, setConditionsShown] = useState(true);
+  const [contextMenu, setContextMenu] = useState<ViewportMenuContext | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const measurementMode = useRef(measuring);
   measurementMode.current = measuring;
@@ -192,6 +212,7 @@ export default function Viewport(props: Props) {
     setIsolated(null);
     setMeasuredNodes([]);
     setHovered(null);
+    setContextMenu(null);
   }, [geometryIdentity, props.data]);
 
   useEffect(() => {
@@ -232,6 +253,8 @@ export default function Viewport(props: Props) {
     let controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.13;
+    controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+    controls.mouseButtons.RIGHT = null;
     scene.add(new THREE.AmbientLight(0xffffff, 1.5));
     const light = new THREE.DirectionalLight(0xffffff, 2.3);
     light.position.set(2, -3, 5);
@@ -260,13 +283,30 @@ export default function Viewport(props: Props) {
       visibleRegions: null,
       hoverRegion: null,
       activate: () => {},
-      fit: (view) => {
+      zoom: (factor) => {
+        if (current.current.active === false) return;
+        const offset = camera.position.clone().sub(controls.target);
+        const distance = offset.length();
+        if (distance === 0) return;
+        camera.position
+          .copy(controls.target)
+          .addScaledVector(
+            offset,
+            zoomedDistance(distance, factor, controls.minDistance, controls.maxDistance) / distance,
+          );
+        controls.update();
+        invalidate();
+      },
+      fit: (view, regions) => {
         if (current.current.active === false) return;
         // Drain any damped orbit/pan before applying an exact named orientation.
         controls.enableDamping = false;
         controls.update();
         controls.enableDamping = true;
-        const bounds = state.viewBounds;
+        const bounds =
+          regions && state.data
+            ? (selectedBoundaryBounds(state.data, regions, state.maximumScale) ?? state.viewBounds)
+            : state.viewBounds;
         const center = bounds.getCenter(new THREE.Vector3());
         const span = bounds.getSize(new THREE.Vector3());
         const size = Math.max(span.length(), 0.000001);
@@ -288,6 +328,8 @@ export default function Viewport(props: Props) {
           controls = new OrbitControls(camera, renderer.domElement);
           controls.enableDamping = true;
           controls.dampingFactor = 0.13;
+          controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+          controls.mouseButtons.RIGHT = null;
           controls.addEventListener('change', invalidate);
           state.controls = controls;
         }
@@ -362,13 +404,20 @@ export default function Viewport(props: Props) {
         !event.defaultPrevented &&
         !(
           event.target instanceof HTMLElement &&
-          event.target.closest('[role="dialog"], [contenteditable="true"]')
+          event.target.closest('[role="dialog"], [role="menu"], [contenteditable="true"]')
         ) &&
         !(event.target instanceof HTMLInputElement) &&
         !(event.target instanceof HTMLTextAreaElement) &&
         !(event.target instanceof HTMLSelectElement)
-      )
-        state.fit();
+      ) {
+        event.preventDefault();
+        state.fit(
+          undefined,
+          event.shiftKey && current.current.selected.length
+            ? new Set(current.current.selected)
+            : undefined,
+        );
+      }
     };
     window.addEventListener('keydown', fitKey);
     const animate = (now = performance.now()) => {
@@ -398,7 +447,7 @@ export default function Viewport(props: Props) {
             point.z >= -1 && point.z <= 1 && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1;
           label.style.visibility = visible ? 'visible' : 'hidden';
           const x = ((point.x + 1) * element.clientWidth) / 2;
-          const y = ((1 - point.y) * element.clientHeight) / 2 + annotation.offset * 25;
+          const y = ((1 - point.y) * element.clientHeight) / 2 + annotation.offset * 40;
           label.style.left = `${Math.max(12, Math.min(x, element.clientWidth - label.offsetWidth - 16))}px`;
           label.style.top = `${Math.max(60, Math.min(y, element.clientHeight - label.offsetHeight - 64))}px`;
         }
@@ -422,7 +471,7 @@ export default function Viewport(props: Props) {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let down = [0, 0];
-    const hitAt = (event: PointerEvent) => {
+    const hitAt = (event: { clientX: number; clientY: number }) => {
       if (!state.surface || !state.data) return null;
       camera.updateMatrixWorld(true);
       if (current.current.animate) state.surface.geometry.computeBoundingSphere();
@@ -486,7 +535,31 @@ export default function Viewport(props: Props) {
     const pointerLeave = () => hoverRegion(null);
     const pointerDown = (event: PointerEvent) => {
       down = [event.clientX, event.clientY];
+      element.focus({ preventScroll: true });
       hoverRegion(null);
+    };
+    const openContext = (event: MouseEvent) => {
+      event.preventDefault();
+      if (current.current.active === false) return;
+      const hit = hitAt(event);
+      const region =
+        hit?.faceIndex != null && state.data
+          ? pickedRegion(
+              state.data,
+              state.displayedTriangles[hit.faceIndex],
+              hit.point,
+              state.scale,
+              { camera, width: element.clientWidth, height: element.clientHeight },
+              state.visibleRegions,
+            )
+          : null;
+      const boundary = region === 'Interior' ? null : region;
+      const regions = contextSelection(current.current.selected, boundary);
+      if (boundary && !current.current.selected.includes(boundary)) {
+        if (current.current.onSelectionChange) current.current.onSelectionChange(regions);
+        else current.current.onSelect(boundary);
+      }
+      setContextMenu({ x: event.clientX, y: event.clientY, regions, restoreFocus: element });
     };
     const select = (region: RegionId | null, event: PointerEvent) => {
       const currentProps = current.current;
@@ -569,9 +642,11 @@ export default function Viewport(props: Props) {
     renderer.domElement.addEventListener('pointerup', pointerUp);
     renderer.domElement.addEventListener('pointermove', pointerMove);
     renderer.domElement.addEventListener('pointerleave', pointerLeave);
+    renderer.domElement.addEventListener('contextmenu', openContext);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('keydown', fitKey);
+      renderer.domElement.removeEventListener('contextmenu', openContext);
       resize.disconnect();
       controls.dispose();
       clearGroup(model);
@@ -588,6 +663,7 @@ export default function Viewport(props: Props) {
 
   useEffect(() => {
     runtime.current?.activate(props.active !== false);
+    if (props.active === false) setContextMenu(null);
   }, [props.active]);
 
   useEffect(() => {
@@ -630,6 +706,7 @@ export default function Viewport(props: Props) {
         point.set(data.positions[i], data.positions[i + 1], data.positions[i + 2]),
       );
     state.bounds.copy(bounds);
+    setModelSpan(bounds.getSize(new THREE.Vector3()).toArray() as [number, number, number]);
     const length = Math.max(bounds.getSize(new THREE.Vector3()).length(), 1e-12);
     state.scale = deformationScale(
       data.displacement ?? null,
@@ -830,7 +907,8 @@ export default function Viewport(props: Props) {
       props.project.study.dimension,
       props.project.geometry.profile,
     );
-    for (const anchor of boundaryAnchors(data)) {
+    const glyphAnchors = conditionsShown ? boundaryGlyphAnchors(data) : new Map();
+    for (const anchor of conditionsShown ? boundaryAnchors(data) : []) {
       const region = anchor.region;
       if (state.visibleRegions && !state.visibleRegions.has(region)) continue;
       const center = new THREE.Vector3(...anchor.point);
@@ -853,6 +931,7 @@ export default function Viewport(props: Props) {
         kind: 'constraint' | 'load',
         item: { id: string; name: string },
         detail: string,
+        summary: string,
       ) => {
         nextAnnotations.push({
           key: `${kind}:${item.id}:${region}`,
@@ -863,18 +942,17 @@ export default function Viewport(props: Props) {
           point: anchor.point,
           offset: offset++,
           detail: `${names.find((item) => item.id === region)?.name ?? region} · ${detail}`,
+          summary,
         });
       };
       if (constraints.length) {
-        const constraint = constraints[0];
-        annotate(
-          'constraint',
-          {
-            ...constraint,
-            name: `${constraint.name}${constraints.length > 1 ? ` +${constraints.length - 1}` : ''}`,
-          },
-          supportDescription(constraint, props.project.study.dimension),
-        );
+        for (const item of constraints)
+          annotate(
+            'constraint',
+            item,
+            supportDescription(item, props.project.study.dimension),
+            supportSummary(item, props.project.study.dimension, props.project.displayUnits),
+          );
         const size = length * 0.028;
         if (props.project.study.dimension === '3d') {
           const marker = new THREE.Mesh(
@@ -910,37 +988,50 @@ export default function Viewport(props: Props) {
           state.model.add(glyph);
         }
       }
-      for (const [loadIndex, load] of loads.entries()) {
-        if (loadIndex === 0)
-          annotate(
-            'load',
-            { ...load, name: `${load.name}${loads.length > 1 ? ` +${loads.length - 1}` : ''}` },
-            loadDescription(load, props.project.study.dimension),
-          );
-        const traction =
-          load.kind === 'traction'
-            ? tractionGlyph(load.traction, center.x, center.y, normal.x, normal.y)
-            : null;
-        const direction =
-          load.kind === 'pressure'
-            ? normal.clone().multiplyScalar(-Math.sign(load.pressure))
-            : load.kind === 'traction'
-              ? new THREE.Vector3(...(traction ?? [0, 0]), 0).normalize()
-              : new THREE.Vector3(...load.vector).normalize();
-        if (direction.lengthSq() === 0) continue;
-        const arrow = new THREE.ArrowHelper(
-          direction,
-          center.clone().addScaledVector(direction, -length * 0.14),
-          length * 0.14,
-          new THREE.Color(loadColor).getHex(),
-          length * 0.035,
-          length * 0.022,
+      for (const load of loads) {
+        annotate(
+          'load',
+          load,
+          loadDescription(load, props.project.study.dimension),
+          loadSummary(load, props.project.study.dimension, anchor),
         );
-        for (const mesh of [arrow.line, arrow.cone])
-          for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
-            material.depthTest = false;
-        arrow.renderOrder = 8;
-        state.model.add(arrow);
+        for (const glyphAnchor of load.kind === 'force'
+          ? [anchor]
+          : (glyphAnchors.get(region) ?? [anchor])) {
+          const glyphCenter = new THREE.Vector3(...glyphAnchor.point);
+          const glyphNormal = new THREE.Vector3(...glyphAnchor.normal);
+          const traction =
+            load.kind === 'traction'
+              ? tractionGlyph(
+                  load.traction,
+                  glyphCenter.x,
+                  glyphCenter.y,
+                  glyphNormal.x,
+                  glyphNormal.y,
+                )
+              : null;
+          const direction =
+            load.kind === 'pressure'
+              ? glyphNormal.clone().multiplyScalar(-Math.sign(load.pressure))
+              : load.kind === 'traction'
+                ? new THREE.Vector3(...(traction ?? [0, 0]), 0).normalize()
+                : new THREE.Vector3(...load.vector).normalize();
+          if (direction.lengthSq() === 0) continue;
+          const arrow = new THREE.ArrowHelper(
+            direction,
+            glyphCenter.clone().addScaledVector(direction, -length * 0.09),
+            length * 0.09,
+            new THREE.Color(loadColor).getHex(),
+            length * 0.023,
+            length * 0.013,
+          );
+          for (const mesh of [arrow.line, arrow.cone])
+            for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+              material.depthTest = false;
+          arrow.renderOrder = 8;
+          state.model.add(arrow);
+          state.viewBounds.expandByPoint(arrow.position).expandByPoint(glyphCenter);
+        }
       }
     }
     annotationPositions.current = nextAnnotations;
@@ -1130,6 +1221,7 @@ export default function Viewport(props: Props) {
     props.source,
     props.animate,
     props.theme,
+    conditionsShown,
     isolated,
     measuredNodes,
     !!props.onVerified,
@@ -1165,16 +1257,54 @@ export default function Viewport(props: Props) {
     setCameraView(view);
     runtime.current?.fit(view);
   };
-
+  const isolateSelection = (regions: RegionId[]) => {
+    setIsolated([...regions]);
+    setMeasuredNodes([]);
+    props.onProbe(null);
+  };
+  const openModelActions = (element: HTMLElement) => {
+    const bounds = element.getBoundingClientRect();
+    setContextMenu({
+      x: bounds.left,
+      y: bounds.bottom + 4,
+      regions: [...props.selected],
+      restoreFocus: element,
+    });
+  };
   return (
     <div className="viewport">
       <div
         ref={container}
         className="viewport-canvas"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setContextMenu({
+              x: bounds.left + bounds.width / 2,
+              y: bounds.top + bounds.height / 2,
+              regions: [...props.selected],
+              restoreFocus: event.currentTarget,
+            });
+          } else if (
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            ['+', '=', '-', '_'].includes(event.key)
+          ) {
+            event.preventDefault();
+            runtime.current?.zoom(event.key === '+' || event.key === '=' ? 0.8 : 1.25);
+          } else if (event.key === 'Escape') {
+            setMeasuring(false);
+            setMeasuredNodes([]);
+            props.onSelectionChange?.([]);
+          }
+        }}
         aria-label={
           props.project.study.dimension === '2d'
-            ? 'Interactive plane stress model. Drag to pan, scroll to zoom, click edges to select.'
-            : 'Interactive 3D model. Drag to orbit, scroll to zoom, click boundaries to select.'
+            ? 'Interactive plane stress model. Drag to pan, scroll or plus and minus to zoom, click edges to select, right-click or Shift+F10 for actions.'
+            : 'Interactive 3D model. Drag to orbit, Shift-drag to pan, scroll or plus and minus to zoom, click boundaries to select, right-click or Shift+F10 for actions.'
         }
       />
       <div className="viewport-condition-markers" aria-label="Located supports and loads">
@@ -1193,55 +1323,71 @@ export default function Viewport(props: Props) {
               if (!props.onSelectionChange) props.onSelect(annotation.region);
               props.onCondition?.(annotation.kind, annotation.id);
             }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              const regions = contextSelection(props.selected, annotation.region);
+              if (props.onSelectionChange) props.onSelectionChange(regions);
+              else props.onSelect(annotation.region);
+              setContextMenu({
+                x: event.clientX,
+                y: event.clientY,
+                regions,
+                restoreFocus: event.currentTarget,
+              });
+            }}
           >
             <span aria-hidden="true">{annotation.kind === 'constraint' ? supportSymbol : '↗'}</span>
-            {annotation.name}
+            <span className="viewport-condition-copy">
+              <strong>{annotation.name}</strong>
+              <small>{annotation.summary}</small>
+            </span>
           </button>
         ))}
       </div>
-      {(props.project.study.constraints.length > 0 || props.project.study.loads.length > 0) && (
-        <details className="viewport-condition-legend">
-          <summary>
-            <span className="support-key">{supportSymbol} Supports</span>
-            <span className="load-key">↗ Loads</span>
-          </summary>
-          <p>Symbols mark undeformed boundaries. Arrows show direction; lengths are schematic.</p>
-          {[
-            ...props.project.study.constraints.map((item) => ({
-              item,
-              kind: 'constraint' as const,
-              detail: supportDescription(item, props.project.study.dimension),
-            })),
-            ...props.project.study.loads.map((item) => ({
-              item,
-              kind: 'load' as const,
-              detail: loadDescription(item, props.project.study.dimension),
-            })),
-          ].map(({ item, kind, detail }) => (
-            <button
-              key={`${kind}:${item.id}`}
-              onClick={() => {
-                props.onSelectionChange?.(item.regions);
-                if (!props.onSelectionChange && item.regions[0]) props.onSelect(item.regions[0]);
-                props.onCondition?.(kind, item.id);
-              }}
-            >
-              <strong className={kind === 'constraint' ? 'support-key' : 'load-key'}>
-                {kind === 'constraint' ? supportSymbol : '↗'} {item.name}
-              </strong>
-              <span>
-                {item.regions
-                  .map(
-                    (id) =>
-                      boundaryNames.find((region) => region.id === id)?.name ?? `${id} (missing)`,
-                  )
-                  .join(', ') || 'No boundary assigned'}
-              </span>
-              <small>{detail}</small>
-            </button>
-          ))}
-        </details>
-      )}
+      {conditionsShown &&
+        (props.project.study.constraints.length > 0 || props.project.study.loads.length > 0) && (
+          <details className="viewport-condition-legend">
+            <summary>
+              <span className="support-key">{supportSymbol} Supports</span>
+              <span className="load-key">↗ Loads</span>
+            </summary>
+            <p>Symbols mark undeformed boundaries. Arrows show direction; lengths are schematic.</p>
+            {[
+              ...props.project.study.constraints.map((item) => ({
+                item,
+                kind: 'constraint' as const,
+                detail: supportDescription(item, props.project.study.dimension),
+              })),
+              ...props.project.study.loads.map((item) => ({
+                item,
+                kind: 'load' as const,
+                detail: loadDescription(item, props.project.study.dimension),
+              })),
+            ].map(({ item, kind, detail }) => (
+              <button
+                key={`${kind}:${item.id}`}
+                onClick={() => {
+                  props.onSelectionChange?.(item.regions);
+                  if (!props.onSelectionChange && item.regions[0]) props.onSelect(item.regions[0]);
+                  props.onCondition?.(kind, item.id);
+                }}
+              >
+                <strong className={kind === 'constraint' ? 'support-key' : 'load-key'}>
+                  {kind === 'constraint' ? supportSymbol : '↗'} {item.name}
+                </strong>
+                <span>
+                  {item.regions
+                    .map(
+                      (id) =>
+                        boundaryNames.find((region) => region.id === id)?.name ?? `${id} (missing)`,
+                    )
+                    .join(', ') || 'No boundary assigned'}
+                </span>
+                <small>{detail}</small>
+              </button>
+            ))}
+          </details>
+        )}
       {error && <div className="viewport-error">{error}</div>}
       <ViewportTools
         dimension={props.project.study.dimension}
@@ -1249,23 +1395,53 @@ export default function Viewport(props: Props) {
         selectionCount={props.selected.length}
         isolated={isolated !== null}
         measuring={measuring}
+        conditionsShown={conditionsShown}
         onView={(view) => {
           setCameraView(view);
           runtime.current?.fit(view);
         }}
         onFit={() => runtime.current?.fit()}
+        onFitSelection={() => runtime.current?.fit(undefined, new Set(props.selected))}
+        onZoom={(factor) => runtime.current?.zoom(factor)}
         onReset={resetView}
-        onIsolate={() => {
-          setIsolated([...props.selected]);
-          setMeasuredNodes([]);
-          props.onProbe(null);
-        }}
+        onIsolate={() => isolateSelection(props.selected)}
         onRestore={() => setIsolated(null)}
         onMeasure={() => {
           setMeasuring(!measuring);
           setMeasuredNodes([]);
         }}
+        onConditions={() => setConditionsShown(!conditionsShown)}
+        onActions={openModelActions}
       />
+      {contextMenu && (
+        <ViewportMenu
+          context={contextMenu}
+          label={
+            contextMenu.regions.length === 1
+              ? (boundaryNames.find((item) => item.id === contextMenu.regions[0])?.name ??
+                'Boundary actions')
+              : contextMenu.regions.length
+                ? `${contextMenu.regions.length} selected boundaries`
+                : 'Model actions · select a boundary to assign conditions'
+          }
+          project={props.project}
+          locked={props.locked}
+          isolated={isolated !== null}
+          onEditGeometry={props.onEditGeometry}
+          onAddCondition={props.onAddCondition}
+          onAddNamedSelection={props.onAddNamedSelection}
+          onCondition={props.onCondition}
+          onFitSelection={(regions) => runtime.current?.fit(undefined, new Set(regions))}
+          onIsolate={isolateSelection}
+          onRestore={() => setIsolated(null)}
+          onFit={() => runtime.current?.fit()}
+          onReset={resetView}
+          onClearSelection={
+            props.onSelectionChange ? () => props.onSelectionChange?.([]) : undefined
+          }
+          onClose={() => setContextMenu(null)}
+        />
+      )}
       <div className="viewport-caption">
         <ScanLine size={13} />
         <span>
@@ -1354,15 +1530,29 @@ export default function Viewport(props: Props) {
         <span className="axis-y">Y</span>
         {props.project.study.dimension !== '2d' && <span className="axis-z">Z</span>}
         <small>Global axes</small>
+        {modelSpan && (
+          <small className="viewport-model-size">
+            {modelSpan
+              .slice(0, props.project.study.dimension === '2d' ? 2 : 3)
+              .map((value) =>
+                formatValue(displayValue(value, 'm', props.project.displayUnits).value),
+              )
+              .join(' × ')}{' '}
+            {props.project.displayUnits}
+          </small>
+        )}
       </div>
       <div className="viewport-help">
-        {props.project.study.dimension === '2d' ? 'Drag to pan' : 'Drag to orbit'} <i /> Scroll to
-        zoom <i />{' '}
+        {props.project.study.dimension === '2d'
+          ? 'Drag to pan'
+          : 'Drag to orbit · Shift-drag to pan'}{' '}
+        <i /> Scroll to zoom <i />{' '}
         {measuring
           ? 'Click to snap measurement nodes'
           : props.project.study.dimension === '2d'
             ? 'Click edges · Shift add · Ctrl/⌘ toggle'
             : 'Click faces · Shift add · Ctrl/⌘ toggle'}
+        <i /> Right-click for actions
       </div>
     </div>
   );

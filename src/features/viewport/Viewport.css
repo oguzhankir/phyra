@@ -8,6 +8,7 @@
   inset: 0;
   overflow: hidden;
   background: var(--canvas);
+  container-type: inline-size;
 }
 .viewport-canvas {
   width: 100%;
@@ -17,31 +18,49 @@
   display: block;
   touch-action: none;
 }
+.viewport-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .viewport-actions {
   position: absolute;
   top: 13px;
   right: 13px;
   left: 13px;
   display: flex;
-  padding: 3px 5px;
-  gap: 2px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
-  width: fit-content;
   max-width: calc(100% - 26px);
+  pointer-events: none;
+}
+.viewport-action-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--surface-raised);
   box-shadow: 0 2px 7px #00000008;
+  pointer-events: auto;
 }
 .viewport-actions button {
-  padding: 5px 6px;
-  color: var(--muted);
+  min-height: 28px;
+  padding: 5px 7px;
+  color: var(--text);
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 11px;
   border-radius: 3px;
+}
+.viewport-actions button:hover:not(:disabled) {
+  background: var(--surface-subtle);
+}
+.viewport-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .viewport-actions button[aria-pressed='true'] {
   color: var(--text);
@@ -54,14 +73,14 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .viewport-view-label select {
-  width: 126px;
-  min-height: 24px;
+  width: 130px;
+  min-height: 28px;
   padding: 3px 4px;
-  font-size: 10px;
+  font-size: 11px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -74,7 +93,7 @@
 }
 .viewport-caption {
   position: absolute;
-  top: 57px;
+  top: 60px;
   left: 15px;
   display: flex;
   gap: 6px;
@@ -159,7 +178,11 @@
   transform: translateX(-50%);
   font-size: 10px;
   color: var(--muted);
-  white-space: nowrap;
+  width: calc(100% - 36px);
+  justify-content: center;
+  white-space: normal;
+  flex-wrap: wrap;
+  line-height: 1.5;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -173,7 +196,7 @@
 }
 .axis-key {
   position: absolute;
-  bottom: 35px;
+  bottom: 45px;
   left: 18px;
   display: flex;
   gap: 12px;
@@ -181,6 +204,11 @@
   font-size: 11px;
   font-weight: 600;
   pointer-events: none;
+}
+.viewport-model-size {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
 }
 .axis-x {
   color: var(--axis-x);
@@ -266,11 +294,11 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 160px;
+  max-width: 210px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 4px 6px;
+  padding: 5px 7px;
   margin: 7px 0 0 8px;
   border: 1px solid var(--line);
   border-left: 2px solid #367f72;
@@ -278,20 +306,41 @@
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: 0 2px 8px #00000008;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
   pointer-events: auto;
 }
 .viewport-condition-marker.load {
   border-left-color: #bb712e;
 }
-.viewport-condition-marker.constraint > span,
+.viewport-condition-marker.constraint > span:first-child,
 .support-key {
   color: #367f72;
 }
-.viewport-condition-marker.load > span,
+.viewport-condition-marker.load > span:first-child,
 .load-key {
   color: #bb712e;
+}
+.viewport-condition-copy {
+  display: block;
+  min-width: 0;
+  text-align: left;
+  color: var(--text);
+}
+.viewport-condition-copy strong,
+.viewport-condition-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewport-condition-copy strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.viewport-condition-copy small {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--muted);
 }
 .viewport-condition-marker:hover,
 .viewport-condition-marker:focus-visible {
@@ -381,4 +430,36 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@container (max-width: 850px) {
+  .viewport-caption,
+  .viewport-condition-legend {
+    top: 100px;
+  }
+  .deformation-badge {
+    top: 122px;
+  }
+  .viewport-isolation {
+    top: 149px;
+  }
+}
+@container (max-width: 520px) {
+  .viewport-action-group {
+    flex-wrap: wrap;
+  }
+  .viewport-actions button {
+    font-size: 10px;
+    padding-inline: 5px;
+  }
+  .viewport-condition-legend {
+    width: 150px;
+  }
+  .viewport-help {
+    font-size: 9px;
+    gap: 4px;
+  }
+  .axis-key {
+    bottom: 58px;
+  }
 }

@@ -288,7 +288,8 @@ export function useWorkbench({
     execution.setRunTab(seed.referenceId === '2d-compare' ? 'comparison' : 'run');
   }, [seed.referenceId]);
 
-  const addConstraint = () => {
+  const addConstraint = (boundaries = selected) => {
+    if (locked) return;
     if (invalidDraftsRef.current.size) {
       setError('Complete or revert the numeric input before adding a support.');
       return;
@@ -298,14 +299,16 @@ export function useWorkbench({
       next.study.constraints.push({
         id,
         name: `Support ${next.study.constraints.length + 1}`,
-        regions: assignedRegions(selected, regions[0]?.id ?? 'x0'),
+        regions: assignedRegions(boundaries, regions[0]?.id ?? 'x0'),
         components: is2D ? [0, 0, null] : [0, 0, 0],
       }),
     );
     setConstraintId(id);
+    setSelected(assignedRegions(boundaries, regions[0]?.id ?? 'x0'));
     setSection('constraints');
   };
-  const addLoad = () => {
+  const addLoad = (boundaries = selected) => {
+    if (locked) return;
     if (invalidDraftsRef.current.size) {
       setError('Complete or revert the numeric input before adding a load.');
       return;
@@ -316,7 +319,7 @@ export function useWorkbench({
         id,
         name: `Load ${next.study.loads.length + 1}`,
         regions: assignedRegions(
-          selected,
+          boundaries,
           regions.find((region) => region.id === 'x1')?.id ?? regions[0]?.id ?? 'x1',
         ),
         kind: 'force',
@@ -325,6 +328,12 @@ export function useWorkbench({
       }),
     );
     setLoadId(id);
+    setSelected(
+      assignedRegions(
+        boundaries,
+        regions.find((region) => region.id === 'x1')?.id ?? regions[0]?.id ?? 'x1',
+      ),
+    );
     setSection('loads');
   };
   const editConstraint = (change: (item: Constraint) => void) =>
@@ -338,7 +347,7 @@ export function useWorkbench({
       if (item) change(item);
     });
   const namedSelection = project.namedSelections.find((item) => item.id === namedSelectionId);
-  const addNamedSelection = () => {
+  const addNamedSelection = (boundaries = selected) => {
     if (invalidDraftsRef.current.size || locked) return;
     if (project.namedSelections.length >= 100) {
       setError(
@@ -346,7 +355,7 @@ export function useWorkbench({
       );
       return;
     }
-    const chosen = selectedBoundaries(project, selected);
+    const chosen = selectedBoundaries(project, boundaries);
     if (!chosen.length) {
       setError('Select boundaries before creating a named selection.');
       return;
@@ -364,6 +373,7 @@ export function useWorkbench({
       false,
     );
     setNamedSelectionId(id);
+    setSelected(chosen);
     setSection('selections');
   };
   const editNamedSelection = (change: (item: NamedSelection) => void) =>
@@ -391,6 +401,25 @@ export function useWorkbench({
     setAnimate(false);
   };
 
+  const deleteModelItem = (kind: 'support' | 'load' | 'selection', id: string) => {
+    if (locked) return;
+    if (invalidDraftsRef.current.size) {
+      setError('Complete or revert the numeric input before deleting a model item.');
+      return;
+    }
+    edit((next) => {
+      if (kind === 'support')
+        next.study.constraints = next.study.constraints.filter((item) => item.id !== id);
+      else if (kind === 'load')
+        next.study.loads = next.study.loads.filter((item) => item.id !== id);
+      else next.namedSelections = next.namedSelections.filter((item) => item.id !== id);
+    }, kind !== 'selection');
+    if (kind === 'support' && constraintId === id) setConstraintId(null);
+    if (kind === 'load' && loadId === id) setLoadId(null);
+    if (kind === 'selection' && namedSelectionId === id) setNamedSelectionId(null);
+    setSelected([]);
+  };
+
   return {
     ...session,
     documentId: seed.id,
@@ -414,14 +443,20 @@ export function useWorkbench({
     load,
     namedSelection,
     namedSelectionId,
-    addNamedSelection,
+    addNamedSelection: () => addNamedSelection(),
+    addNamedSelectionOn: addNamedSelection,
     editNamedSelection,
     useNamedSelection,
     chooseDimension,
-    addConstraint,
+    addConstraint: () => addConstraint(),
+    addConstraintOn: addConstraint,
     editConstraint,
-    addLoad,
+    addLoad: () => addLoad(),
+    addLoadOn: addLoad,
     editLoad,
+    deleteSupport: (id: string) => deleteModelItem('support', id),
+    deleteLoad: (id: string) => deleteModelItem('load', id),
+    deleteSelection: (id: string) => deleteModelItem('selection', id),
     solved: !!execution.currentData && execution.currentData.manifest.operation !== 'mesh',
     stat: execution.currentData?.manifest.statistics,
     verification,

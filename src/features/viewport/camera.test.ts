@@ -6,7 +6,14 @@ import {
   solidFitDistance,
   boxFitDistance,
   cameraResizeFactor,
+  zoomedDistance,
 } from './camera';
+it('keeps button zoom inside the pointer navigation limits and reverses a normal step', () => {
+  expect(zoomedDistance(0.2, 0.8, 0.01, 10)).toBeCloseTo(0.16);
+  expect(zoomedDistance(0.16, 1.25, 0.01, 10)).toBeCloseTo(0.2);
+  expect(zoomedDistance(0.01, 0.8, 0.01, 10)).toBe(0.01);
+  expect(zoomedDistance(10, 1.25, 0.01, 10)).toBe(10);
+});
 describe('plane domain camera framing', () => {
   it('fits the physical height with margin in a wide scientific viewport', () => {
     const distance = planeFitDistance(0.1, 0.05, 3, 40);

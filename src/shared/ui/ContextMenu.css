@@ -1,0 +1,43 @@
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 208px;
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 5px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+}
+.context-menu-title {
+  padding: 6px 8px 8px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-menu > button {
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 8px;
+  gap: 9px;
+  justify-content: flex-start;
+  text-align: left;
+  font-size: 12px;
+}
+.context-menu > button:focus-visible {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.context-menu > button.context-menu-danger {
+  color: var(--danger);
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
