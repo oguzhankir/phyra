@@ -30,15 +30,40 @@ pub(crate) fn verification_enabled() -> bool {
 
 #[tauri::command]
 pub(crate) fn verification_configuration() -> Option<&'static str> {
-    if std::env::args().any(|argument| argument == "--verify-profile") {
+    configuration_from_arguments(&std::env::args().collect::<Vec<_>>())
+}
+
+pub(crate) fn configuration_from_arguments(arguments: &[String]) -> Option<&'static str> {
+    if arguments
+        .iter()
+        .any(|argument| argument == "--verify-profile")
+    {
         Some("2d-profile")
-    } else if std::env::args().any(|argument| argument == "--verify-physicsml") {
+    } else if arguments
+        .iter()
+        .any(|argument| argument == "--verify-energy")
+    {
+        Some("2d-energy")
+    } else if arguments
+        .iter()
+        .any(|argument| argument == "--verify-physicsml")
+    {
         Some("2d-compare")
-    } else if std::env::args().any(|argument| argument == "--verify-workflow") {
+    } else if arguments
+        .iter()
+        .any(|argument| argument == "--verify-workflow")
+    {
         Some("3d")
     } else {
         None
     }
+}
+
+pub(crate) fn verification_uses_training() -> bool {
+    matches!(
+        verification_configuration(),
+        Some("2d-compare" | "2d-energy")
+    )
 }
 
 pub(crate) fn bounded_trace(message: &str) -> String {
@@ -194,7 +219,7 @@ pub(crate) fn verify_owned_runs(
         .tempdir_in(directory)
         .map_err(|e| e.to_string())?;
     let output = cancellation_dir.path().to_path_buf();
-    let training_cancellation = verification_configuration() == Some("2d-compare");
+    let training_cancellation = verification_uses_training();
     let mut snapshot = project.clone();
     if training_cancellation {
         snapshot["study"]["solver"]["pinn"]["steps"] = json!(10_000);
@@ -305,13 +330,22 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
         "bufferMatches":read_bounded(&original.join("buffer.bin"),MAX_BLOB)?
             == read_bounded(&restored.path().join("buffer.bin"),MAX_BLOB)?,
         "pathHasSpacesAndUnicode":true});
+    if project["study"]["solver"]["pinn"]["formulation"] == "potential-energy" {
+        report["persistence"]["energyMatches"] = json!(
+            validated["training"]["configuration"]["formulation"] == "potential-energy"
+                && validated["training"]["energy"].is_object()
+                && validated["training"]["energy"] == original_metadata["training"]["energy"]
+        );
+    }
     let export_path = directory.join("verification results.csv");
     let buffer = read_bounded(&restored.path().join("buffer.bin"), MAX_BLOB)?;
     crate::results::export::write_result_csv(&export_path, &validated, &buffer)?;
     let csv = fs::read_to_string(&export_path).map_err(|e| e.to_string())?;
     report["export"] = json!({"physicalUnits":csv.contains("ux_m") && csv.contains("sxx_Pa"),
         "provenance":csv.contains(validated["fingerprint"].as_str().ok_or("Missing fingerprint")?),
-        "independentReference":csv.contains("independentReference=")});
+        "independentReference":csv.contains("independentReference="),
+        "comparisonTables":csv.contains("# comparison=") && csv.contains("FEM,node,")
+            && csv.contains("PINN,node,") && csv.contains("FEM,cell,") && csv.contains("PINN,cell,")});
     let mut changed = reopened.clone();
     changed["study"]["material"]["young"] = json!(
         project["study"]["material"]["young"]

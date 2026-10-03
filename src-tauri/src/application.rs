@@ -7,8 +7,8 @@ use crate::{
     project::{self, state::ProjectState},
     results,
     verification::{
-        self, finish_verification, trace_verification, verification_configuration,
-        verification_enabled, VERIFICATION_DONE,
+        self, finish_verification, trace_verification, verification_enabled,
+        verification_uses_training, VERIFICATION_DONE,
     },
 };
 use serde_json::json;
@@ -31,7 +31,7 @@ pub(crate) fn run() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(
-                        if verification_configuration() == Some("2d-compare") {
+                        if verification_uses_training() {
                             240
                         } else {
                             75

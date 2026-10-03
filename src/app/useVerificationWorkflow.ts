@@ -6,10 +6,39 @@ import {
   type SetStateAction,
   type RefObject,
 } from 'react';
-import { invokeVerification as invoke } from '../platform/desktop/verification';
+import {
+  invokeVerification as invoke,
+  type VerificationConfiguration,
+} from '../platform/desktop/verification';
 import type { Project, TrainingMetric } from '../domain/contracts/types';
 import type { ResultData, FieldId, FieldSource } from '../domain/results/fields';
 import { makeProject } from '../features/examples/projects';
+
+export function verificationProject(configuration: NonNullable<VerificationConfiguration>) {
+  const next = makeProject(
+    configuration === '2d-profile'
+      ? 'kirsch-quarter'
+      : configuration === '2d-energy'
+        ? 'energy-tension'
+        : configuration === '2d-compare'
+          ? 'plane-stress-tension'
+          : 'cantilever',
+  );
+  if (configuration === '2d-compare' || configuration === '2d-energy') {
+    next.study.solver.kind = 'pinn';
+    next.study.solver.pinn.layers = 2;
+    next.study.solver.pinn.width = 16;
+    next.study.solver.pinn.steps = configuration === '2d-energy' ? 1200 : 2000;
+    next.study.solver.pinn.interiorPoints = configuration === '2d-energy' ? 1024 : 128;
+    next.study.solver.pinn.boundaryPoints = configuration === '2d-energy' ? 64 : 32;
+    next.study.solver.pinn.device = 'cpu';
+  }
+  return next;
+}
+
+function isComparison(configuration: VerificationConfiguration) {
+  return configuration === '2d-compare' || configuration === '2d-energy';
+}
 type Props = {
   desktop: boolean;
   project: Project;
@@ -39,9 +68,8 @@ export function useVerificationWorkflow({
   const [verification, setVerification] = useState(false);
   const verificationStarted = useRef(false);
   const verificationSent = useRef(false);
-  const [verificationConfiguration, setVerificationConfiguration] = useState<
-    '3d' | '2d-compare' | '2d-profile' | null
-  >(null);
+  const [verificationConfiguration, setVerificationConfiguration] =
+    useState<VerificationConfiguration>(null);
   const verificationReports = useRef<Record<string, Record<string, unknown>>>({});
   const verificationDisplacement = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
@@ -54,23 +82,7 @@ export function useVerificationWorkflow({
           void invoke('verification_trace', {
             message: `frontend verification configuration: ${configuration}`,
           });
-          const next = makeProject(
-            configuration === '2d-profile'
-              ? 'kirsch-quarter'
-              : configuration === '2d-compare'
-                ? 'plane-stress-tension'
-                : 'cantilever',
-          );
-          if (configuration === '2d-compare') {
-            next.study.solver.kind = 'pinn';
-            next.study.solver.pinn.layers = 2;
-            next.study.solver.pinn.width = 16;
-            next.study.solver.pinn.steps = 2000;
-            next.study.solver.pinn.interiorPoints = 128;
-            next.study.solver.pinn.boundaryPoints = 32;
-            next.study.solver.pinn.device = 'cpu';
-          }
-          replace(next);
+          replace(verificationProject(configuration));
           setDeformation('actual');
           setVerificationConfiguration(configuration);
           setVerification(true);
@@ -86,7 +98,7 @@ export function useVerificationWorkflow({
   const verified = (report: Record<string, unknown>) => {
     if (!verification || verificationSent.current || !currentData) return;
     void invoke('verification_trace', { message: `frontend rendered ${fieldId}` });
-    if (verificationConfiguration === '2d-compare') {
+    if (isComparison(verificationConfiguration)) {
       const reports = verificationReports.current;
       if (fieldSource === 'fem' && fieldId === 'displacement-mag') {
         reports.renderer = report;
@@ -140,7 +152,7 @@ export function useVerificationWorkflow({
   };
   const requestedOperation: 'solve' | 'compare' | null =
     verification && verificationConfiguration
-      ? verificationConfiguration === '2d-compare'
+      ? isComparison(verificationConfiguration)
         ? 'compare'
         : 'solve'
       : null;

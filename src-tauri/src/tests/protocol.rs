@@ -110,6 +110,60 @@ fn devices_require_real_identifiable_cpu_and_bounded_metadata() {
 }
 
 #[test]
+fn every_pinn_capability_must_match_the_actual_device_probe() {
+    use crate::execution::validation::validate_capabilities;
+    fn fixture(schema: &Value) -> Value {
+        if let Some(value) = schema.get("const") {
+            return value.clone();
+        }
+        match schema["type"].as_str().unwrap() {
+            "object" => Value::Object(
+                schema["properties"]
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .map(|(key, value)| (key.clone(), fixture(value)))
+                    .collect(),
+            ),
+            "array" => Value::Array(
+                schema["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(fixture)
+                    .collect(),
+            ),
+            "string" => json!("fixture"),
+            "boolean" => json!(true),
+            "integer" => json!(1),
+            other => panic!("Unsupported capability fixture type: {other}"),
+        }
+    }
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../../contracts/engine-capabilities.schema.json"
+    ))
+    .unwrap();
+    let capabilities = fixture(&schema);
+    let inventory = json!({"devices":capabilities["methods"][2]["devices"],
+        "capabilities":capabilities});
+    assert!(validate_capabilities(&inventory).is_ok());
+    for method in [2, 3] {
+        for (key, value) in [
+            ("available", json!(false)),
+            ("reason", json!("different probe")),
+        ] {
+            let mut altered = inventory.clone();
+            altered["capabilities"]["methods"][method]["devices"][0][key] = value;
+            let error = validate_capabilities(&altered).unwrap_err();
+            assert!(
+                error.contains("actual compute probe"),
+                "{method}: {key}: {error}"
+            );
+        }
+    }
+}
+
+#[test]
 fn planar_export_uses_triangles_and_preserves_comparison_units() {
     let manifest = json!({"dimension":"2d","statistics":{"nodes":3,"cells":1},
         "arrays":{"cells":{"dtype":"uint32","association":"cell","units":"1",

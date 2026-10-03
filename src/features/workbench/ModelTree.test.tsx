@@ -1,9 +1,32 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { makeProject } from '../examples/projects';
-import ModelTree from './ModelTree';
+import ModelTree, { revealSelectedModelObject } from './ModelTree';
 
 describe('model object navigation', () => {
+  it('reveals the current object by scrolling only its outline and leaves visible rows in place', () => {
+    const selected = {
+      getClientRects: () => [{}],
+      getBoundingClientRect: () => ({ top: 180, bottom: 210 }),
+    };
+    const outline = {
+      scrollTop: 100,
+      querySelector: () => selected,
+      getBoundingClientRect: () => ({ top: 20, bottom: 160 }),
+    };
+    revealSelectedModelObject(outline as unknown as HTMLElement);
+    expect(outline.scrollTop).toBe(150);
+    selected.getBoundingClientRect = () => ({ top: 50, bottom: 80 });
+    revealSelectedModelObject(outline as unknown as HTMLElement);
+    expect(outline.scrollTop).toBe(150);
+    selected.getBoundingClientRect = () => ({ top: -10, bottom: 20 });
+    revealSelectedModelObject(outline as unknown as HTMLElement);
+    expect(outline.scrollTop).toBe(120);
+    selected.getClientRects = () => [];
+    revealSelectedModelObject(outline as unknown as HTMLElement);
+    expect(outline.scrollTop).toBe(120);
+  });
+
   it('keeps physical objects available when inspecting results and scopes group IDs to the document', () => {
     const project = makeProject('cantilever');
     const action = () => {};

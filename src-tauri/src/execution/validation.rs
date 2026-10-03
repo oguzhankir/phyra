@@ -75,7 +75,13 @@ pub(crate) fn validate_capabilities(manifest: &Value) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .validate(&manifest["capabilities"])
         .map_err(|e| format!("Invalid engine capability contract: {e}"))?;
-    if manifest["capabilities"]["methods"][2]["devices"] != manifest["devices"] {
+    if manifest["capabilities"]["methods"]
+        .as_array()
+        .ok_or("Missing method capabilities")?
+        .iter()
+        .filter(|method| method["kind"] == "pinn")
+        .any(|method| method["devices"] != manifest["devices"])
+    {
         return Err("Method capabilities differ from the actual compute probe".into());
     }
     Ok(())
