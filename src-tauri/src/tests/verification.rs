@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn explicit_verification_flags_include_energy_and_leave_normal_launch_untouched() {
+    use crate::verification::configuration_from_arguments;
+    for (flag, expected) in [
+        ("--verify-workflow", Some("3d")),
+        ("--verify-physicsml", Some("2d-compare")),
+        ("--verify-profile", Some("2d-profile")),
+        ("--verify-energy", Some("2d-energy")),
+        ("--energy-only", None),
+        ("--unknown", None),
+    ] {
+        assert_eq!(
+            configuration_from_arguments(&["phyra".into(), flag.into()]),
+            expected
+        );
+    }
+    assert_eq!(configuration_from_arguments(&["phyra".into()]), None);
+}
+
+#[test]
 fn persistence_compares_native_metadata_without_javascript_number_reencoding() {
     let original: Value =
         serde_json::from_str(r#"{"summary":{"totalForce":[0.0,0.0,-100.0]}}"#).unwrap();

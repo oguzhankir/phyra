@@ -7,19 +7,20 @@ const arguments_ = process.argv.slice(2);
 const only3d = arguments_.includes('--3d-only');
 const onlyPhysicsMl = arguments_.includes('--physicsml-only');
 const onlyProfile = arguments_.includes('--profile-only');
-if ([only3d, onlyPhysicsMl, onlyProfile].filter(Boolean).length > 1)
-  throw new Error('Choose one verification mode, or omit both flags');
+const onlyEnergy = arguments_.includes('--energy-only');
+if ([only3d, onlyPhysicsMl, onlyProfile, onlyEnergy].filter(Boolean).length > 1)
+  throw new Error('Choose one verification mode, or omit the mode flags');
 const paths = arguments_.filter((argument) => !argument.startsWith('--'));
 if (
   paths.length > 1 ||
   arguments_.some(
     (argument) =>
       argument.startsWith('--') &&
-      !['--3d-only', '--physicsml-only', '--profile-only'].includes(argument),
+      !['--3d-only', '--physicsml-only', '--profile-only', '--energy-only'].includes(argument),
   )
 )
   throw new Error(
-    'Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only|--profile-only]',
+    'Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only|--profile-only|--energy-only]',
   );
 const executable = path.resolve(
   paths[0] ??
@@ -63,7 +64,7 @@ function assertMaximum(actual, expected, description) {
     throw new Error(`${description} does not match the authoritative result`);
 }
 
-function assertPhysicsMl(report) {
+function assertPhysicsMl(report, energyMode) {
   const manifest = report.manifest;
   if (
     manifest.operation !== 'compare' ||
@@ -86,7 +87,9 @@ function assertPhysicsMl(report) {
     metrics.first?.jobId !== manifest.jobId ||
     metrics.last?.jobId !== manifest.jobId ||
     metrics.last?.step !== report.project.study.solver.pinn.steps ||
-    !report.trainingCancellation
+    !report.trainingCancellation ||
+    !report.export?.comparisonTables ||
+    training.configuration?.formulation !== (energyMode ? 'potential-energy' : 'strong-form')
   )
     throw new Error(
       'Real training metrics, final step, or running-training cancellation was not verified',
@@ -143,15 +146,73 @@ function assertPhysicsMl(report) {
   for (const name of ['femSeconds', 'trainingSeconds', 'inferenceSeconds'])
     if (!Number.isFinite(comparison[name]) || comparison[name] < 0)
       throw new Error('Invalid measured solver timings');
+  if (energyMode) {
+    const energy = training.energy;
+    if (
+      report.project.study.solver.pinn.formulation !== 'potential-energy' ||
+      training.device !== 'cpu' ||
+      training.precision !== 'float64' ||
+      !report.persistence.energyMatches ||
+      !energy ||
+      energy.schemaVersion !== 1 ||
+      ['definition', 'trainingQuadrature', 'auditQuadrature'].some(
+        (key) => typeof energy[key] !== 'string' || !energy[key].length,
+      ) ||
+      !Number.isInteger(energy.interiorPoints) ||
+      energy.interiorPoints < 1 ||
+      !Number.isInteger(energy.boundaryPoints) ||
+      energy.boundaryPoints < 1 ||
+      !Number.isFinite(energy.physicalScale) ||
+      energy.physicalScale <= 0 ||
+      !Number.isFinite(energy.relativeIntegrationDifference) ||
+      energy.relativeIntegrationDifference < 0 ||
+      energy.relativeIntegrationDifference > 0.01 ||
+      !Array.isArray(energy.history) ||
+      energy.history.length !== training.history.length ||
+      !(energy.audit?.potential < 0)
+    )
+      throw new Error('Energy objective, integration audit or archive provenance was not verified');
+    for (const [index, measurement] of [...energy.history, energy.audit].entries()) {
+      if (
+        !measurement ||
+        ['potential', 'strain', 'work'].some((key) => !Number.isFinite(measurement[key])) ||
+        measurement.strain < 0 ||
+        Math.abs(measurement.potential - (measurement.strain - measurement.work)) >
+          16 *
+            Number.EPSILON *
+            Math.max(Math.abs(measurement.strain), Math.abs(measurement.work), Number.MIN_VALUE) ||
+        (index < energy.history.length && measurement.step !== training.history[index].step)
+      )
+        throw new Error('Energy history does not preserve signed potential and physical work');
+    }
+    const last = energy.history.at(-1);
+    const difference =
+      Math.abs(last.potential - energy.audit.potential) /
+      Math.max(Math.abs(energy.audit.strain), Math.abs(energy.audit.work), Number.MIN_VALUE);
+    assertMaximum(
+      energy.relativeIntegrationDifference,
+      difference,
+      'Energy integration difference',
+    );
+  }
 }
 
 async function verify(mode) {
-  const physicsMl = mode === '2d-compare';
+  const energy = mode === '2d-energy';
+  const physicsMl = mode === '2d-compare' || energy;
   const profile = mode === '2d-profile';
   const timeoutMs = physicsMl ? 270000 : 90000;
   const child = spawn(
     executable,
-    [profile ? '--verify-profile' : physicsMl ? '--verify-physicsml' : '--verify-workflow'],
+    [
+      profile
+        ? '--verify-profile'
+        : energy
+          ? '--verify-energy'
+          : physicsMl
+            ? '--verify-physicsml'
+            : '--verify-workflow',
+    ],
     {
       cwd: tmpdir(),
       env: environment,
@@ -176,7 +237,13 @@ async function verify(mode) {
     child.on('error', reject);
     child.on('exit', resolve);
   }).finally(() => clearTimeout(timer));
-  const prefix = profile ? 'desktop-profile' : physicsMl ? 'desktop-physicsml' : 'desktop';
+  const prefix = profile
+    ? 'desktop-profile'
+    : energy
+      ? 'desktop-energy'
+      : physicsMl
+        ? 'desktop-physicsml'
+        : 'desktop';
   await writeFile(`artifacts/${prefix}-runtime.log`, `${output}\n${diagnostic}`);
   const location = output.match(/PHYRA_VERIFICATION (.+)/)?.[1]?.trim();
   if (!location)
@@ -234,12 +301,12 @@ async function verify(mode) {
       !report.export.independentReference)
   )
     throw new Error('Profile geometry, independent reference or export was not verified');
-  if (physicsMl) assertPhysicsMl(report);
+  if (physicsMl) assertPhysicsMl(report, energy);
   else if (report.manifest.operation !== 'solve')
     throw new Error('Classical verification did not return a solve');
   if (report.renderer.viewportPng?.startsWith('data:image/png;base64,')) {
     await writeFile(
-      `artifacts/packaged-${profile ? 'profile-' : physicsMl ? 'physicsml-' : ''}viewport.png`,
+      `artifacts/packaged-${profile ? 'profile-' : energy ? 'energy-' : physicsMl ? 'physicsml-' : ''}viewport.png`,
       Buffer.from(report.renderer.viewportPng.split(',')[1], 'base64'),
     );
     delete report.renderer.viewportPng;
@@ -251,6 +318,7 @@ async function verify(mode) {
 }
 
 await mkdir('artifacts', { recursive: true });
-if (!onlyPhysicsMl && !onlyProfile) await verify('3d');
-if (!only3d && !onlyProfile) await verify('2d-compare');
-if (!only3d && !onlyPhysicsMl) await verify('2d-profile');
+if (!onlyPhysicsMl && !onlyProfile && !onlyEnergy) await verify('3d');
+if (!only3d && !onlyProfile && !onlyEnergy) await verify('2d-compare');
+if (!only3d && !onlyPhysicsMl && !onlyEnergy) await verify('2d-profile');
+if (!only3d && !onlyPhysicsMl && !onlyProfile) await verify('2d-energy');
