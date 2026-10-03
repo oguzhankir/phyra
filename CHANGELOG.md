@@ -40,6 +40,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Fixed
 
+- PINN normalization measures spatial tractions along each boundary so a sign-changing load that vanishes at its midpoint retains its physical stress scale; cache validation uses the same rule.
 - Object/viewport menus close when their document becomes inactive or a dialog opens; selected model rows stay visible and keyboard deletion restores focus safely.
 
 - Empty conversations open at the top without clipping the welcome content. Streaming follows only the chat transcript, preserving the surrounding workbench scroll position.

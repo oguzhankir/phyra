@@ -114,7 +114,7 @@ def _load_traction(
 
 
 def edge_tractions(mesh: Mesh2D, loads: list[dict[str, Any]]) -> np.ndarray:
-    """Midpoint values for boundary inspection and rectangular PINN conditions."""
+    """Midpoint values for boundary inspection; not a bound for spatial loads."""
     _, normals = edge_geometry(mesh)
     midpoints = mesh.positions[mesh.edges, :2].mean(axis=1)
     traction = np.zeros((len(mesh.edges), 2), dtype=np.float64)
@@ -148,6 +148,29 @@ def point_tractions(
     if not np.isfinite(traction).all():
         raise EngineError("invalid-load", "Boundary point traction exceeds float64 range.")
     return traction
+
+
+def boundary_traction_scale(mesh: Mesh2D, loads: list[dict[str, Any]]) -> float:
+    """Representative maximum physical traction norm over every boundary edge.
+
+    Endpoints give the exact maximum of affine traction norms on a straight
+    edge, including sign-changing fields that vanish at its midpoint. Five
+    interior Gauss points also represent non-polynomial fields. Sampling
+    retains the full authored selection for total-force normalization and
+    bounded temporary arrays; this is a scaling convention, not an error bound.
+    """
+    gauss, _ = np.polynomial.legendre.leggauss(5)
+    along = np.r_[0, (gauss + 1) / 2, 1]
+    scale = 0.0
+    for start in range(0, len(mesh.edges), 4096):
+        indices = np.arange(start, min(start + 4096, len(mesh.edges)))
+        endpoints = mesh.positions[mesh.edges[indices], :2]
+        points = (
+            endpoints[:, :1] * (1 - along[None, :, None]) + endpoints[:, 1:] * along[None, :, None]
+        ).reshape(-1, 2)
+        values = point_tractions(mesh, loads, np.repeat(indices, len(along)), points)
+        scale = max(scale, float(np.hypot(values[:, 0], values[:, 1]).max()))
+    return scale
 
 
 def integrate_edge_loads(mesh: Mesh2D, loads: list[dict[str, Any]]) -> np.ndarray:

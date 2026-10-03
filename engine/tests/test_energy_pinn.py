@@ -29,7 +29,7 @@ from phyra_engine.methods.physicsml.networks import DisplacementNetwork
 from phyra_engine.methods.physicsml.normalization import normalization
 from phyra_engine.methods.physicsml.plane_stress import train
 from phyra_engine.methods.physicsml.sampling import edge_components, sample_points
-from phyra_engine.physics.elasticity.plane_stress import integrate_edge_loads
+from phyra_engine.physics.elasticity.plane_stress import edge_tractions, integrate_edge_loads
 
 
 def settings(**overrides):
@@ -546,6 +546,128 @@ def test_spatial_collocation_loads_evaluate_at_actual_points():
         tractions[selected, 0], 1e6 * physical[selected, 1] * normals[selected, 0], atol=1e-10
     )
     assert np.ptp(tractions[selected, 0]) > 100
+
+
+def midpoint_zero_affine_study():
+    return {
+        "material": {"young": 7e9, "poisson": 0.3},
+        "constraints": [{"regions": ["x0"], "components": [0, 0, None]}],
+        "loads": [
+            {
+                "kind": "traction",
+                "regions": ["x1"],
+                "traction": {
+                    "kind": "affine",
+                    "xx": [-1e6, 0, 2e6],
+                    "yy": [0, 0, 0],
+                    "xy": [0, 0, 0],
+                },
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize("size", [1.0, 0.125])
+def test_midpoint_zero_affine_traction_has_mesh_independent_physical_scale_and_energy(size):
+    from phyra_engine.methods.physicsml.elasticity import equilibrium_residual, stress_and_strain
+
+    mesh, study = generate_rectangle(1, 1, 0.02, size), midpoint_zero_affine_study()
+    if size == 1:
+        # Every coarse-edge midpoint is zero, although the authored boundary
+        # field has a nonzero couple. Midpoint-only scaling used the E*1e-8
+        # fallback (70 Pa), instead of the exact endpoint maximum (1 MPa).
+        np.testing.assert_array_equal(edge_tractions(mesh, study["loads"]), 0)
+    scales = normalization(mesh, study)
+    assert scales.stress == 1e6
+    assert scales.displacement == 1e6 / 7e9
+    config = TrainingConfiguration.from_mapping(settings())
+    batch = sample_points(
+        mesh, scales, config, study, np.random.default_rng(42), "cpu", torch.float64
+    )
+    selected = batch.normals[:, 0] == 1
+    targets = batch.traction[selected, 0].detach().numpy()
+    y = batch.boundary[selected, 1].detach().numpy()
+    np.testing.assert_allclose(targets, 2 * (y - 0.5), rtol=1e-14)
+    assert targets.min() < 0 < targets.max() and np.max(np.abs(targets)) <= 1
+
+    class CenteredBendingField(nn.Module):
+        def forward(self, coordinates):
+            x, y = coordinates.T
+            return torch.stack((2 * x * (y - 0.5), -(x * x + 0.3 * (y - 0.5) ** 2)), dim=1)
+
+    material = torch.tensor(plane_stress_matrix(1, 0.3))
+    _, stress, _ = stress_and_strain(CenteredBendingField(), batch.interior, material)
+    expected = np.column_stack(
+        (2 * (batch.interior.detach().numpy()[:, 1] - 0.5), np.zeros((len(batch.interior), 2)))
+    )
+    np.testing.assert_allclose(stress.detach().numpy(), expected, atol=5e-16)
+    np.testing.assert_allclose(
+        equilibrium_residual(stress, batch.interior).detach().numpy(), 0, atol=5e-16
+    )
+    quadrature = energy_quadrature(mesh, scales, study, config, "cpu", torch.float64)
+    energy = potential_energy(CenteredBendingField(), material, quadrature).measure()
+    # Independent continuum identities for sigma_xx=A*(y-1/2):
+    # U=A^2*h/(24E), W=A^2*h/(12E). This is an integration/autograd
+    # reference, not an assertion that the trial meets the clamped support.
+    physical_scale = scales.stress * scales.displacement * scales.length * mesh.thickness
+    exact = (2e6) ** 2 * mesh.thickness / (24 * study["material"]["young"])
+    np.testing.assert_allclose(
+        [energy.strain, energy.work, energy.potential],
+        [exact, 2 * exact, -exact] / np.asarray(physical_scale),
+        rtol=1e-14,
+    )
+
+
+def test_midpoint_zero_affine_training_cache_roundtrip_rejects_old_fallback_scale(tmp_path):
+    import json
+    from pathlib import Path
+
+    from phyra_engine.execution.application import _owned_training_result
+    from phyra_engine.results.plane_stress import validate_cached, write_output
+    from phyra_engine.studies.mesh import generate_study_mesh
+
+    project = json.loads(
+        (Path(__file__).resolve().parents[2] / "examples/energy-tension.json").read_text()
+    )
+    project["study"].update(midpoint_zero_affine_study())
+    project["study"]["material"]["name"] = "Generic elastic material"
+    project["study"]["constraints"][0].update(id="clamp", name="Fixed edge")
+    project["study"]["loads"][0].update(
+        id="bending", name="Sign-changing traction", vector=[0, 0, 0], pressure=0
+    )
+    project["geometry"].update(length=1, width=1)
+    project["study"]["thickness"] = 0.02
+    project["study"]["mesh"]["size"] = 1
+    project["study"]["solver"]["pinn"].update(settings(steps=4))
+    mesh = generate_study_mesh(project)
+    result = _owned_training_result(
+        train(mesh, project["study"], project["study"]["solver"]["pinn"]), "affine-cache"
+    )
+    manifest = write_output(tmp_path, project, "affine-cache", "train", mesh, result)
+    blob = (tmp_path / "buffer.bin").read_bytes()
+    assert validate_cached(project, manifest, blob) == manifest
+    assert manifest["training"]["normalization"]["stress"] == 1e6
+    assert all(np.isfinite(item["total"]) for item in manifest["training"]["history"])
+    forged = deepcopy(manifest)
+    forged["training"]["normalization"].update(stress=70, displacement=1e-8)
+    with pytest.raises(EngineError) as error:
+        validate_cached(project, forged, blob)
+    assert error.value.code == "invalid-cache"
+    assert "normalization does not match" in str(error.value)
+
+
+@pytest.mark.parametrize("kind", ["force", "pressure"])
+def test_constant_load_normalization_remains_identical_to_legacy_midpoints(kind):
+    mesh, study = generate_rectangle(0.2, 0.1, 0.02, 0.04), midpoint_zero_affine_study()
+    study["loads"] = [
+        {
+            "kind": kind,
+            "regions": ["x1", "y1"],
+            **({"vector": [60, -80, 0]} if kind == "force" else {"pressure": 2e6}),
+        }
+    ]
+    legacy_scale = float(np.linalg.norm(edge_tractions(mesh, study["loads"]), axis=1).max())
+    assert normalization(mesh, study).stress == legacy_scale
 
 
 @pytest.mark.parametrize("version", [2, 3, 4])

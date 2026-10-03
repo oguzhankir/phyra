@@ -9,8 +9,8 @@ from phyra_engine.errors import EngineError
 from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.classical.plane_stress import assemble
 from phyra_engine.physics.elasticity.plane_stress import (
+    boundary_traction_scale,
     constraint_dofs,
-    edge_tractions,
     integrate_edge_loads,
 )
 from phyra_engine.results.fields import von_mises
@@ -97,7 +97,7 @@ def validate_training(
     prescribed = constraint_dofs(mesh, study["constraints"])
     young = study["material"]["young"]
     stress = max(
-        float(np.linalg.norm(edge_tractions(mesh, study["loads"]), axis=1).max()),
+        boundary_traction_scale(mesh, study["loads"]),
         young * max(map(abs, prescribed.values()), default=0) / length,
         young * 1e-8,
     )
