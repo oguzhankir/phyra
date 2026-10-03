@@ -18,9 +18,16 @@ def _union_distance(first: Tensor, second: Tensor) -> tuple[Tensor, Tensor]:
     direction-dependent limits; the isolated junction uses the finite zero
     representative. The exact-zero branch introduces no regularization.
     """
-    denominator = first + second
+    # Algebraic magnitude normalization keeps divide double-backward from
+    # overflowing at small but representable float32 distances. The detached
+    # scale is a computational constant: it cancels exactly from a*b/(a+b),
+    # so it changes neither the function nor its nonzero-distance derivatives.
+    magnitude = torch.maximum(first.abs(), second.abs()).detach()
+    magnitude = torch.where(magnitude == 0, torch.ones_like(magnitude), magnitude)
+    first_unit, second_unit = first / magnitude, second / magnitude
+    denominator = first_unit + second_unit
     denominator = torch.where(denominator == 0, torch.ones_like(denominator), denominator)
-    return first * (second / denominator), denominator
+    return first * (second_unit / denominator), magnitude * denominator
 
 
 class DisplacementNetwork(nn.Module):
