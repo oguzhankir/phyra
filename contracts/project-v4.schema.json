@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 5
+      "const": 4
     },
     "id": {
       "type": "string",
@@ -320,8 +320,7 @@
         "interiorPoints",
         "boundaryPoints",
         "seed",
-        "device",
-        "formulation"
+        "device"
       ],
       "properties": {
         "layers": {
@@ -367,9 +366,6 @@
         },
         "device": {
           "enum": ["auto", "cpu", "mps", "cuda"]
-        },
-        "formulation": {
-          "enum": ["strong-form", "potential-energy"]
         }
       }
     },

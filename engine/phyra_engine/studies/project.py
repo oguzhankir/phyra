@@ -23,11 +23,11 @@ SELECTION_WHITESPACE = (
 )
 
 
-@lru_cache(maxsize=4)
-def project_validator(version: int = 4) -> Draft7Validator:
+@lru_cache(maxsize=5)
+def project_validator(version: int = 5) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = "project.schema.json" if version == 4 else f"project-v{version}.schema.json"
+    filename = "project.schema.json" if version == 5 else f"project-v{version}.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -100,8 +100,8 @@ def _validate_named_selections(project: dict[str, Any]) -> None:
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2, 3, 4):
-        raise EngineError("unsupported-version", "Supported project versions are 1, 2, 3 and 4.")
+    if type(version) is not int or version not in (1, 2, 3, 4, 5):
+        raise EngineError("unsupported-version", "Supported project versions are 1, 2, 3, 4 and 5.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -123,11 +123,11 @@ def validate_project(project: Any) -> dict[str, Any]:
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 4:
+    if project["schemaVersion"] == 5:
         return project
     source_version = project["schemaVersion"]
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 4
+    upgraded["schemaVersion"] = 5
     if source_version < 3:
         upgraded["namedSelections"] = []
     if source_version == 1:
@@ -151,19 +151,26 @@ def migrate_project(project: Any) -> dict[str, Any]:
                 },
             },
         )
+    upgraded["study"]["solver"]["pinn"]["formulation"] = "strong-form"
     return validate_project(upgraded)
 
 
 def fingerprint(project: dict[str, Any]) -> str:
     """Display and copied boundary metadata never change a physical input digest."""
     canonical = {
-        key: value
+        key: deepcopy(value)
         for key, value in project.items()
         if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
     # v3 added only copied boundary sets. A migrated v3 definition retains the
     # same physical contract and may keep its validated cache. New v4 profile or
     # traction inputs keep their own schema version in the physical fingerprint.
+    if (
+        canonical.get("schemaVersion") == 5
+        and canonical["study"]["solver"]["pinn"].get("formulation") == "strong-form"
+    ):
+        del canonical["study"]["solver"]["pinn"]["formulation"]
+        canonical["schemaVersion"] = 4
     if canonical.get("schemaVersion") == 3:
         canonical["schemaVersion"] = 2
     elif canonical.get("schemaVersion") == 4:

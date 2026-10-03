@@ -125,10 +125,21 @@ export function validateReference(
     record(projectValue) && record(projectValue.study) && record(projectValue.geometry),
     'missing project definition.',
   );
-  const project = projectValue as unknown as Project;
+  const source = projectValue as unknown as Project;
+  // Bundled immutable v4 references keep their original byte digests. Upgrade
+  // their definition in memory, preserving the default algorithm and run identity.
+  const project = structuredClone(source);
+  if ((source.schemaVersion as number) === 4) {
+    ensure(
+      !Object.hasOwn(source.study.solver.pinn, 'formulation'),
+      'invalid legacy training settings.',
+    );
+    project.schemaVersion = 5;
+    project.study.solver.pinn.formulation = 'strong-form';
+  }
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 4 && project.study.dimension === dimension,
+    project.schemaVersion === 5 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(

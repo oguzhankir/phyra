@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "id": "example-extension",
   "name": "Prescribed extension",
   "revision": 0,
@@ -53,7 +53,8 @@
         "interiorPoints": 128,
         "boundaryPoints": 32,
         "seed": 42,
-        "device": "auto"
+        "device": "auto",
+        "formulation": "strong-form"
       }
     }
   },

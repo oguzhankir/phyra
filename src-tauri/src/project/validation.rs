@@ -28,7 +28,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         1 => include_str!("../../../contracts/project-v1.schema.json"),
         2 => include_str!("../../../contracts/project-v2.schema.json"),
         3 => include_str!("../../../contracts/project-v3.schema.json"),
-        4 => include_str!("../../../contracts/project.schema.json"),
+        4 => include_str!("../../../contracts/project-v4.schema.json"),
+        5 => include_str!("../../../contracts/project.schema.json"),
         _ => return Err("Unsupported project schema version".into()),
     };
     let schema: Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
@@ -89,7 +90,7 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
 }
 
 pub(crate) fn validate_project(project: &Value) -> Result<(), String> {
-    validate_version(project, 4)
+    validate_version(project, 5)
 }
 
 pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), String> {
@@ -97,7 +98,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     validate_version(&project, version)?;
-    if version == 4 {
+    if version == 5 {
         return Ok((project, false));
     }
     if version == 1 {
@@ -112,7 +113,8 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
     if version < 3 {
         project["namedSelections"] = json!([]);
     }
-    project["schemaVersion"] = json!(4);
+    project["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
+    project["schemaVersion"] = json!(5);
     validate_project(&project)?;
     Ok((project, true))
 }

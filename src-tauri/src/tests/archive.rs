@@ -1,6 +1,6 @@
 use super::*;
 fn project() -> Value {
-    json!({"schemaVersion":4,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
+    json!({"schemaVersion":5,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"formulation":"strong-form","layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
 }
 fn legacy_project() -> Value {
     let mut project = project();
@@ -21,7 +21,7 @@ fn unmeshed_project_round_trip() {
 #[test]
 fn malformed_version_rejected() {
     let mut value = project();
-    value["schemaVersion"] = json!(5);
+    value["schemaVersion"] = json!(6);
     assert!(validate_project(&value).is_err());
 }
 #[test]
@@ -65,7 +65,7 @@ fn legacy_schema_is_validated_before_defaults_are_added() {
     legacy["study"]["solver"] = json!({"kind":"pinn"});
     assert!(migrate_project(legacy).is_err());
     let mut unknown = legacy_project();
-    unknown["schemaVersion"] = json!(5);
+    unknown["schemaVersion"] = json!(6);
     assert!(migrate_project(unknown).is_err());
     let (unchanged, migrated) = migrate_project(project()).unwrap();
     assert_eq!(unchanged, project());
@@ -94,6 +94,10 @@ fn current_archive_restores_bounded_cache_into_new_directory() {
 fn version_two_project() -> Value {
     let mut value = project();
     value["schemaVersion"] = json!(2);
+    value["study"]["solver"]["pinn"]
+        .as_object_mut()
+        .unwrap()
+        .remove("formulation");
     value.as_object_mut().unwrap().remove("namedSelections");
     value
 }
@@ -111,7 +115,7 @@ fn version_two_migration_keeps_cache_for_normal_worker_validation() {
     let opened = read_archive_details(&path, &restored).unwrap();
     assert_eq!(opened.project, project());
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 4);
+    assert_eq!(opened.project["schemaVersion"], 5);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -142,16 +146,21 @@ fn version_three_migration_preserves_named_selections_and_cache() {
     let path = temporary.path().join("version 3.phyra");
     let mut previous = project();
     previous["schemaVersion"] = json!(3);
+    previous["study"]["solver"]["pinn"]
+        .as_object_mut()
+        .unwrap()
+        .remove("formulation");
     previous["namedSelections"] = json!([boundary_set()]);
     write_archive(&path, &previous, Some(&source)).unwrap();
 
     let restored = temporary.path().join("new cache");
     let opened = read_archive_details(&path, &restored).unwrap();
     let mut expected = previous;
-    expected["schemaVersion"] = json!(4);
+    expected["schemaVersion"] = json!(5);
+    expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     assert_eq!(opened.project, expected);
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 4);
+    assert_eq!(opened.project["schemaVersion"], 5);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -162,6 +171,65 @@ fn version_three_migration_preserves_named_selections_and_cache() {
 
 fn boundary_set() -> Value {
     json!({"id":"root","name":"Root boundaries","geometryKind":"box","dimension":"3d","regions":["x0","z0"]})
+}
+
+fn version_four_project() -> Value {
+    // Frozen, pre-v5 editable Kirsch definition: exact arcs and physical traction
+    // must survive migration together, without being reconstructed from v5.
+    serde_json::from_str(include_str!("fixtures/project-v4.json")).unwrap()
+}
+
+#[test]
+fn version_four_archive_preserves_definition_source_and_staged_cache_bytes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("v4 cache");
+    fs::create_dir(&source).unwrap();
+    let manifest = b"{\"protocolVersion\":1,\"source\":\"original-v4\"}";
+    let buffer = b"original bounded version four bytes";
+    fs::write(source.join("manifest.json"), manifest).unwrap();
+    fs::write(source.join("buffer.bin"), buffer).unwrap();
+    let path = temporary.path().join("version 4.phyra");
+    let previous = version_four_project();
+    write_archive(&path, &previous, Some(&source)).unwrap();
+    let original_archive = fs::read(&path).unwrap();
+
+    let restored = temporary.path().join("restored cache");
+    let opened = read_archive_details(&path, &restored).unwrap();
+    let mut expected = previous;
+    expected["schemaVersion"] = json!(5);
+    expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
+    assert_eq!(opened.project, expected);
+    assert!(opened.migrated);
+    assert!(!opened.dropped_cache);
+    assert_eq!(fs::read(&path).unwrap(), original_archive);
+    assert_eq!(fs::read(restored.join("manifest.json")).unwrap(), manifest);
+    assert_eq!(fs::read(restored.join("buffer.bin")).unwrap(), buffer);
+    // This only verifies bounded staging; reuse still requires worker validation.
+}
+
+#[test]
+fn version_four_schema_rejects_future_fields_before_applying_defaults() {
+    let mut previous = version_four_project();
+    previous["study"]["solver"]["pinn"]["formulation"] = json!("deep-energy");
+    assert!(migrate_project(previous).is_err());
+}
+
+#[test]
+fn unknown_version_archive_is_preserved_and_never_stages_cache() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("unknown cache");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("manifest.json"), b"{}").unwrap();
+    fs::write(source.join("buffer.bin"), b"unknown fields").unwrap();
+    let path = temporary.path().join("version 6.phyra");
+    let mut previous = version_four_project();
+    previous["schemaVersion"] = json!(6);
+    write_archive(&path, &previous, Some(&source)).unwrap();
+    let original_archive = fs::read(&path).unwrap();
+    let restored = temporary.path().join("restored cache");
+    assert!(read_archive_details(&path, &restored).is_err());
+    assert_eq!(fs::read(&path).unwrap(), original_archive);
+    assert!(!restored.exists());
 }
 
 #[test]

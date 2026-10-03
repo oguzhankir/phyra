@@ -18,7 +18,7 @@ export type Regions = [BoundaryId, ...BoundaryId[]];
 export type Vector = [number, number, number];
 
 export interface Project {
-  schemaVersion: 4;
+  schemaVersion: 5;
   id: string;
   name: string;
   revision: number;
@@ -133,6 +133,7 @@ export interface PinnConfiguration {
   boundaryPoints: number;
   seed: number;
   device: "auto" | "cpu" | "mps" | "cuda";
+  formulation: "strong-form" | "potential-energy";
 }
 export interface NamedSelection {
   id: string;

@@ -13,6 +13,9 @@ for (const name of [
   'extension',
   'plane-stress-tension',
   'kirsch-quarter',
+  'energy-tension',
+  'eccentric-displacement',
+  'energy-hole',
 ]) {
   const project = JSON.parse(await readFile(`examples/${name}.json`, 'utf8'));
   if (!validate(project)) {
