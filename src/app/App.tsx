@@ -501,7 +501,7 @@ export default function App({
           nativeActivity={nativeActivity}
           appearance={appearance}
           windowClosing={windowClosing}
-          modalBlocked={overlayModalOpen}
+          modalBlocked={modalOpen}
           onNew={requestNew}
           onOpen={open}
           onAssistantOpen={onAssistantOpen}

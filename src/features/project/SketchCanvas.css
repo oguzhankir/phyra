@@ -242,3 +242,12 @@
     min-height: 260px;
   }
 }
+.sketch-assignment-notice {
+  padding: 8px 10px;
+  margin: 8px 0;
+  border-left: 2px solid var(--warning);
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}

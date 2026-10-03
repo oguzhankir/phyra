@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { mountContextMenuLifecycle } from './contextMenuLifecycle';
 import './ContextMenu.css';
 
 export type ContextMenuAction = {
@@ -18,6 +19,8 @@ export default function ContextMenu({
   actions,
   onClose,
   restoreFocus,
+  fallbackFocus,
+  available = true,
 }: {
   label: string;
   x: number;
@@ -25,32 +28,36 @@ export default function ContextMenu({
   actions: ContextMenuAction[];
   onClose: () => void;
   restoreFocus?: HTMLElement | null;
+  fallbackFocus?: () => HTMLElement | null;
+  available?: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const availableRef = useRef(available);
+  availableRef.current = available;
+  const fallbackRef = useRef(fallbackFocus);
+  fallbackRef.current = fallbackFocus;
   const [position, setPosition] = useState({ left: x, top: y });
   useLayoutEffect(() => {
     const element = menu.current;
-    if (!element) return;
-    const bounds = element.getBoundingClientRect();
-    setPosition({
-      left: Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8)),
-      top: Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8)),
+    if (element && available) {
+      const bounds = element.getBoundingClientRect();
+      setPosition({
+        left: Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8)),
+        top: Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8)),
+      });
+    }
+    return mountContextMenuLifecycle({
+      element,
+      available,
+      onClose: () => closeRef.current(),
+      canRestoreFocus: () => availableRef.current,
+      restoreFocus,
+      fallbackFocus: () => fallbackRef.current?.() ?? null,
     });
-    element.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
-    const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !element.contains(event.target)) closeRef.current();
-    };
-    const dismiss = () => closeRef.current();
-    window.addEventListener('pointerdown', outside);
-    window.addEventListener('resize', dismiss);
-    return () => {
-      window.removeEventListener('pointerdown', outside);
-      window.removeEventListener('resize', dismiss);
-      if (restoreFocus?.isConnected && !restoreFocus.matches(':disabled')) restoreFocus.focus();
-    };
-  }, [x, y, restoreFocus]);
+  }, [x, y, restoreFocus, available]);
+  if (!available) return null;
   return createPortal(
     <div
       ref={menu}
@@ -91,6 +98,7 @@ export default function ContextMenu({
           className={action.danger ? 'context-menu-danger' : undefined}
           disabled={action.disabled}
           onClick={() => {
+            if (!availableRef.current) return;
             onClose();
             action.onSelect();
           }}

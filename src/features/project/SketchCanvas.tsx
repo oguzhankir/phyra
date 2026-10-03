@@ -10,6 +10,7 @@ import {
   Check,
   RotateCcw,
   X,
+  Scissors,
 } from 'lucide-react';
 import type { Point2, Profile } from '../../domain/contracts/project.generated';
 import { profileError, sampleSegment, setArcRadius } from '../../domain/project/profile';
@@ -22,6 +23,7 @@ import {
   sketchGridSpacing,
   snapPoint,
   slotSketchLoop,
+  splitSketchEdge,
 } from '../../domain/project/sketch';
 import { formatValue } from '../../domain/units';
 import { NumberInput, NumericDraftContext } from '../../shared/forms/PropertyControls';
@@ -86,6 +88,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   const [spacing, setSpacing] = useState(() => sketchGridSpacing(sketchBounds(profile)));
   const [expanded, setExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [assignmentNotice, setAssignmentNotice] = useState<string | null>(null);
   const [invalidNumbers, setInvalidNumbers] = useState(new Map<string, string>());
   const reportNumericValidity = useCallback(
     (id: string, label: string | null) =>
@@ -100,6 +103,13 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   );
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Selection>(null);
+  const retiredIds = useRef(
+    new Set([
+      ...reservedIds,
+      ...profile.outer.map((item) => item.id),
+      ...profile.holes.map((item) => item.id),
+    ]),
+  );
   const drawing = useRef(false);
   const gridId = useId().replaceAll(':', '');
   const error = profileError(draft);
@@ -118,8 +128,12 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   });
   const perform = (operation: () => Profile) => {
     try {
-      setDraft(operation());
+      const next = operation();
+      for (const item of [...draft.outer, ...draft.holes, ...next.outer, ...next.holes])
+        retiredIds.current.add(item.id);
+      setDraft(next);
       setMessage(null);
+      return next;
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'The sketch operation failed.');
     }
@@ -245,6 +259,16 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   const gridVisible = Number.isFinite(grid) && grid >= 4 && grid <= 400;
   const origin = toSvg([0, 0]);
   const selectedEdge = selection?.kind === 'edge' ? draft.outer[selection.index] : null;
+  const splitSelected = () => {
+    if (selection?.kind !== 'edge') return;
+    const next = perform(() =>
+      splitSketchEdge(draft, selection.index, [...retiredIds.current, ...reservedIds]),
+    );
+    if (next)
+      setAssignmentNotice(
+        'Edge split into two exact halves with new boundary IDs. Apply the sketch, then repair supports, loads and named boundaries that used the original edge.',
+      );
+  };
   const selectedPoint =
     selection?.kind === 'vertex'
       ? draft.outer[selection.index]?.start
@@ -282,6 +306,12 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
     cancelTool();
     setInvalidNumbers(new Map());
     setView(sketchBounds(profile));
+    setAssignmentNotice(null);
+    retiredIds.current = new Set([
+      ...reservedIds,
+      ...profile.outer.map((item) => item.id),
+      ...profile.holes.map((item) => item.id),
+    ]);
   };
   const apply = () => {
     if (canApply) {
@@ -306,6 +336,22 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          aria-label="Split selected straight edge at midpoint"
+          title="Split a straight edge into two exact halves. New boundary IDs require assignment repair after Apply."
+          disabled={
+            tool !== 'select' ||
+            selectedEdge?.kind !== 'line' ||
+            draft.outer.length >= 64 ||
+            numericError ||
+            pending.length > 0
+          }
+          onClick={splitSelected}
+        >
+          <Scissors size={14} />
+          Split edge
+        </button>
         <button
           type="button"
           title="Fit sketch"
@@ -734,6 +780,11 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
             : (error ??
               (dirty ? 'Valid closed profile · changes ready to apply' : 'Valid closed profile')))}
       </div>
+      {assignmentNotice && (
+        <p className="sketch-assignment-notice" role="status">
+          {assignmentNotice}
+        </p>
+      )}
       <div className="sketch-draft-actions">
         <span>{dirty ? 'Unapplied sketch' : 'Applied geometry'}</span>
         <button type="button" disabled={!dirty && !pending.length} onClick={revert}>

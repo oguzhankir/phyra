@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Profile } from '../contracts/project.generated';
 import { makeProject } from '../../features/examples/projects';
 import { inputError } from './validation';
 import { profileError, rectangularProfile } from './profile';
@@ -10,10 +11,88 @@ import {
   sketchBounds,
   snapPoint,
   slotSketchLoop,
+  splitSketchEdge,
 } from './sketch';
 
-const rectangle = () => ({ ...rectangularProfile(2, 1), holes: [] });
+const rectangle = (): Profile => ({ ...rectangularProfile(2, 1), holes: [] });
 describe('bounded plane sketch editing', () => {
+  it('splits a straight edge at its exact midpoint and preserves the surrounding closed SI geometry', () => {
+    const source = rectangle();
+    const next = splitSketchEdge(source, 2, ['edge-1', 'edge-3']);
+    expect(next.outer[2]).toMatchObject({ id: 'edge-2', start: [2, 1], end: [1, 1], kind: 'line' });
+    expect(next.outer[3]).toMatchObject({ id: 'edge-4', start: [1, 1], end: [0, 1], kind: 'line' });
+    expect(next.outer[2].end).toEqual(next.outer[3].start);
+    expect(next.outer[1].end).toEqual(next.outer[2].start);
+    expect(next.outer[3].end).toEqual(next.outer[4].start);
+    expect(next.outer.map((edge) => edge.id)).toEqual(['y0', 'x1', 'edge-2', 'edge-4', 'x0']);
+    expect(profileError(next)).toBeNull();
+    expect(source).toEqual(rectangle());
+    const area = (profile: typeof source) =>
+      profile.outer.reduce(
+        (sum, edge) => sum + (edge.start[0] * edge.end[1] - edge.end[0] * edge.start[1]) / 2,
+        0,
+      );
+    expect(area(next)).toBe(area(source));
+    expect(next.outer[2].end).not.toBe(next.outer[3].start);
+  });
+  it('handles diagonal and closing edges while reserving hole and retired boundary identities', () => {
+    const source = replaceSketchLoop(
+      rectangle(),
+      [
+        [-2, -1],
+        [2, 1],
+        [1, 3],
+      ],
+      [],
+    );
+    source.holes.push({ id: 'edge-4', name: 'Reserved hole', center: [0, 1], radius: 0.1 });
+    const next = splitSketchEdge(source, 0, ['edge-5', 'edge-6']);
+    expect(next.outer[0]).toMatchObject({ id: 'edge-7', start: [-2, -1], end: [0, 0] });
+    expect(next.outer[1]).toMatchObject({ id: 'edge-8', start: [0, 0], end: [2, 1] });
+    expect(next.holes).toEqual(source.holes);
+    const closing = splitSketchEdge(rectangle(), 3, []);
+    expect(closing.outer.at(-1)!.end).toEqual(closing.outer[0].start);
+    expect(profileError(closing)).toBeNull();
+    const originalName = 'A'.repeat(200);
+    source.outer[0].name = originalName;
+    expect(splitSketchEdge(source, 0, []).outer[0].name).toHaveLength(200);
+  });
+  it('requires explicit repair of assignments to the retired edge after applying a split', () => {
+    const project = makeProject('kirsch-quarter');
+    const index = project.geometry.profile!.outer.findIndex((edge) => edge.id === 'x1');
+    const originalAssignments = structuredClone(project.study.loads);
+    project.geometry.profile = splitSketchEdge(
+      project.geometry.profile!,
+      index,
+      project.study.loads.flatMap((item) => item.regions),
+    );
+    expect(project.study.loads).toEqual(originalAssignments);
+    expect(inputError(project)).toMatch(/deleted or renamed/);
+  });
+  it('enforces the 64-edge resource bound and declines arcs, missing selections and unrepresentable halves', () => {
+    const regular = (count: number) =>
+      replaceSketchLoop(
+        rectangle(),
+        Array.from({ length: count }, (_, index) => [
+          Math.cos((2 * Math.PI * index) / count),
+          Math.sin((2 * Math.PI * index) / count),
+        ]),
+        [],
+      );
+    const next = splitSketchEdge(regular(63), 0, []);
+    expect(next.outer).toHaveLength(64);
+    expect(profileError(next)).toBeNull();
+    expect(() => splitSketchEdge(regular(64), 0, [])).toThrow('64');
+    const arc = makeProject('kirsch-quarter').geometry.profile!;
+    expect(() => splitSketchEdge(arc, 1, [])).toThrow('Only straight');
+    for (const index of [-1, 4, NaN, 0.5])
+      expect(() => splitSketchEdge(rectangle(), index, [])).toThrow('existing straight');
+    const collapsed = rectangle();
+    collapsed.outer[0].end = [...collapsed.outer[0].start];
+    expect(() => splitSketchEdge(collapsed, 0, [])).toThrow('too short');
+    collapsed.outer[0].start[0] = Infinity;
+    expect(() => splitSketchEdge(collapsed, 0, [])).toThrow('finite');
+  });
   it('moves both sides of a shared vertex without mutating the definition or boundary identities', () => {
     const source = rectangle();
     const next = moveSketchVertex(source, 1, [2.5, 0]);

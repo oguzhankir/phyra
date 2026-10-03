@@ -248,6 +248,8 @@ export default function ProjectDocumentWorkspace({
   } = workbench;
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const menusBlocked =
+    modalBlocked || commandsOpen || help || confirmation || workbench.recovery.prompt;
   const [sketchTarget, setSketchTarget] = useState<HTMLDivElement | null>(null);
   const editingSketch = section === 'geometry' && project.geometry.kind === 'profile';
   const stage = stageForSection(section);
@@ -383,6 +385,8 @@ export default function ProjectDocumentWorkspace({
           <aside id={`model-panel-${seed.id}`} className="model-panel" style={{ width: leftWidth }}>
             <div className="model-browser">
               <ModelTree
+                active={active}
+                menusBlocked={menusBlocked}
                 documentId={seed.id}
                 project={project}
                 section={section}
@@ -610,6 +614,7 @@ export default function ProjectDocumentWorkspace({
                 <Suspense fallback={<span role="status">Opening model view…</span>}>
                   <Viewport
                     active={active}
+                    menusBlocked={menusBlocked}
                     onCondition={(kind, id) =>
                       selectSection(kind === 'constraint' ? 'constraints' : 'loads', id)
                     }
