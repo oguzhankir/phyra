@@ -49,8 +49,8 @@ export interface EngineCapabilities {
     }
   ];
   /**
-   * @minItems 3
-   * @maxItems 3
+   * @minItems 4
+   * @maxItems 4
    */
   methods: [
     {
@@ -132,11 +132,47 @@ export interface EngineCapabilities {
           reason: string;
         }
       ];
+    },
+    {
+      id: "pinn-plane-stress-energy";
+      kind: "pinn";
+      dimension: "2d";
+      formulation: "plane-stress";
+      framework: "pytorch";
+      operation: "train";
+      configuration: "study.solver.pinn";
+      /**
+       * @minItems 3
+       * @maxItems 3
+       */
+      devices: [
+        {
+          id: "cpu";
+          label: string;
+          precision: "float64";
+          available: boolean;
+          reason: string;
+        },
+        {
+          id: "mps";
+          label: string;
+          precision: "float32";
+          available: boolean;
+          reason: string;
+        },
+        {
+          id: "cuda";
+          label: string;
+          precision: "float64";
+          available: boolean;
+          reason: string;
+        }
+      ];
     }
   ];
   /**
-   * @minItems 1
-   * @maxItems 1
+   * @minItems 2
+   * @maxItems 2
    */
   comparisons: [
     {
@@ -144,6 +180,13 @@ export interface EngineCapabilities {
       operation: "compare";
       reference: "fem-plane-stress-tri3";
       prediction: "pinn-plane-stress-displacement";
+      mapping: "identical nodes and cell centroids; unweighted relative L2";
+    },
+    {
+      id: "plane-stress-fem-energy-pinn";
+      operation: "compare";
+      reference: "fem-plane-stress-tri3";
+      prediction: "pinn-plane-stress-energy";
       mapping: "identical nodes and cell centroids; unweighted relative L2";
     }
   ];

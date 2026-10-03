@@ -16,7 +16,7 @@ from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.physicsml.elasticity import stress_and_strain
 from phyra_engine.methods.physicsml.normalization import Normalization
 from phyra_engine.methods.physicsml.sampling import edge_components
-from phyra_engine.physics.elasticity.plane_stress import edge_tractions
+from phyra_engine.physics.elasticity.plane_stress import point_tractions
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +85,10 @@ def support_reactions(
         ),
         axis=2,
     )
+    applied = point_tractions(
+        mesh, study["loads"], np.repeat(np.arange(len(mesh.edges)), 4), samples.reshape(-1, 2)
+    )
+    traction -= applied.reshape(len(mesh.edges), 4, 2)
     reactions = np.zeros((len(mesh.positions), 2), dtype=np.float64)
     for corner, shape in enumerate((1 - along, along)):
         contribution = np.einsum(
@@ -95,8 +99,4 @@ def support_reactions(
     # and explicitly applied traction on that same constrained edge component.
     # Corners have zero measure; natural traction on an adjacent free edge is
     # not subtracted a second time merely because a shared node is prescribed.
-    applied = edge_tractions(mesh, study["loads"])
-    contribution = applied * flags * lengths[:, None] * mesh.thickness / 2
-    for corner in range(2):
-        np.add.at(reactions, mesh.edges[:, corner], -contribution)
     return reactions

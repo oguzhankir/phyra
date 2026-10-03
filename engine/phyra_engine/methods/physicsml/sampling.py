@@ -1,4 +1,4 @@
-"""Seeded rectangular collocation with explicit boundary/sample associations."""
+"""Seeded domain collocation with explicit boundary/sample associations."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -7,11 +7,11 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from phyra_engine.meshing.plane_stress import edge_geometry
+from phyra_engine.meshing.plane_stress import cell_areas, edge_geometry
 from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
 from phyra_engine.methods.physicsml.normalization import Normalization
-from phyra_engine.physics.elasticity.plane_stress import edge_tractions
+from phyra_engine.physics.elasticity.plane_stress import point_tractions
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +43,16 @@ def sample_points(
     device: str,
     dtype: torch.dtype,
 ) -> CollocationBatch:
-    interior = rng.random((configuration.interior_points, 2)) * scales.span / scales.length
+    # Area-weighted triangle sampling is uniform on the actual discrete domain;
+    # a bounding-box draw would incorrectly train inside holes and notches.
+    areas = cell_areas(mesh)
+    cells = rng.choice(len(areas), size=configuration.interior_points, p=areas / areas.sum())
+    random = rng.random((configuration.interior_points, 2))
+    root = np.sqrt(random[:, 0])
+    barycentric = np.column_stack((1 - root, root * (1 - random[:, 1]), root * random[:, 1]))
+    physical = np.einsum("ni,nij->nj", barycentric, mesh.positions[mesh.cells[cells], :2])
+    interior = (physical - scales.origin) / scales.length
     components = edge_components(mesh, study)
-    tractions = edge_tractions(mesh, study["loads"])
     lengths, normals = edge_geometry(mesh)
     boundary, normal, traction, constrained, target = [], [], [], [], []
     # Sample by physical edge length inside each stable region, keeping the
@@ -60,7 +67,7 @@ def sample_points(
         ]
         boundary.append((points - scales.origin) / scales.length)
         normal.append(normals[chosen])
-        traction.append(tractions[chosen] / scales.stress)
+        traction.append(point_tractions(mesh, study["loads"], chosen, points) / scales.stress)
         flags = [value is not None for value in components[region]]
         values = [
             0 if value is None else value / scales.displacement for value in components[region]

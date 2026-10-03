@@ -22,6 +22,8 @@ class TrainingConfiguration:
     seed: int
     learning_rate: float
     device: str
+    formulation: str = "strong-form"
+    explicit_formulation: bool = False
 
     @classmethod
     def from_mapping(cls, configuration: Mapping[str, Any]) -> "TrainingConfiguration":
@@ -59,7 +61,12 @@ class TrainingConfiguration:
             raise EngineError("invalid-training", "The supported PINN uses tanh and Adam.")
         if configuration.get("device") not in ("auto", "cpu", "mps", "cuda"):
             raise EngineError("invalid-training", "Select auto, CPU, MPS or CUDA.")
-        if set(configuration) != set(limits) | {
+        formulation = configuration.get("formulation", "strong-form")
+        if formulation not in ("strong-form", "potential-energy"):
+            raise EngineError(
+                "invalid-training", "Select strong-form or potential-energy training."
+            )
+        if set(configuration) - {"formulation"} != set(limits) | {
             "learningRate",
             "activation",
             "optimizer",
@@ -75,11 +82,13 @@ class TrainingConfiguration:
             seed=configuration["seed"],
             learning_rate=float(rate),
             device=configuration["device"],
+            formulation=formulation,
+            explicit_formulation="formulation" in configuration,
         )
 
     def to_mapping(self) -> dict[str, Any]:
         """Emit the existing project/result keys; this is not a new archive format."""
-        return {
+        result = {
             "layers": self.layers,
             "width": self.width,
             "steps": self.steps,
@@ -91,3 +100,8 @@ class TrainingConfiguration:
             "optimizer": "adam",
             "device": self.device,
         }
+        # The v5 definition adds an explicit method choice. Legacy direct callers
+        # and v2-v4 cache configuration retain their original strong-form shape.
+        if self.explicit_formulation:
+            result["formulation"] = self.formulation
+        return result
