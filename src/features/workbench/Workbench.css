@@ -1679,23 +1679,32 @@
   background: var(--canvas);
   z-index: 2;
 }
+.central-sketch-editor {
+  height: 100%;
+  min-height: 0;
+}
 .central-sketch .profile-sketch {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .central-sketch .sketch-work-area {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 16px;
   flex: 1;
-  min-height: 320px;
+  min-height: 0;
+  overflow: hidden;
 }
 .central-sketch .sketch-canvas {
   height: 100%;
+  min-height: 0;
 }
 .central-sketch .sketch-selection-controls {
   padding-top: 12px;
+  min-height: 0;
+  overflow-y: auto;
 }
 .central-sketch .sketch-snap {
   grid-template-columns: 1fr;
