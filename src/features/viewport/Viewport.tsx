@@ -60,6 +60,7 @@ type ConditionAnnotation = {
 };
 type Props = {
   active?: boolean;
+  menusBlocked?: boolean;
   locked?: boolean;
   onCondition?: (kind: 'constraint' | 'load', id: string) => void;
   onEditGeometry?: () => void;
@@ -540,7 +541,7 @@ export default function Viewport(props: Props) {
     };
     const openContext = (event: MouseEvent) => {
       event.preventDefault();
-      if (current.current.active === false) return;
+      if (current.current.active === false || current.current.menusBlocked) return;
       const hit = hitAt(event);
       const region =
         hit?.faceIndex != null && state.data
@@ -1263,6 +1264,7 @@ export default function Viewport(props: Props) {
     props.onProbe(null);
   };
   const openModelActions = (element: HTMLElement) => {
+    if (props.active === false || props.menusBlocked) return;
     const bounds = element.getBoundingClientRect();
     setContextMenu({
       x: bounds.left,
@@ -1280,6 +1282,7 @@ export default function Viewport(props: Props) {
         onKeyDown={(event) => {
           if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
             event.preventDefault();
+            if (props.active === false || props.menusBlocked) return;
             const bounds = event.currentTarget.getBoundingClientRect();
             setContextMenu({
               x: bounds.left + bounds.width / 2,
@@ -1325,6 +1328,7 @@ export default function Viewport(props: Props) {
             }}
             onContextMenu={(event) => {
               event.preventDefault();
+              if (props.active === false || props.menusBlocked) return;
               const regions = contextSelection(props.selected, annotation.region);
               if (props.onSelectionChange) props.onSelectionChange(regions);
               else props.onSelect(annotation.region);
@@ -1425,6 +1429,7 @@ export default function Viewport(props: Props) {
                 : 'Model actions · select a boundary to assign conditions'
           }
           project={props.project}
+          available={props.active !== false && !props.menusBlocked}
           locked={props.locked}
           isolated={isolated !== null}
           onEditGeometry={props.onEditGeometry}

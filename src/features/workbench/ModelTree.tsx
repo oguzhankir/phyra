@@ -32,6 +32,8 @@ import type { Section } from './navigation';
 import './ModelTree.css';
 
 type Props = {
+  active?: boolean;
+  menusBlocked?: boolean;
   documentId?: string;
   project: Project;
   section: Section;
@@ -61,6 +63,8 @@ export default function ModelTree(props: Props) {
   const [collapsed, setCollapsed] = useState<Partial<Record<GroupId, boolean>>>({});
   const [menu, setMenu] = useState<Menu | null>(null);
   const menuTrigger = useRef<HTMLElement | null>(null);
+  const outline = useRef<HTMLElement | null>(null);
+  const menusAvailable = props.active !== false && !props.menusBlocked;
   const is2D = project.study.dimension === '2d';
   useEffect(() => {
     if (!['selections', 'constraints', 'loads'].includes(section)) return;
@@ -89,6 +93,7 @@ export default function ModelTree(props: Props) {
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if (!menusAvailable) return;
     menuTrigger.current =
       event.currentTarget instanceof HTMLButtonElement
         ? event.currentTarget
@@ -271,7 +276,7 @@ export default function ModelTree(props: Props) {
         <span>Model</span>
         <small>{is2D ? '2D' : '3D'} · Static structural</small>
       </div>
-      <nav className="model-tree model-outline" aria-label="Model objects">
+      <nav ref={outline} className="model-tree model-outline" aria-label="Model objects">
         {row({ section: 'study', label: project.name }, <Activity size={15} />, 'Study definition')}
         {row({ section: 'geometry', label: 'Geometry' }, <Box size={15} />, geometryLabel)}
         {row(
@@ -361,6 +366,12 @@ export default function ModelTree(props: Props) {
           y={menu.y}
           actions={actions}
           restoreFocus={menuTrigger.current}
+          available={menusAvailable}
+          fallbackFocus={() =>
+            outline.current?.querySelector<HTMLElement>('[aria-current="page"]') ??
+            outline.current?.querySelector<HTMLElement>('button:not(:disabled)') ??
+            null
+          }
           onClose={() => setMenu(null)}
         />
       )}

@@ -41,9 +41,11 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
             profile={profile}
             factor={factor}
             unit={project.displayUnits}
-            reservedIds={[...project.study.constraints, ...project.study.loads].flatMap(
-              (item) => item.regions,
-            )}
+            reservedIds={[
+              ...project.study.constraints,
+              ...project.study.loads,
+              ...project.namedSelections,
+            ].flatMap((item) => item.regions)}
             onSelectBoundary={(id) => {
               if ([...profile.outer, ...profile.holes].some((item) => item.id === id))
                 workbench.setSelected([id]);

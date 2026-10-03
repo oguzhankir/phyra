@@ -3,7 +3,7 @@ import { sampleSegment } from './profile';
 
 export type SketchBounds = { left: number; bottom: number; width: number; height: number };
 const validPoint = (point: Point2) =>
-  point.every((value) => Number.isFinite(value) && Math.abs(value) <= 1000);
+  point.length === 2 && point.every((value) => Number.isFinite(value) && Math.abs(value) <= 1000);
 const copyPoint = (point: Point2): Point2 => [point[0], point[1]];
 
 export function sketchBounds(profile: Profile): SketchBounds {
@@ -52,6 +52,46 @@ function nextId(used: Set<string>, prefix: string) {
   const id = `${prefix}-${index}`;
   used.add(id);
   return id;
+}
+
+/** Split exact straight-edge geometry; neither new boundary inherits the old assignment ID. */
+export function splitSketchEdge(profile: Profile, index: number, reservedIds: string[]): Profile {
+  if (!Number.isSafeInteger(index) || index < 0 || !profile.outer[index])
+    throw new Error('Select an existing straight edge to split.');
+  const edge = profile.outer[index];
+  if (edge.kind !== 'line') throw new Error('Only straight edges can be split at their midpoint.');
+  if (profile.outer.length >= 64) throw new Error('A profile supports at most 64 outer edges.');
+  if (!validPoint(edge.start) || !validPoint(edge.end))
+    throw new Error('Coordinates must be finite and within ±1,000 m.');
+  const midpoint: Point2 = [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2];
+  if ([edge.start, edge.end].some((point) => point[0] === midpoint[0] && point[1] === midpoint[1]))
+    throw new Error('The selected edge is too short to represent two distinct halves.');
+  const used = new Set([
+    ...reservedIds,
+    ...profile.outer.map((item) => item.id),
+    ...profile.holes.map((item) => item.id),
+  ]);
+  const next = structuredClone(profile);
+  const name = edge.name.slice(0, 196);
+  next.outer.splice(
+    index,
+    1,
+    {
+      id: nextId(used, 'edge'),
+      name: `${name} · 1`,
+      kind: 'line',
+      start: copyPoint(edge.start),
+      end: copyPoint(midpoint),
+    },
+    {
+      id: nextId(used, 'edge'),
+      name: `${name} · 2`,
+      kind: 'line',
+      start: copyPoint(midpoint),
+      end: copyPoint(edge.end),
+    },
+  );
+  return next;
 }
 
 /** New topology gets new IDs, including reservation of IDs still owned by conditions. */

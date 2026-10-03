@@ -19,6 +19,7 @@ export type ViewportMenuContext = {
   restoreFocus: HTMLElement | null;
 };
 type Props = {
+  available?: boolean;
   context: ViewportMenuContext;
   label: string;
   project: Project;
@@ -131,6 +132,7 @@ export default function ViewportMenu(props: Props) {
       y={props.context.y}
       restoreFocus={props.context.restoreFocus}
       actions={actions}
+      available={props.available}
       onClose={props.onClose}
     />
   );
