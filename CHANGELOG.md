@@ -6,7 +6,10 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
-- Central 2D sketch drafting adds exact rounded-slot outlines with tangent lines and semicircular ends, preserving validated Apply/Revert and explicit boundary repair.
+- Experimental potential-energy plane-stress PINN on rectangles and profiles, with exact compatible finite straight-segment displacement conditions, force/pressure/spatial traction, signed energy history and a finer independent integration audit that rejects underintegrated fields. Training uses no FEM labels.
+- Editable energy tension, partial prescribed-edge and circular-cutout research cases with primary-source provenance, disclosed small-strain/method deviations and repeatable CPU/FEM measurements.
+
+- Central 2D sketch drafting adds exact rounded-slot outlines with tangent lines/semicircular ends and midpoint splitting of straight boundaries, preserving validated Apply/Revert and explicit boundary repair.
 - Object context menus in the model tree and viewport create and edit loads, supports and boundary sets directly from the selected geometry; explicit zoom, fit-selection and view controls make model navigation discoverable.
 
 - Redesigned Chat with an icon launcher, composer model picker, explicit context chips and conversation-scoped sharing approval instead of repeated checkboxes. Models & connections offers official featured models, account-discovered selections and one connection action; no model-ID text entry is required.
@@ -36,6 +39,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Support and load summaries stay visible in the model tree, and successful saves show a short confirmation before returning to the document state.
 
 ### Fixed
+
+- Object/viewport menus close when their document becomes inactive or a dialog opens; selected model rows stay visible and keyboard deletion restores focus safely.
 
 - Empty conversations open at the top without clipping the welcome content. Streaming follows only the chat transcript, preserving the surrounding workbench scroll position.
 - A delayed or cancelled turn cannot clear a newer composer draft after switching documents or conversations; cancellation during the initial history write retains a cancelled record without contacting the provider.

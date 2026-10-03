@@ -40,7 +40,7 @@ export function inputError(project: Project): string | null {
   )
     return 'Boundary mesh size must be finite, positive, and at most 1,000 m.';
   if (project.study.solver.kind === 'pinn' && !supportsPinn(project))
-    return 'PINN supports rectangular 2D studies with force or pressure loads. Choose FEM for profiles or traction loads.';
+    return 'Strong-form PINN supports rectangular 2D force/pressure studies. Select potential energy for profiles and spatial traction, or choose FEM.';
   const boundaries = new Set(
     regionNames(g.kind, project.study.dimension, g.profile).map((item) => item.id),
   );

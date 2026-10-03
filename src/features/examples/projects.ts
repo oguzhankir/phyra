@@ -4,10 +4,21 @@ import bracket from '../../../examples/bracket.json';
 import extension from '../../../examples/extension.json';
 import planeStressTension from '../../../examples/plane-stress-tension.json';
 import kirschQuarter from '../../../examples/kirsch-quarter.json';
+import energyTension from '../../../examples/energy-tension.json';
+import eccentricDisplacement from '../../../examples/eccentric-displacement.json';
+import energyHole from '../../../examples/energy-hole.json';
 import type { Project } from '../../domain/contracts/types';
 
 export type ExampleId =
-  'cantilever' | 'cylinder' | 'bracket' | 'extension' | 'plane-stress-tension' | 'kirsch-quarter';
+  | 'cantilever'
+  | 'cylinder'
+  | 'bracket'
+  | 'extension'
+  | 'plane-stress-tension'
+  | 'kirsch-quarter'
+  | 'energy-tension'
+  | 'eccentric-displacement'
+  | 'energy-hole';
 // npm run generate checks these immutable definitions against the shared schema.
 const examples: Record<ExampleId, unknown> = {
   cantilever,
@@ -16,6 +27,9 @@ const examples: Record<ExampleId, unknown> = {
   extension,
   'plane-stress-tension': planeStressTension,
   'kirsch-quarter': kirschQuarter,
+  'energy-tension': energyTension,
+  'eccentric-displacement': eccentricDisplacement,
+  'energy-hole': energyHole,
 };
 
 export function makeProject(example?: ExampleId): Project {

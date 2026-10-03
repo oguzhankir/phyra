@@ -121,6 +121,20 @@ describe('offline workbench help', () => {
       expect(markup).not.toContain('katex-error');
     }
   });
+  it('discloses the energy objective, partial-boundary eligibility and paper deviations', () => {
+    const energy = helpArticles.find((article) => article.id === 'energy-pinn')!;
+    expect(energy.experimental).toBe(true);
+    const text = helpDocument(energy);
+    expect(text).toContain('finite straight exterior segments');
+    expect(text).toContain('free collinear neighboring segment remains free');
+    expect(text).toContain('negative');
+    expect(text).toContain('above 1% rejects publication');
+    expect(text).toContain('not the minimized energy objective');
+    expect(text).toContain('small-strain adaptation');
+    expect(text).toContain('thickness 0.01 m is a Phyra choice');
+    expect(text).toContain('https://doi.org/10.1016/j.cma.2023.116184');
+    expect(searchHelp('Wang quadrature').map((article) => article.id)).toContain('energy-pinn');
+  });
 
   it('retrieves governing equations from conversational English and Turkish questions', () => {
     const question = 'Explain the governing equations for this study.';

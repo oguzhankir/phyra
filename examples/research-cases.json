@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "license": "GPL-3.0-or-later",
+  "dataPolicy": "Original editable SI definitions; no paper software, weights or datasets are redistributed. FEM fields are evaluation references, never training labels.",
+  "measurementCommand": "npm run verify:research -- [case-id]",
+  "cases": [
+    {
+      "id": "energy-tension",
+      "project": "energy-tension.json",
+      "source": "https://doi.org/10.1016/j.cma.2023.116184",
+      "scope": "Independent axial analytical patch baseline for the reusable potential-energy/exact-boundary method; not a paper experiment replication.",
+      "deviations": [
+        "Dense autograd displacement network and composite mesh quadrature instead of tensor decomposition and meshless finite differences.",
+        "CPU float64 Adam baseline; no original GPU speedup claim."
+      ],
+      "reference": "ux=F*x/(E*t*W), uy=-nu*F*y/(E*t*W), sigma_xx=F/(t*W), strain energy=F^2*L/(2*E*t*W).",
+      "comparisonPolicy": "Identical FEM nodes/cell centroids; unweighted relative L2 and maximum errors. Separate continuum patch and conservation checks live in test_energy_pinn.py.",
+      "seeds": [42, 7],
+      "device": "cpu",
+      "meshPolicy": "Use editable project settings, then vary mesh/quadrature independently from optimization.",
+      "acceptance": "Independent two-seed concave axial tests require <3% displacement, energy and balance errors, <5% stress. This runner records example measurements without replacing those gates.",
+      "failurePolicy": "Reject invalid/nonfinite inputs, incompatible supports, cancelled execution and invalid caches; retain integration/residual/balance warnings."
+    },
+    {
+      "id": "eccentric-displacement",
+      "project": "eccentric-displacement.json",
+      "source": "https://hub.hku.hk/bitstream/10722/331900/1/content.pdf",
+      "scope": "Wang et al. (2023), Section 3.2 boundary pattern: fixed bottom, ux=0 and uy=0.1 on only the left half of a square top edge.",
+      "deviations": [
+        "Small-strain adaptation; the original reference enabled large displacement.",
+        "1 m and 10 MPa SI conventions follow https://doi.org/10.1111/mice.13292 Section 3.2; thickness 0.01 m is a Phyra choice.",
+        "Dense autograd network, triangle/boundary-chord composite quadrature, Adam and CPU float64 replace original architecture, derivatives and runtime.",
+        "Prescribed displacement is 10% of side length: linear mathematical comparison, not physical large-deformation validation."
+      ],
+      "reference": "Ordinary plane-stress FEM on the same physical definition; no digitized paper field or paper accuracy/speed claim.",
+      "comparisonPolicy": "Same-location FEM displacement/stress differences, force/moment balance, exact driven/free-half tests and finer independent integration audit. Mixed-boundary endpoint stress is not a smooth reference.",
+      "seeds": [42, 7],
+      "device": "cpu",
+      "meshPolicy": "Editable five-edge profile; refine mesh and quadrature separately, and report both method costs.",
+      "acceptance": "Runnable research case with reported errors and warnings; no fixed field-accuracy guarantee. Exact partial-segment boundary enforcement and unchanged input ownership are regression gates.",
+      "failurePolicy": "Curved essential supports, interior non-supporting lines and incompatible prescribed intersections are explicitly unsupported."
+    },
+    {
+      "id": "energy-hole",
+      "project": "energy-hole.json",
+      "source": "https://doi.org/10.1016/j.finel.2026.104523",
+      "scope": "Changed-geometry energy case reusing the second-quadrant circular-cutout SI project, exact Kirsch outer traction and symmetry supports.",
+      "deviations": [
+        "Generic potential-energy method; not the original normalized EPINN implementation or a performance replication.",
+        "Source units/thickness are unspecified; numerical m/Pa realization and 0.1 m thickness are Phyra choices.",
+        "Exact CAD arc is discretized with mesh chords; curved natural boundaries are supported, curved essential supports are rejected."
+      ],
+      "reference": "Ordinary FEM plus matching Kirsch analytical displacement/stress reference through a separate solve; analytical field assumes an infinite plate with exact outer traction.",
+      "comparisonPolicy": "Same-location FEM/PINN fields and balance plus independent finer integration audit. Mesh/quadrature/optimization errors remain separate.",
+      "seeds": [42, 7],
+      "device": "cpu",
+      "meshPolicy": "Refine target and boundary sizes and change radius/load explicitly; preserve reference eligibility.",
+      "acceptance": "Runnable research case with measured errors and warnings, not a field-accuracy guarantee. Existing independent three-resolution Kirsch FEM gates remain unchanged.",
+      "failurePolicy": "Mismatch between radius, symmetry, geometry and traction removes analytical reference eligibility; invalid geometry and cancellation cannot publish fields."
+    }
+  ]
+}

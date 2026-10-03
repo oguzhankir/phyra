@@ -30,6 +30,24 @@ type Props = {
 };
 
 const examples: { id: ExampleId; title: string; detail: string; kind: string }[] = [
+  {
+    id: 'energy-tension',
+    title: 'Energy · plate in tension',
+    detail: 'Analytical patch · FEM comparison',
+    kind: '2D · Physics ML',
+  },
+  {
+    id: 'eccentric-displacement',
+    title: 'Eccentric displacement',
+    detail: 'Wang 2023 · small-strain adaptation',
+    kind: '2D · Physics ML',
+  },
+  {
+    id: 'energy-hole',
+    title: 'Energy · circular cutout',
+    detail: 'Circular profile · spatial traction',
+    kind: '2D · Physics ML',
+  },
   { id: 'cantilever', title: 'Cantilever beam', detail: 'Fixed end · tip force', kind: '3D solid' },
   {
     id: 'plane-stress-tension',
@@ -69,7 +87,7 @@ function ExampleGeometry({ id }: { id: ExampleId }) {
           <path className="geometry-side" d="M107 80L132 70V80L107 90L52 73V63Z" />
           <path className="geometry-top" d="M52 25L77 16L85 19L60 29V61L52 63Z" />
         </>
-      ) : id === 'plane-stress-tension' ? (
+      ) : ['plane-stress-tension', 'energy-tension', 'eccentric-displacement'].includes(id) ? (
         <>
           <path className="geometry-face" d="M44 32H136V72H44Z" />
           <path
@@ -77,7 +95,7 @@ function ExampleGeometry({ id }: { id: ExampleId }) {
             d="M18 52H37M25 47L18 52L25 57M143 52H162M155 47L162 52L155 57"
           />
         </>
-      ) : id === 'kirsch-quarter' ? (
+      ) : ['kirsch-quarter', 'energy-hole'].includes(id) ? (
         <path className="geometry-face" d="M52 21H133V78H79A27 27 0 0 0 52 51Z" />
       ) : id === 'cylinder' ? (
         <>
