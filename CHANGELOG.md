@@ -27,6 +27,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Changed
 
+- Project schema v5 records the selected Physics ML formulation. Frozen v1–v4 inputs migrate explicitly to strong-form; unchanged legacy fields remain eligible for ordinary ownership, fingerprint and field validation. Recovery discovery preserves original journal bytes.
+
 - The workbench keeps its model tree and selected object properties together in one left dock, with a large central viewport and a compact Prepare/Solve/Inspect toolbar. Preparation checks expand on demand.
 
 - A compact File/Edit/View/Help header stays available on Home and in the workbench. Examples live on Home; New project uses the same name and analysis-type dialog from Home, File or Ctrl/⌘ N.

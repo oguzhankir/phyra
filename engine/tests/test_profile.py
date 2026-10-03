@@ -317,11 +317,14 @@ def test_v2_definition_is_validated_before_migration_and_preserved():
     root = Path(__file__).resolve().parents[2]
     original = json.loads((root / "examples/plane-stress-tension.json").read_text())
     original["schemaVersion"] = 2
+    original["study"]["solver"]["pinn"].pop("formulation")
     original.pop("namedSelections")
     retained = deepcopy(original)
     upgraded = migrate_project(original)
-    assert original == retained and upgraded["schemaVersion"] == 4
-    assert upgraded["study"] == original["study"]
+    assert original == retained and upgraded["schemaVersion"] == 5
+    expected_study = deepcopy(original["study"])
+    expected_study["solver"]["pinn"]["formulation"] = "strong-form"
+    assert upgraded["study"] == expected_study
     original["study"]["mesh"]["boundarySize"] = 0.001
     with pytest.raises(EngineError, match="boundarySize"):
         migrate_project(original)

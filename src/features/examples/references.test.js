@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../../contracts/project.schema.json';
+import legacySchema from '../../../contracts/project-v4.schema.json';
 import { extractField, numericArray } from '../../domain/results/fields';
 import { presentRun, resultIsCurrent } from '../../domain/execution/presentation';
 import {
@@ -15,6 +16,7 @@ const index = validateReferenceIndex(
   JSON.parse(readFileSync('public/reference/index.json', 'utf8')),
 );
 const validateProject = new Ajv({ strict: true, strictTuples: false }).compile(schema);
+const validateLegacy = new Ajv({ strict: true, strictTuples: false }).compile(legacySchema);
 function fixture(id) {
   const item = index[id];
   const projectBytes = readFileSync(`public${item.project}`);
@@ -61,12 +63,13 @@ describe('actual bundled CPU reference data', () => {
     'validates %s schema, digests, owned buffers and physical fields',
     async (id) => {
       const saved = fixture(id);
-      expect(validateProject(saved.project), JSON.stringify(validateProject.errors)).toBe(true);
+      expect(validateLegacy(saved.project), JSON.stringify(validateLegacy.errors)).toBe(true);
       await verifyDigest(saved.projectBytes, saved.item.sha256.project);
       await verifyDigest(saved.manifestBytes, saved.item.sha256.manifest);
       await verifyDigest(saved.buffer, saved.item.sha256.buffer);
       expect(saved.manifest.bufferHash).toBe(saved.item.sha256.buffer);
       const result = validateReference(id, saved.project, saved.manifest, saved.buffer);
+      expect(validateProject(result.project), JSON.stringify(validateProject.errors)).toBe(true);
       expect(resultIsCurrent(result.project, result.data)).toBe(true);
       const displacement = extractField(result.data, 'displacement-mag');
       expect(displacement.values.every(Number.isFinite)).toBe(true);

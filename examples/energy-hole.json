@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
-  "id": "kirsch-quarter",
-  "name": "Kirsch quarter plate \u00b7 SI realization",
+  "id": "energy-hole",
+  "name": "Energy PINN \u00b7 circular cutout",
   "revision": 0,
   "displayUnits": "m",
   "geometry": {
@@ -55,7 +55,7 @@
     }
   },
   "study": {
-    "id": "kirsch-quarter-study",
+    "id": "energy-hole-study",
     "type": "linear-static",
     "material": {
       "name": "Authored SI elastic material",
@@ -64,7 +64,7 @@
     },
     "mesh": {
       "size": 0.4,
-      "boundarySize": 0.2
+      "boundarySize": 0.15
     },
     "constraints": [
       {
@@ -100,19 +100,19 @@
     "formulation": "plane-stress",
     "thickness": 0.1,
     "solver": {
-      "kind": "fem",
+      "kind": "pinn",
       "pinn": {
-        "layers": 3,
-        "width": 32,
+        "layers": 2,
+        "width": 16,
         "activation": "tanh",
         "optimizer": "adam",
         "learningRate": 0.001,
-        "steps": 1000,
-        "interiorPoints": 128,
-        "boundaryPoints": 32,
+        "steps": 1200,
+        "interiorPoints": 1024,
+        "boundaryPoints": 64,
         "seed": 42,
-        "device": "auto",
-        "formulation": "strong-form"
+        "device": "cpu",
+        "formulation": "potential-energy"
       }
     }
   },

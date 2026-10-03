@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
-  "id": "plane-stress-tension",
-  "name": "Plane stress \u00b7 tension",
+  "id": "energy-tension",
+  "name": "Energy PINN \u00b7 axial tension",
   "revision": 0,
   "displayUnits": "mm",
   "geometry": {
@@ -13,7 +13,7 @@
     "thickness": 0.012
   },
   "study": {
-    "id": "plane-stress-study",
+    "id": "energy-tension-study",
     "type": "linear-static",
     "material": {
       "name": "Generic elastic material",
@@ -51,19 +51,19 @@
     "formulation": "plane-stress",
     "thickness": 0.002,
     "solver": {
-      "kind": "fem",
+      "kind": "pinn",
       "pinn": {
-        "layers": 3,
-        "width": 32,
+        "layers": 2,
+        "width": 16,
         "activation": "tanh",
         "optimizer": "adam",
         "learningRate": 0.001,
-        "steps": 1000,
-        "interiorPoints": 128,
-        "boundaryPoints": 32,
+        "steps": 1200,
+        "interiorPoints": 1024,
+        "boundaryPoints": 64,
         "seed": 42,
-        "device": "auto",
-        "formulation": "strong-form"
+        "device": "cpu",
+        "formulation": "potential-energy"
       }
     }
   },

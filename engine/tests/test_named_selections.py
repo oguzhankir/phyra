@@ -62,10 +62,11 @@ def test_profile_boundary_sets_accept_stable_ids_and_preserve_orphans():
 def test_version_three_upgrade_preserves_sets_and_physical_digest():
     prior = example("cantilever")
     prior["schemaVersion"] = 3
+    prior["study"]["solver"]["pinn"].pop("formulation")
     prior["namedSelections"] = [selection()]
     expected_fingerprint = fingerprint(prior)
     upgraded = migrate_project(prior)
-    assert upgraded["schemaVersion"] == 4
+    assert upgraded["schemaVersion"] == 5
     assert upgraded["namedSelections"] == prior["namedSelections"]
     assert fingerprint(upgraded) == expected_fingerprint
 
@@ -142,6 +143,7 @@ def test_name_uniqueness_folds_only_ascii_and_preserves_non_ascii_identity():
 def test_version_two_migration_preserves_exact_independent_canonical_digest():
     prior = example()
     prior["schemaVersion"] = 2
+    prior["study"]["solver"]["pinn"].pop("formulation")
     del prior["namedSelections"]
     prior_copy = deepcopy(prior)
     canonical = {
@@ -154,9 +156,11 @@ def test_version_two_migration_preserves_exact_independent_canonical_digest():
     ).hexdigest()
     upgraded = migrate_project(prior)
     assert prior == prior_copy
-    assert upgraded["schemaVersion"] == 4
+    assert upgraded["schemaVersion"] == 5
     assert upgraded["namedSelections"] == []
-    assert upgraded["study"] == prior["study"]
+    expected_study = deepcopy(prior["study"])
+    expected_study["solver"]["pinn"]["formulation"] = "strong-form"
+    assert upgraded["study"] == expected_study
     assert fingerprint(prior) == fingerprint(upgraded) == expected
     upgraded["namedSelections"] = [selection()]
     assert fingerprint(upgraded) == expected
@@ -168,13 +172,14 @@ def test_version_two_migration_preserves_exact_independent_canonical_digest():
 def test_version_two_is_validated_before_any_upgrade(defect):
     project = example()
     project["schemaVersion"] = 2
+    project["study"]["solver"]["pinn"].pop("formulation")
     del project["namedSelections"]
     if defect == "extra-new-key":
         project["namedSelections"] = []
     elif defect == "invalid-pinn":
         project["study"]["solver"]["pinn"]["steps"] = 0
     else:
-        project["schemaVersion"] = 5
+        project["schemaVersion"] = 6
     with pytest.raises(EngineError):
         migrate_project(project)
 
@@ -185,6 +190,7 @@ def test_real_version_two_fields_survive_metadata_upgrade_and_corruption_still_f
 ):
     prior = example(name)
     prior["schemaVersion"] = 2
+    prior["study"]["solver"]["pinn"].pop("formulation")
     del prior["namedSelections"]
     geometry, study = prior["geometry"], prior["study"]
     if study["dimension"] == "3d":

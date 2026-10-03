@@ -869,6 +869,10 @@ mod tests {
         let path = temp.path().join("legacy.json");
         let mut previous = project(4);
         previous["schemaVersion"] = json!(2);
+        previous["study"]["solver"]["pinn"]
+            .as_object_mut()
+            .unwrap()
+            .remove("formulation");
         previous.as_object_mut().unwrap().remove("namedSelections");
         let bytes = serde_json::to_vec(&Record {
             format_version: 1,
@@ -879,7 +883,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        assert_eq!(restored.project["schemaVersion"], 4);
+        assert_eq!(restored.project["schemaVersion"], 5);
         assert_eq!(restored.project["namedSelections"], json!([]));
         assert_eq!(restored.project["revision"], previous["revision"]);
         assert_eq!(restored.project["geometry"], previous["geometry"]);
@@ -892,6 +896,10 @@ mod tests {
         let path = temp.path().join("invalid.json");
         let mut previous = project(4);
         previous["schemaVersion"] = json!(2);
+        previous["study"]["solver"]["pinn"]
+            .as_object_mut()
+            .unwrap()
+            .remove("formulation");
         previous.as_object_mut().unwrap().remove("namedSelections");
         previous["study"]["material"]["young"] = json!(-1);
         let bytes = serde_json::to_vec(&Record {
@@ -904,6 +912,55 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         assert!(read_record(&path).is_err());
         assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn version_four_journal_preserves_original_bytes_and_defaults_only_in_memory() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("version-four.json");
+        let previous: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/project-v4.json")).unwrap();
+        let bytes = serde_json::to_vec_pretty(&Record {
+            format_version: 1,
+            saved_at: 100,
+            app_version: "0.2.0".into(),
+            project: previous.clone(),
+        })
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let restored = read_record(&path).unwrap();
+        let mut expected = previous;
+        expected["schemaVersion"] = json!(5);
+        expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
+        assert_eq!(restored.project, expected);
+        assert_eq!(restored.saved_at, 100);
+        assert_eq!(restored.app_version, "0.2.0");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn incompatible_journal_versions_are_rejected_without_rewriting_source() {
+        let temp = tempfile::tempdir().unwrap();
+        for defect in ["v4-future-field", "v6"] {
+            let path = temp.path().join(format!("{defect}.json"));
+            let mut previous: Value =
+                serde_json::from_str(include_str!("../tests/fixtures/project-v4.json")).unwrap();
+            if defect == "v6" {
+                previous["schemaVersion"] = json!(6);
+            } else {
+                previous["study"]["solver"]["pinn"]["formulation"] = json!("deep-energy");
+            }
+            let bytes = serde_json::to_vec(&Record {
+                format_version: 1,
+                saved_at: 100,
+                app_version: "0.2.0".into(),
+                project: previous,
+            })
+            .unwrap();
+            fs::write(&path, &bytes).unwrap();
+            assert!(read_record(&path).is_err(), "{defect}");
+            assert_eq!(fs::read(&path).unwrap(), bytes, "{defect}");
+        }
     }
 
     #[test]
@@ -1300,6 +1357,10 @@ mod tests {
         let path = record_path(temp.path(), &id).unwrap();
         let mut legacy = project(7);
         legacy["schemaVersion"] = json!(2);
+        legacy["study"]["solver"]["pinn"]
+            .as_object_mut()
+            .unwrap()
+            .remove("formulation");
         legacy.as_object_mut().unwrap().remove("namedSelections");
         let bytes = serde_json::to_vec(&Record {
             format_version: 1,

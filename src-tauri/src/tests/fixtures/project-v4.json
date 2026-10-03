@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 4,
   "id": "kirsch-quarter",
   "name": "Kirsch quarter plate \u00b7 SI realization",
   "revision": 0,
@@ -111,8 +111,7 @@
         "interiorPoints": 128,
         "boundaryPoints": 32,
         "seed": 42,
-        "device": "auto",
-        "formulation": "strong-form"
+        "device": "auto"
       }
     }
   },
