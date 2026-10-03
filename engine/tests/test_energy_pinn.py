@@ -316,14 +316,26 @@ def test_harmonic_union_corner_has_finite_weak_first_derivative():
     from phyra_engine.methods.physicsml.networks import _union_distance
 
     coordinates = torch.tensor(
-        [[0, 0], [1e-30, 1e-30], [0.1, 0.2]], dtype=torch.float32, requires_grad=True
+        [[0, 0], [1e-30, 1e-30], [1e-20, 1e-20], [0.1, 0.2]],
+        dtype=torch.float32,
+        requires_grad=True,
     )
     union, _ = _union_distance(coordinates[:, 0], coordinates[:, 1])
-    gradient = torch.autograd.grad(union.sum(), coordinates)[0]
+    gradient = torch.autograd.grad(union.sum(), coordinates, create_graph=True)[0]
+    hessian_row = torch.autograd.grad(gradient[:, 0].sum(), coordinates)[0]
     assert torch.isfinite(union).all() and torch.isfinite(gradient).all()
-    np.testing.assert_allclose(union.detach().numpy(), [0, 5e-31, 1 / 15], rtol=2e-7)
+    assert torch.isfinite(hessian_row).all()
+    np.testing.assert_allclose(union.detach().numpy(), [0, 5e-31, 5e-21, 1 / 15], rtol=2e-7)
     np.testing.assert_allclose(
-        gradient.detach().numpy(), [[0, 0], [0.25, 0.25], [4 / 9, 1 / 9]], rtol=2e-7
+        gradient.detach().numpy(), [[0, 0], [0.25, 0.25], [0.25, 0.25], [4 / 9, 1 / 9]], rtol=2e-7
+    )
+    # d_aa=-2*b^2/(a+b)^3 and d_ab=2*a*b/(a+b)^3. Both tiny
+    # Hessians are representable in float32 and must remain finite for the
+    # held-out second-derivative PDE diagnostics, independently of energy loss.
+    np.testing.assert_allclose(
+        hessian_row.detach().numpy()[1:],
+        [[-2.5e29, 2.5e29], [-2.5e19, 2.5e19], [-80 / 27, 40 / 27]],
+        rtol=2e-7,
     )
 
 
