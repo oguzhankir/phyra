@@ -3,7 +3,7 @@ import { useId } from 'react';
 import type { Manifest, Project, TrainingMetric } from '../../domain/contracts/types';
 import { displayValue, formatValue } from '../../domain/units';
 import { supportsPinn } from '../../domain/project/study';
-import TrainingPlot from './TrainingPlot';
+import TrainingPlot, { EnergyPlot } from './TrainingPlot';
 import { presentRun, type RunExecution, type RunStatus } from '../../domain/execution/presentation';
 
 export type { RunStatus } from '../../domain/execution/presentation';
@@ -52,6 +52,10 @@ export default function RunWorkspace({
   const comparison = manifest?.comparison;
   const last = history.at(-1);
   const visibleStatus = presentation.status;
+  const energy = visibleStatus === 'completed' ? training?.energy : undefined;
+  const energyFormulation =
+    (training?.configuration.formulation ?? project.study.solver.pinn.formulation) ===
+    'potential-energy';
   const timing = training?.timings;
   const lossValue = (value?: number) => (value === undefined ? '—' : formatValue(value));
   const operationLabel =
@@ -156,11 +160,13 @@ export default function RunWorkspace({
                 <strong>{device ?? 'Not selected yet'}</strong>
               </div>
               <div className="run-fact">
-                <span>Total loss</span>
+                <span>{energyFormulation ? 'Total residual diagnostic' : 'Total loss'}</span>
                 <strong>{lossValue(last?.total)}</strong>
               </div>
               <div className="run-fact">
-                <span>PDE / boundary loss</span>
+                <span>
+                  {energyFormulation ? 'PDE / boundary diagnostics' : 'PDE / boundary loss'}
+                </span>
                 <strong>
                   {lossValue(last?.pde)} <small>/ {lossValue(last?.boundary)}</small>
                 </strong>
@@ -185,7 +191,55 @@ export default function RunWorkspace({
                 )}
               </div>
             </div>
-            <TrainingPlot history={history} />
+            <TrainingPlot history={history} diagnostics={energyFormulation} />
+            {energyFormulation && (
+              <section className="energy-objective">
+                <h3>Potential-energy objective</h3>
+                <p>
+                  Adam minimizes signed potential energy. The residual curves above measure PDE and
+                  boundary diagnostics; their total is not this optimizer’s objective.
+                </p>
+                {energy ? (
+                  <>
+                    <EnergyPlot history={energy.history} />
+                    <h4>Finer integration audit · final trained model</h4>
+                    <div className="energy-audit-values">
+                      <span>Potential</span>
+                      <b>{formatValue(energy.audit.potential * energy.physicalScale)} J</b>
+                      <span>Strain energy</span>
+                      <b>{formatValue(energy.audit.strain * energy.physicalScale)} J</b>
+                      <span>Boundary external work</span>
+                      <b>{formatValue(energy.audit.work * energy.physicalScale)} J</b>
+                      <span>Relative integration difference</span>
+                      <b>{formatValue(energy.relativeIntegrationDifference * 100)} %</b>
+                    </div>
+                    <p>
+                      The audit evaluates the same final model with finer quadrature. Its difference
+                      measures integration sensitivity, separately from residuals and FEM field
+                      comparison; it is not a field-error bound.
+                    </p>
+                    <details className="run-details">
+                      <summary>Energy units and quadrature</summary>
+                      <p>
+                        {energy.definition}. One dimensionless energy unit corresponds to{' '}
+                        {formatValue(energy.physicalScale)} J.
+                      </p>
+                      <p>
+                        Training: {energy.trainingQuadrature} ·{' '}
+                        {energy.interiorPoints.toLocaleString()} interior points ·{' '}
+                        {energy.boundaryPoints.toLocaleString()} boundary points.
+                      </p>
+                      <p>Audit: {energy.auditQuadrature}.</p>
+                    </details>
+                  </>
+                ) : (
+                  <p>
+                    The signed objective history and integration audit appear after a successful
+                    run.
+                  </p>
+                )}
+              </section>
+            )}
             {training && (
               <section className="heldout-residuals">
                 <h3>Independent-point residuals</h3>

@@ -88,7 +88,9 @@ export function appendTrainingMetric(
     ![sample.step, sample.elapsed, sample.total, sample.pde, sample.boundary].every(
       Number.isFinite,
     ) ||
+    !Number.isSafeInteger(sample.step) ||
     sample.step < 0 ||
+    sample.elapsed < 0 ||
     sample.total < 0 ||
     sample.pde < 0 ||
     sample.boundary < 0

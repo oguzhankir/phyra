@@ -69,6 +69,7 @@ export function assertCapabilities(value: unknown): asserts value is EngineCapab
   assertSchema(value, schema as SchemaNode, 'capabilities', { remaining: 1000 });
 }
 export function assertTrainingMetadata(manifest: Manifest): void {
+  assertEnergyMetadata(manifest);
   const training = manifest.training;
   const value = training?.validation;
   if (!value) return;
@@ -97,6 +98,135 @@ export function assertTrainingMetadata(manifest: Manifest): void {
     )
   )
     throw new Error('Invalid independent-point residual metadata.');
+}
+
+/** Signed energy objectives have separate ownership and units from nonnegative residual losses. */
+function assertEnergyMetadata(manifest: Manifest): void {
+  const training = manifest.training;
+  const energy = training?.energy;
+  if (energy === undefined && training?.configuration?.formulation !== 'potential-energy') return;
+  const invalid = () => {
+    throw new Error('Invalid potential-energy training metadata.');
+  };
+  const exactKeys = (value: unknown, keys: string[]) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).length !== keys.length ||
+      keys.some((key) => !Object.hasOwn(value, key))
+    )
+      invalid();
+  };
+  exactKeys(energy, [
+    'schemaVersion',
+    'definition',
+    'trainingQuadrature',
+    'auditQuadrature',
+    'interiorPoints',
+    'boundaryPoints',
+    'physicalScale',
+    'history',
+    'audit',
+    'relativeIntegrationDifference',
+  ]);
+  if (
+    !training ||
+    !energy ||
+    training.configuration?.formulation !== 'potential-energy' ||
+    manifest.dimension !== '2d' ||
+    !['train', 'compare'].includes(manifest.operation) ||
+    energy.schemaVersion !== 1 ||
+    !['float64', 'float32'].includes(training.precision)
+  )
+    invalid();
+  if (!training || !energy) return;
+  const boundedText = (value: unknown) =>
+    typeof value === 'string' && value.length > 0 && value.length <= 1000;
+  const positive = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0;
+  if (
+    ![energy.definition, energy.trainingQuadrature, energy.auditQuadrature].every(boundedText) ||
+    ![energy.interiorPoints, energy.boundaryPoints].every(
+      (value) => Number.isSafeInteger(value) && value > 0 && value <= 1e6,
+    ) ||
+    energy.interiorPoints < training.configuration.interiorPoints ||
+    !Number.isFinite(energy.relativeIntegrationDifference) ||
+    energy.relativeIntegrationDifference < 0 ||
+    energy.relativeIntegrationDifference > 0.01 ||
+    !positive(energy.physicalScale) ||
+    !Array.isArray(energy.history) ||
+    energy.history.length < 2 ||
+    energy.history.length > 1001 ||
+    !Array.isArray(training.history) ||
+    energy.history.length !== training.history.length ||
+    (energy.interiorPoints + energy.boundaryPoints) *
+      training.configuration.layers *
+      training.configuration.width >
+      1e6
+  )
+    invalid();
+  const normalization = training.normalization;
+  if (
+    !normalization ||
+    ![
+      normalization.length,
+      normalization.stress,
+      normalization.displacement,
+      manifest.thickness,
+    ].every(positive)
+  )
+    invalid();
+  const physicalScale =
+    normalization.stress * normalization.displacement * normalization.length * manifest.thickness!;
+  if (
+    !positive(physicalScale) ||
+    Math.abs(energy.physicalScale - physicalScale) > 1e-12 * physicalScale
+  )
+    invalid();
+  const epsilon = training.precision === 'float32' ? 2 ** -23 : Number.EPSILON;
+  const tiny = 2 ** -1022;
+  const measurement = (value: typeof energy.audit, keys: string[]) => {
+    exactKeys(value, keys);
+    if (
+      ![value.potential, value.strain, value.work].every(Number.isFinite) ||
+      ![value.potential, value.strain, value.work].every((item) =>
+        Number.isFinite(item * energy.physicalScale),
+      ) ||
+      value.strain < 0 ||
+      Math.abs(value.potential - (value.strain - value.work)) >
+        16 * epsilon * Math.max(Math.abs(value.strain), Math.abs(value.work), tiny)
+    )
+      invalid();
+  };
+  measurement(energy.audit, ['potential', 'strain', 'work']);
+  energy.history.forEach((value, index) => {
+    measurement(value, ['step', 'potential', 'strain', 'work']);
+    const residual = training.history[index];
+    if (
+      !Number.isSafeInteger(value.step) ||
+      value.step < 0 ||
+      value.step > training.configuration.steps ||
+      (index > 0 && value.step <= energy.history[index - 1].step) ||
+      !residual ||
+      value.step !== residual.step ||
+      residual.jobId !== manifest.jobId ||
+      ![residual.total, residual.pde, residual.boundary].every(
+        (item) => Number.isFinite(item) && item >= 0,
+      )
+    )
+      invalid();
+  });
+  const last = energy.history.at(-1)!;
+  if (energy.history[0].step !== 0 || last.step !== training.configuration.steps) invalid();
+  const difference =
+    Math.abs(last.potential - energy.audit.potential) /
+    Math.max(Math.abs(energy.audit.strain), Math.abs(energy.audit.work), tiny);
+  if (
+    !Number.isFinite(difference) ||
+    Math.abs(energy.relativeIntegrationDifference - difference) > 1e-12 * difference
+  )
+    invalid();
 }
 
 export function assertReferenceMetadata(manifest: Manifest): void {
