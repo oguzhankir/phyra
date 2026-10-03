@@ -128,6 +128,28 @@ def edge_tractions(mesh: Mesh2D, loads: list[dict[str, Any]]) -> np.ndarray:
     return traction
 
 
+def point_tractions(
+    mesh: Mesh2D, loads: list[dict[str, Any]], edge_indices: np.ndarray, points: np.ndarray
+) -> np.ndarray:
+    """Evaluate physical loads at supplied points on their associated boundary edges.
+
+    The selected total-force area remains the whole authored load selection, even
+    when quadrature or collocation evaluates only part of that selection.
+    """
+    _, normals = edge_geometry(mesh)
+    traction = np.zeros((len(points), 2), dtype=np.float64)
+    for load in loads:
+        selected = _selection(mesh, load["regions"])
+        mask = np.isin(edge_indices, selected)
+        if mask.any():
+            traction[mask] += _load_traction(
+                mesh, load, selected, points[mask], normals[edge_indices[mask]]
+            )
+    if not np.isfinite(traction).all():
+        raise EngineError("invalid-load", "Boundary point traction exceeds float64 range.")
+    return traction
+
+
 def integrate_edge_loads(mesh: Mesh2D, loads: list[dict[str, Any]]) -> np.ndarray:
     """scikit-fem facet quadrature integrates sigma(x,y)*outward normal safely.
 

@@ -4,7 +4,23 @@ import torch
 from torch import Tensor, nn
 
 from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
+from phyra_engine.methods.physicsml.lifting import ComponentLifting
 from phyra_engine.methods.physicsml.normalization import Normalization
+
+
+def _union_distance(first: Tensor, second: Tensor) -> tuple[Tensor, Tensor]:
+    """Harmonic union of nonnegative finite-segment vanishing functions.
+
+    The union is a*b/(a+b), equivalently 1/(1/a+1/b). Unlike a product
+    of many factors, it has no exponential attenuation. It vanishes exactly
+    on either prescribed segment and is smooth elsewhere. At compatible
+    support junctions a=b=0, its bounded weak first derivatives may have
+    direction-dependent limits; the isolated junction uses the finite zero
+    representative. The exact-zero branch introduces no regularization.
+    """
+    denominator = first + second
+    denominator = torch.where(denominator == 0, torch.ones_like(denominator), denominator)
+    return first * (second / denominator), denominator
 
 
 class DisplacementNetwork(nn.Module):
@@ -17,6 +33,7 @@ class DisplacementNetwork(nn.Module):
         scales: Normalization,
         device: str,
         dtype: torch.dtype,
+        lifting: tuple[ComponentLifting, ComponentLifting] | None = None,
     ):
         super().__init__()
         layers: list[nn.Module] = [nn.Linear(2, configuration.width), nn.Tanh()]
@@ -35,6 +52,14 @@ class DisplacementNetwork(nn.Module):
         nn.init.zeros_(final.weight)
         self.components = components
         self.scales = scales
+        self.lifting = lifting
+        if lifting is not None:
+            for component, item in enumerate(lifting):
+                for index, group in enumerate(item.groups):
+                    self.register_buffer(
+                        f"segments_{component}_{index}",
+                        torch.tensor(group.segments, device=device, dtype=dtype),
+                    )
         self.register_buffer(
             "span", torch.tensor(scales.span / scales.length, device=device, dtype=dtype)
         )
@@ -44,6 +69,35 @@ class DisplacementNetwork(nn.Module):
         raw = self.network(2 * unit - 1)
         outputs = []
         for component in range(2):
+            if self.lifting is not None:
+                item = self.lifting[component]
+                vanishing = []
+                for index, _group in enumerate(item.groups):
+                    segments = getattr(self, f"segments_{component}_{index}")
+                    normal = coordinates @ segments[:, :2].T + segments[:, 2]
+                    tangent = coordinates @ segments[:, 3:5].T
+                    tail = (
+                        torch.relu(segments[:, 5] - tangent).square()
+                        + torch.relu(tangent - segments[:, 6]).square()
+                    )
+                    distances = (normal + tail) / segments[:, 7]
+                    union = distances[:, 0]
+                    for segment in range(1, distances.shape[1]):
+                        union, _ = _union_distance(union, distances[:, segment])
+                    vanishing.append(union)
+                base = torch.zeros_like(raw[:, component])
+                factor = torch.ones_like(base)
+                if vanishing:
+                    base = base + item.groups[0].value
+                    factor = vanishing[0]
+                    for group, distance in zip(item.groups[1:], vanishing[1:], strict=True):
+                        union, denominator = _union_distance(factor, distance)
+                        base = (distance / denominator) * base + (
+                            factor / denominator
+                        ) * group.value
+                        factor = union
+                outputs.append(base + factor * raw[:, component])
+                continue
             constrained = {
                 region: float(value) / self.scales.displacement
                 for region, values in self.components.items()

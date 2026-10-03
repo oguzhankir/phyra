@@ -20,6 +20,7 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
         raise EngineError("invalid-geometry", "Bracket thickness must be below length and width.")
     study = project["study"]
     plane = study.get("dimension") == "2d"
+    energy = study.get("solver", {}).get("pinn", {}).get("formulation") == "potential-energy"
     if version >= 2:
         if plane and (
             geometry["kind"] not in (("box", "profile") if version >= 4 else ("box",))
@@ -40,9 +41,10 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
         from phyra_engine.geometry.profile import validate_profile
 
         validate_profile(profile)
-        if not plane or study["solver"]["kind"] != "fem":
+        if not plane or study["solver"]["kind"] != "fem" and not energy:
             raise EngineError(
-                "unsupported-study", "Exact profiles support 2D FEM plane stress only."
+                "unsupported-study",
+                "Exact profiles support 2D FEM or potential-energy PINN plane stress.",
             )
     allowed = (
         set(item["id"] for item in profile["outer"] + profile["holes"])
@@ -67,7 +69,7 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
         for load in study["loads"]:
             if load["kind"] == "traction":
                 validate_traction(load.get("traction"))
-                if study["solver"]["kind"] != "fem":
+                if study["solver"]["kind"] != "fem" and not energy:
                     raise EngineError(
                         "unsupported-study", "Spatial stress tractions support FEM only."
                     )

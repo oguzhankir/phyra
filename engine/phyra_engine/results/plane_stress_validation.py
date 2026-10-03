@@ -23,6 +23,13 @@ def number(value: Any) -> bool:
         return False
 
 
+def signed_number(value: Any) -> bool:
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def text(value: Any, maximum: int, empty: bool = False) -> bool:
     return isinstance(value, str) and (empty or bool(value)) and len(value) <= maximum
 
@@ -45,13 +52,15 @@ def validate_training(
         "reactionDefinition",
         "energyDefinition",
     }
-    if not isinstance(training, dict) or set(training) not in (keys, keys | {"validation"}):
+    if not isinstance(training, dict) or set(training) - {"validation", "energy"} != keys:
         raise EngineError("invalid-cache", "Unexpected training metadata.")
     config = project["study"]["solver"]["pinn"]
     stored_config = training["configuration"]
     device = training["device"]
     if (
-        stored_config != config
+        not isinstance(stored_config, dict)
+        or {**stored_config, "formulation": stored_config.get("formulation", "strong-form")}
+        != {**config, "formulation": config.get("formulation", "strong-form")}
         or not isinstance(stored_config, dict)
         or any(
             type(stored_config[key]) is not int
@@ -138,7 +147,107 @@ def validate_training(
         elapsed = metric["elapsed"]
     if "validation" in training:
         validate_held_out(training["validation"], config, training["precision"])
+    if config.get("formulation", "strong-form") == "potential-energy":
+        if "validation" not in training:
+            raise EngineError(
+                "invalid-cache", "Energy training requires independent residual validation."
+            )
+        validate_energy(
+            training.get("energy"), history, mesh, normalization, training["precision"], config
+        )
+    elif "energy" in training:
+        raise EngineError("invalid-cache", "Strong-form training cannot claim an energy objective.")
     return training
+
+
+def validate_energy(
+    value: Any,
+    history: list[dict[str, Any]],
+    mesh: Mesh2D,
+    normalization: dict[str, Any],
+    precision: str,
+    configuration: dict[str, Any],
+) -> None:
+    """Validate signed objective measurements without confusing them with residuals."""
+    keys = {
+        "schemaVersion",
+        "definition",
+        "trainingQuadrature",
+        "auditQuadrature",
+        "interiorPoints",
+        "boundaryPoints",
+        "physicalScale",
+        "history",
+        "audit",
+        "relativeIntegrationDifference",
+    }
+    interior_count = 3 * len(mesh.cells)
+    while interior_count < configuration["interiorPoints"]:
+        interior_count *= 4
+    minimum_edges = min(
+        np.count_nonzero(mesh.edge_regions == index) for index in range(len(mesh.regions))
+    )
+    edge_subdivisions = max(1, math.ceil(configuration["boundaryPoints"] / (2 * minimum_edges)))
+    scale = (
+        normalization["stress"]
+        * normalization["displacement"]
+        * normalization["length"]
+        * mesh.thickness
+    )
+    if (
+        not isinstance(value, dict)
+        or set(value) != keys
+        or type(value["schemaVersion"]) is not int
+        or value["schemaVersion"] != 1
+        or any(
+            not text(value[key], 1000)
+            for key in ("definition", "trainingQuadrature", "auditQuadrature")
+        )
+        or type(value["interiorPoints"]) is not int
+        or value["interiorPoints"] != interior_count
+        or type(value["boundaryPoints"]) is not int
+        or value["boundaryPoints"] != 2 * len(mesh.edges) * edge_subdivisions
+        or not number(value["physicalScale"])
+        or value["physicalScale"] == 0
+        or not np.isclose(value["physicalScale"], scale, rtol=1e-12, atol=0)
+        or not number(value["relativeIntegrationDifference"])
+        or value["relativeIntegrationDifference"] > 0.01
+        or not isinstance(value["history"], list)
+        or len(value["history"]) != len(history)
+    ):
+        raise EngineError("invalid-cache", "Potential-energy quadrature provenance is invalid.")
+    epsilon = np.finfo(np.float32 if precision == "float32" else np.float64).eps
+    measurements = [(value["audit"], {"potential", "strain", "work"})]
+    for metric, residual in zip(value["history"], history, strict=True):
+        if (
+            not isinstance(metric, dict)
+            or type(metric.get("step")) is not int
+            or metric["step"] != residual["step"]
+        ):
+            raise EngineError(
+                "invalid-cache", "Energy objective history disagrees with training steps."
+            )
+        measurements.append((metric, {"step", "potential", "strain", "work"}))
+    for measured, expected in measurements:
+        if (
+            not isinstance(measured, dict)
+            or set(measured) != expected
+            or any(not signed_number(measured[key]) for key in ("potential", "strain", "work"))
+            or measured["strain"] < 0
+            or abs(measured["potential"] - (measured["strain"] - measured["work"]))
+            > 16
+            * epsilon
+            * max(abs(measured["strain"]), abs(measured["work"]), np.finfo(float).tiny)
+        ):
+            raise EngineError("invalid-cache", "Potential-energy measurements are inconsistent.")
+    audit, last = value["audit"], value["history"][-1]
+    difference = abs(last["potential"] - audit["potential"]) / max(
+        abs(audit["strain"]), abs(audit["work"]), np.finfo(float).tiny
+    )
+    if not np.isclose(value["relativeIntegrationDifference"], difference, rtol=1e-12, atol=0):
+        raise EngineError(
+            "invalid-cache", "Energy integration difference disagrees with measurements."
+        )
 
 
 def validate_held_out(value: Any, configuration: dict[str, Any], precision: str) -> None:

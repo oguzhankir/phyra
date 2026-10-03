@@ -134,8 +134,8 @@
     },
     "methods": {
       "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
+      "minItems": 4,
+      "maxItems": 4,
       "items": [
         {
           "type": "object",
@@ -396,36 +396,181 @@
               "additionalItems": false
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "dimension",
+            "formulation",
+            "framework",
+            "operation",
+            "configuration",
+            "devices"
+          ],
+          "properties": {
+            "id": {
+              "const": "pinn-plane-stress-energy"
+            },
+            "kind": {
+              "const": "pinn"
+            },
+            "dimension": {
+              "const": "2d"
+            },
+            "formulation": {
+              "const": "plane-stress"
+            },
+            "framework": {
+              "const": "pytorch"
+            },
+            "operation": {
+              "const": "train"
+            },
+            "configuration": {
+              "const": "study.solver.pinn"
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cpu"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "mps"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float32"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "label", "precision", "available", "reason"],
+                  "properties": {
+                    "id": {
+                      "const": "cuda"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "precision": {
+                      "const": "float64"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                }
+              ],
+              "additionalItems": false
+            }
+          }
         }
       ],
       "additionalItems": false
     },
     "comparisons": {
       "type": "array",
-      "minItems": 1,
-      "maxItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "operation", "reference", "prediction", "mapping"],
-        "properties": {
-          "id": {
-            "const": "plane-stress-fem-pinn"
-          },
-          "operation": {
-            "const": "compare"
-          },
-          "reference": {
-            "const": "fem-plane-stress-tri3"
-          },
-          "prediction": {
-            "const": "pinn-plane-stress-displacement"
-          },
-          "mapping": {
-            "const": "identical nodes and cell centroids; unweighted relative L2"
+      "minItems": 2,
+      "maxItems": 2,
+      "items": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "operation", "reference", "prediction", "mapping"],
+          "properties": {
+            "id": {
+              "const": "plane-stress-fem-pinn"
+            },
+            "operation": {
+              "const": "compare"
+            },
+            "reference": {
+              "const": "fem-plane-stress-tri3"
+            },
+            "prediction": {
+              "const": "pinn-plane-stress-displacement"
+            },
+            "mapping": {
+              "const": "identical nodes and cell centroids; unweighted relative L2"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "operation", "reference", "prediction", "mapping"],
+          "properties": {
+            "id": {
+              "const": "plane-stress-fem-energy-pinn"
+            },
+            "operation": {
+              "const": "compare"
+            },
+            "reference": {
+              "const": "fem-plane-stress-tri3"
+            },
+            "prediction": {
+              "const": "pinn-plane-stress-energy"
+            },
+            "mapping": {
+              "const": "identical nodes and cell centroids; unweighted relative L2"
+            }
           }
         }
-      }
+      ],
+      "additionalItems": false
     }
   }
 }

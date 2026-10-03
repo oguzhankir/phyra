@@ -37,6 +37,15 @@ METHODS = (
         "train",
         "study.solver.pinn",
     ),
+    Method(
+        "pinn-plane-stress-energy",
+        "pinn",
+        "2d",
+        "plane-stress",
+        "pytorch",
+        "train",
+        "study.solver.pinn",
+    ),
 )
 
 
@@ -45,9 +54,16 @@ def methods_for_operation(project: dict[str, Any], operation: str) -> tuple[Meth
     formulation = project["study"].get("formulation", "solid")
     if operation == "mesh":
         return ()
-    if operation in ("train", "compare") and (
-        project["geometry"]["kind"] == "profile"
-        or any(load["kind"] == "traction" for load in project["study"]["loads"])
+    pinn_formulation = (
+        project["study"].get("solver", {}).get("pinn", {}).get("formulation", "strong-form")
+    )
+    if (
+        operation in ("train", "compare")
+        and pinn_formulation == "strong-form"
+        and (
+            project["geometry"]["kind"] == "profile"
+            or any(load["kind"] == "traction" for load in project["study"]["loads"])
+        )
     ):
         raise EngineError(
             "unsupported-study",
@@ -61,6 +77,15 @@ def methods_for_operation(project: dict[str, Any], operation: str) -> tuple[Meth
         if method.dimension == dimension
         and method.formulation == formulation
         and method.operation == requested
+        and (
+            method.kind != "pinn"
+            or method.id
+            == (
+                "pinn-plane-stress-energy"
+                if pinn_formulation == "potential-energy"
+                else "pinn-plane-stress-displacement"
+            )
+        )
     )
     if len(methods) != len(operations):
         raise EngineError(
@@ -87,7 +112,9 @@ def execute_method(
         from phyra_engine.methods.classical.plane_stress import solve_mesh as solve_plane
 
         return solve_plane(mesh, study, progress)
-    if method.id == "pinn-plane-stress-displacement" and isinstance(mesh, Mesh2D):
+    if method.id in ("pinn-plane-stress-displacement", "pinn-plane-stress-energy") and isinstance(
+        mesh, Mesh2D
+    ):
         from phyra_engine.methods.physicsml.plane_stress import train
 
         if progress:
@@ -154,6 +181,13 @@ def capabilities(devices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
                 "reference": "fem-plane-stress-tri3",
                 "prediction": "pinn-plane-stress-displacement",
                 "mapping": MAPPING,
-            }
+            },
+            {
+                "id": "plane-stress-fem-energy-pinn",
+                "operation": "compare",
+                "reference": "fem-plane-stress-tri3",
+                "prediction": "pinn-plane-stress-energy",
+                "mapping": MAPPING,
+            },
         ],
     }

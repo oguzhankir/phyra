@@ -1,8 +1,10 @@
-"""Experimental displacement PINN for homogeneous rectangular plane stress.
+"""Experimental displacement PINNs for homogeneous plane stress.
 
 Autograd differentiates displacement twice to enforce div(sigma)=0. Boundary
 tractions use the same explicit thickness and selected-edge total force as FEM.
-The network is trained without reference fields. Explicit constant component
+The network is trained without reference fields. The strong-form method uses
+rectangles; the potential-energy method also uses bounded profiles with straight
+external essential segments. Explicit constant component
 supports are lifted exactly; unconstrained components receive natural tractions.
 All losses are dimensionless. Returned stresses are evaluated at triangle
 centroids, rather than derived from or averaged through the FEM discretization."""
@@ -21,7 +23,9 @@ from phyra_engine.materials.isotropic import plane_stress_matrix as constitutive
 from phyra_engine.meshing.plane_stress import cell_areas, validate_mesh
 from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
+from phyra_engine.methods.physicsml.energy import energy_quadrature, integration_audit
 from phyra_engine.methods.physicsml.evaluation import evaluate_fields, support_reactions
+from phyra_engine.methods.physicsml.lifting import profile_lifting
 from phyra_engine.methods.physicsml.networks import DisplacementNetwork
 from phyra_engine.methods.physicsml.normalization import normalization
 from phyra_engine.methods.physicsml.sampling import edge_components, sample_points
@@ -46,6 +50,13 @@ def train(
     started = time.perf_counter()
     validate_mesh(mesh)
     settings = TrainingConfiguration.from_mapping(configuration)
+    collocation_count = settings.interior_points + len(mesh.regions) * settings.boundary_points
+    if collocation_count * settings.layers * settings.width > 1_000_000:
+        raise EngineError(
+            "resource-limit",
+            "Reduce boundary samples, layers or width: the actual "
+            "profile boundary count exceeds the training activation budget.",
+        )
     young, poisson = study["material"]["young"], study["material"]["poisson"]
     physical_material = constitutive_matrix(young, poisson)
     prescribed = constraint_dofs(mesh, study["constraints"])
@@ -58,15 +69,58 @@ def train(
     # worker is an isolated process, so this setting never changes desktop work.
     if device == "cpu":
         torch.set_num_threads(1)
-    model = DisplacementNetwork(settings, edge_components(mesh, study), scales, device, dtype)
+    # Energy trials use verified finite external support segments, irrespective of region
+    # spelling. Rectangle strong-form trials retain their compatible affine lift.
+    lifting = (
+        profile_lifting(mesh, study, scales) if settings.formulation == "potential-energy" else None
+    )
+    model = DisplacementNetwork(
+        settings, edge_components(mesh, study), scales, device, dtype, lifting
+    )
     material = torch.tensor(physical_material / young, device=device, dtype=dtype)
     points = sample_points(mesh, scales, settings, study, rng, device, dtype)
-    trace = AdamTrainer(settings, device, metrics, cancelled).run(model, material, points, started)
+    quadrature = (
+        energy_quadrature(mesh, scales, study, settings, device, dtype)
+        if settings.formulation == "potential-energy"
+        else None
+    )
+    trace = AdamTrainer(settings, device, metrics, cancelled).run(
+        model, material, points, started, quadrature
+    )
     last_losses = trace.history[-1].losses
     if cancelled and cancelled():
         raise EngineError("cancelled", "PINN evaluation was cancelled.")
     evaluation_started = time.perf_counter()
     validation = evaluate_held_out(model, mesh, study, settings, scales, material, device, dtype)
+    energy_diagnostic: dict[str, Any] | None = None
+    if quadrature is not None:
+        last_energy = trace.energy_history[-1][1]
+        audit = integration_audit(model, mesh, study, scales, material, device, dtype, settings)
+        scale = max(abs(audit.strain), abs(audit.work), np.finfo(float).tiny)
+        energy_diagnostic = {
+            "schemaVersion": 1,
+            "definition": "Dimensionless potential = strain energy minus boundary external work",
+            "trainingQuadrature": "three-point triangles; two-point Gauss boundary edges",
+            "auditQuadrature": (
+                "four subdivided three-point triangles; five-point Gauss boundary edges"
+            ),
+            "interiorPoints": len(quadrature.interior),
+            "boundaryPoints": len(quadrature.boundary),
+            "physicalScale": scales.stress * scales.displacement * scales.length * mesh.thickness,
+            "history": [
+                {"step": step, **values.to_mapping()} for step, values in trace.energy_history
+            ],
+            "audit": audit.to_mapping(),
+            "relativeIntegrationDifference": abs(last_energy.potential - audit.potential) / scale,
+        }
+        if energy_diagnostic["relativeIntegrationDifference"] > 0.01:
+            difference = energy_diagnostic["relativeIntegrationDifference"]
+            raise EngineError(
+                "underintegrated-training",
+                f"Potential energy differs by {100 * difference:.3g}% on finer quadrature "
+                "(limit 1%). Increase integration points or refine the mesh, reduce the "
+                "network or training budget, then rerun. No fields were published.",
+            )
     displacement = evaluate_fields(
         model, mesh.positions[:, :2], scales, material, device, dtype
     ).displacement
@@ -113,6 +167,7 @@ def train(
         "summary": diagnostic,
         "warnings": warnings,
         "training": {
+            **({"energy": energy_diagnostic} if energy_diagnostic is not None else {}),
             "configuration": settings.to_mapping(),
             "device": device,
             "precision": "float32" if dtype == torch.float32 else "float64",
