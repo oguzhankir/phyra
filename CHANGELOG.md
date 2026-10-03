@@ -6,6 +6,9 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
+- Central 2D sketch drafting adds exact rounded-slot outlines with tangent lines and semicircular ends, preserving validated Apply/Revert and explicit boundary repair.
+- Object context menus in the model tree and viewport create and edit loads, supports and boundary sets directly from the selected geometry; explicit zoom, fit-selection and view controls make model navigation discoverable.
+
 - Redesigned Chat with an icon launcher, composer model picker, explicit context chips and conversation-scoped sharing approval instead of repeated checkboxes. Models & connections offers official featured models, account-discovered selections and one connection action; no model-ID text entry is required.
 - Integrations separates local MCP management from chat, with Documentation/Current project access cards, copyable client configuration, disconnection and an access log.
 - Isolated assistant session transactions and presentation contracts support independent development while preserving exact context, cancellation, stream ordering and history failure recovery.
@@ -23,6 +26,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - In-product mathematical formulations for 3D/plane-stress FEM, scaled PINN residuals/losses and Kirsch reference assumptions, with primary references and source links.
 
 ### Changed
+
+- The workbench keeps its model tree and selected object properties together in one left dock, with a large central viewport and a compact Prepare/Solve/Inspect toolbar. Preparation checks expand on demand.
 
 - A compact File/Edit/View/Help header stays available on Home and in the workbench. Examples live on Home; New project uses the same name and analysis-type dialog from Home, File or Ctrl/⌘ N.
 - Save identifies its associated file through a tooltip. Pending and failed writes remain visible; successful writes show a brief confirmation. Home lists open documents, and switching tabs keeps them open.

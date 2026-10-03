@@ -1,9 +1,78 @@
 import { describe, expect, it } from 'vitest';
-import { boundaryAnchors, loadDescription, supportDescription } from './boundaryMarkers';
+import {
+  boundaryAnchors,
+  boundaryGlyphAnchors,
+  loadDescription,
+  supportDescription,
+  loadSummary,
+  supportSummary,
+} from './boundaryMarkers';
 import type { SurfaceData } from './surface';
 import type { Constraint, Load } from '../../domain/contracts/types';
 
 describe('located boundary conditions', () => {
+  it('samples a bounded spatial spread of real facets for distributed arrows with outward normals', () => {
+    const data: SurfaceData = {
+      positions: new Float64Array([1, 0, 0, 1, 1, 0, 1, 2, 0, 1, 3, 0, 1, 4, 0, 1, 5, 0]),
+      triangles: new Uint32Array(),
+      regions: new Uint32Array(),
+      boundaryEdges: new Uint32Array([0, 1, 1, 2, 2, 3, 3, 4, 4, 5]),
+      edgeRegions: new Uint32Array([0, 0, 0, 0, 0]),
+      regionIds: ['right'],
+    };
+    const samples = boundaryGlyphAnchors(data).get('right')!;
+    expect(samples).toHaveLength(3);
+    expect(samples.map((anchor) => anchor.point[1])).toEqual([2.5, 0.5, 4.5]);
+    expect(samples.every((anchor) => anchor.point[0] === 1 && anchor.normal[0] === 1)).toBe(true);
+    expect([...data.positions]).toEqual([1, 0, 0, 1, 1, 0, 1, 2, 0, 1, 3, 0, 1, 4, 0, 1, 5, 0]);
+  });
+  it('does not duplicate a single facet to imply extra spatial samples', () => {
+    const data: SurfaceData = {
+      positions: new Float64Array([0, 0, 0, 1, 0, 0]),
+      triangles: new Uint32Array(),
+      regions: new Uint32Array(),
+      boundaryEdges: new Uint32Array([0, 1]),
+      edgeRegions: new Uint32Array([0]),
+      regionIds: ['bottom'],
+    };
+    expect(boundaryGlyphAnchors(data).get('bottom')).toHaveLength(1);
+  });
+  it('shows actual force magnitude, signed pressure, local traction and prescribed displacements in declared units', () => {
+    const force: Load = {
+      id: 'f',
+      name: 'Force',
+      regions: ['right'],
+      kind: 'force',
+      vector: [3, 4, 12],
+      pressure: 0,
+    };
+    expect(loadSummary(force, '2d')).toBe('Force · 5 N');
+    expect(loadSummary(force, '3d')).toBe('Force · 13 N');
+    expect(loadSummary({ ...force, kind: 'pressure', pressure: -2e6 }, '2d')).toBe(
+      'Pressure · -2 MPa',
+    );
+    expect(
+      loadSummary(
+        {
+          ...force,
+          kind: 'traction',
+          traction: { kind: 'affine', xx: [3e6, 0, 0], yy: [0, 0, 0], xy: [4e6, 0, 0] },
+        },
+        '2d',
+        { region: 'right', point: [1, 0.5, 0], normal: [1, 0, 0] },
+      ),
+    ).toBe('Traction · 5 MPa here');
+    expect(
+      supportSummary({ id: 'c', name: 'Fixed', regions: ['left'], components: [0, 0, null] }, '2d'),
+    ).toBe('Fixed · X, Y');
+    expect(
+      supportSummary(
+        { id: 'c', name: 'Moved', regions: ['left'], components: [0.001, null, null] },
+        '2d',
+        'mm',
+      ),
+    ).toBe('Displacement · X 1 mm');
+  });
   it('uses actual planar boundary edges and outward normals instead of an arbitrary interior triangle', () => {
     const data: SurfaceData = {
       positions: new Float64Array([0, 0, 0, 2, 0, 0, 2, 1, 0, 0, 1, 0]),

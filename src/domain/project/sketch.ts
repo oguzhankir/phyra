@@ -135,3 +135,54 @@ export function addSketchHole(
   });
   return next;
 }
+
+/** Exact capsule outline: tangent straight sides and two semicircular ends. */
+export function slotSketchLoop(
+  profile: Profile,
+  a: Point2,
+  b: Point2,
+  radius: number,
+  reservedIds: string[],
+): Profile {
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (
+    !validPoint(a) ||
+    !validPoint(b) ||
+    !Number.isFinite(radius) ||
+    radius <= 0 ||
+    radius > 1000 ||
+    !(length > 0)
+  )
+    throw new Error(
+      'A slot needs distinct finite end centers and a positive radius at most 1,000 m.',
+    );
+  const n: Point2 = [(-(b[1] - a[1]) / length) * radius, ((b[0] - a[0]) / length) * radius];
+  const point = (center: Point2, sign: number): Point2 => [
+    center[0] + sign * n[0],
+    center[1] + sign * n[1],
+  ];
+  const points = [point(a, -1), point(b, -1), point(b, 1), point(a, 1)];
+  if (
+    !points.every(validPoint) ||
+    [a, b].some((center) => center.some((value) => Math.abs(value) + radius > 1000))
+  )
+    throw new Error('Slot extents must stay within ±1,000 m.');
+  const next = replaceSketchLoop(profile, points, reservedIds);
+  next.outer[0].name = 'Lower straight side';
+  next.outer[1] = {
+    ...next.outer[1],
+    name: 'End arc',
+    kind: 'arc',
+    center: copyPoint(b),
+    clockwise: false,
+  };
+  next.outer[2].name = 'Upper straight side';
+  next.outer[3] = {
+    ...next.outer[3],
+    name: 'Start arc',
+    kind: 'arc',
+    center: copyPoint(a),
+    clockwise: false,
+  };
+  return next;
+}

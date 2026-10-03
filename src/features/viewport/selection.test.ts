@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { nextSelection, selectionIntent } from './selection';
+import { nextSelection, selectionIntent, contextSelection } from './selection';
 
 describe('boundary selection intent', () => {
+  it('preserves context on a selected boundary and targets an unselected right-click without mutating selection', () => {
+    const selected = ['x0', 'y0'];
+    expect(contextSelection(selected, 'y0')).toEqual(['x0', 'y0']);
+    expect(contextSelection(selected, 'x1')).toEqual(['x1']);
+    expect(contextSelection(selected, null)).toEqual(['x0', 'y0']);
+    expect(contextSelection([], 'x1')).toEqual(['x1']);
+    expect(selected).toEqual(['x0', 'y0']);
+  });
   it('replaces on an ordinary click and clears on an ordinary blank click', () => {
     expect(nextSelection(['x0', 'y0'], 'x1', 'replace')).toEqual(['x1']);
     expect(nextSelection(['x0'], null, 'replace')).toEqual([]);

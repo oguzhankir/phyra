@@ -34,8 +34,3 @@
     margin-right: var(--assistant-width);
   }
 }
-
-.app-shell.with-assistant .properties-panel,
-.app-shell.with-assistant [aria-label='Resize properties panel'] {
-  display: none;
-}

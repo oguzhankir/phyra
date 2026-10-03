@@ -9,6 +9,7 @@ import {
   replaceSketchLoop,
   sketchBounds,
   snapPoint,
+  slotSketchLoop,
 } from './sketch';
 
 const rectangle = () => ({ ...rectangularProfile(2, 1), holes: [] });
@@ -129,5 +130,42 @@ describe('bounded plane sketch editing', () => {
         expect(point[1]).toBeLessThanOrEqual(bounds.bottom + bounds.height);
       }
     expect(bounds.width / bounds.height).toBeCloseTo(1.6);
+  });
+});
+
+describe('exact slot profiles', () => {
+  it('creates tangent semicircular ends at arbitrary orientation without reusing assigned IDs', () => {
+    for (const end of [
+      [2, 0],
+      [0, 2],
+      [2, 2],
+      [-2, -1],
+    ] as [number, number][]) {
+      const source = rectangle();
+      const slot = slotSketchLoop(source, [0, 0], end, 0.25, ['edge-1']);
+      expect(profileError(slot)).toBeNull();
+      expect(slot.outer.map((edge) => edge.kind)).toEqual(['line', 'arc', 'line', 'arc']);
+      expect(slot.outer[1].center).toEqual(end);
+      expect(slot.outer[3].center).toEqual([0, 0]);
+      expect(slot.outer[0].id).toBe('edge-2');
+      expect(source).toEqual(rectangle());
+      for (const index of [1, 3]) {
+        const arc = slot.outer[index];
+        expect(
+          Math.hypot(arc.start[0] - arc.center![0], arc.start[1] - arc.center![1]),
+        ).toBeCloseTo(0.25);
+        const line = slot.outer[(index + 3) % 4];
+        const tangent = [line.end[0] - line.start[0], line.end[1] - line.start[1]];
+        const radial = [arc.start[0] - arc.center![0], arc.start[1] - arc.center![1]];
+        expect(tangent[0] * radial[0] + tangent[1] * radial[1]).toBeCloseTo(0);
+      }
+    }
+  });
+  it('rejects zero length/radius, nonfinite points and out-of-bounds extents', () => {
+    for (const radius of [0, -1, Infinity])
+      expect(() => slotSketchLoop(rectangle(), [0, 0], [1, 0], radius, [])).toThrow();
+    expect(() => slotSketchLoop(rectangle(), [0, 0], [0, 0], 0.1, [])).toThrow('distinct');
+    expect(() => slotSketchLoop(rectangle(), [0, Infinity], [1, 0], 0.1, [])).toThrow('finite');
+    expect(() => slotSketchLoop(rectangle(), [999.9, 0], [1000, 0], 1, [])).toThrow('extents');
   });
 });

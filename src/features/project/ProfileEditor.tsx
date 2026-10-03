@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import type { Profile, Point2 } from '../../domain/contracts/project.generated';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
 import { freshBoundaryId, setArcRadius } from '../../domain/project/profile';
@@ -34,36 +35,49 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
   );
   return (
     <>
-      <Group title="Interactive plane sketch">
-        <SketchCanvas
-          profile={profile}
-          factor={factor}
-          unit={project.displayUnits}
-          reservedIds={[...project.study.constraints, ...project.study.loads].flatMap(
-            (item) => item.regions,
-          )}
-          onSelectBoundary={(id) => {
-            if ([...profile.outer, ...profile.holes].some((item) => item.id === id))
-              workbench.setSelected([id]);
-          }}
-          onApply={(draft) => {
-            if (workbench.invalidDraftsRef.current.size) {
-              workbench.setError(
-                'Complete or revert the numeric input before applying the sketch.',
+      {(() => {
+        const canvas = (
+          <SketchCanvas
+            profile={profile}
+            factor={factor}
+            unit={project.displayUnits}
+            reservedIds={[...project.study.constraints, ...project.study.loads].flatMap(
+              (item) => item.regions,
+            )}
+            onSelectBoundary={(id) => {
+              if ([...profile.outer, ...profile.holes].some((item) => item.id === id))
+                workbench.setSelected([id]);
+            }}
+            onApply={(draft) => {
+              if (workbench.locked) return false;
+              if (workbench.invalidDraftsRef.current.size) {
+                workbench.setError(
+                  'Complete or revert the numeric input before applying the sketch.',
+                );
+                return false;
+              }
+              edit((next) => {
+                next.geometry.profile = structuredClone(draft);
+              });
+              workbench.setSelected([]);
+              workbench.setNotice(
+                'Sketch applied · remesh before solving. Review supports and loads after topology changes.',
               );
-              return false;
-            }
-            edit((next) => {
-              next.geometry.profile = structuredClone(draft);
-            });
-            workbench.setSelected([]);
-            workbench.setNotice(
-              'Sketch applied · remesh before solving. Review supports and loads after topology changes.',
-            );
-            return true;
-          }}
-        />
-      </Group>
+              return true;
+            }}
+          />
+        );
+        return workbench.sketchTarget ? (
+          createPortal(
+            <div className="central-sketch-editor" inert={workbench.locked}>
+              {canvas}
+            </div>,
+            workbench.sketchTarget,
+          )
+        ) : (
+          <Group title="Interactive plane sketch">{canvas}</Group>
+        );
+      })()}
       <Group
         title="Outer line / arc loop"
         action={

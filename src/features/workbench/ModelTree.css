@@ -1,0 +1,123 @@
+.model-outline-heading > small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.model-tree.model-outline {
+  padding: 8px;
+}
+.model-outline-row,
+.model-outline-group {
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  position: relative;
+  min-width: 0;
+}
+.model-outline-row.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.model-outline-row.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.model-outline-row > .model-outline-select {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  gap: 8px;
+  text-align: left;
+  justify-content: flex-start;
+  color: inherit;
+}
+.model-outline-copy {
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.model-outline-copy > span,
+.model-outline-copy > small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-outline-copy > small {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.model-outline-row.active .model-outline-copy > span {
+  font-weight: 600;
+}
+.model-outline-row.child {
+  margin-left: 23px;
+}
+.model-outline-row.child .model-outline-select {
+  min-height: 29px;
+}
+.model-outline-row > .model-outline-more {
+  flex-shrink: 0;
+  padding: 5px;
+  margin-right: 3px;
+  color: var(--muted);
+  opacity: 0.5;
+}
+.model-outline-row:hover > .model-outline-more,
+.model-outline-row:focus-within > .model-outline-more,
+.model-outline-row.active > .model-outline-more {
+  opacity: 1;
+}
+.model-outline-category {
+  padding: 9px 8px 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.model-outline-group.active {
+  color: var(--accent);
+}
+.model-outline-group > .model-outline-expand,
+.model-outline-group > .model-outline-add {
+  padding: 5px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.model-outline-group > .model-outline-expand:disabled {
+  opacity: 1;
+}
+.model-outline-group > .model-outline-group-select {
+  padding: 6px 3px;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  color: inherit;
+  text-align: left;
+  justify-content: flex-start;
+  font-size: 12px;
+}
+.model-outline-group-select > span {
+  flex: 1;
+  min-width: 0;
+}
+.model-outline-group-select > small {
+  color: var(--muted);
+  font-size: 10px;
+  min-width: 16px;
+  text-align: center;
+}
+.model-outline-hint {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}

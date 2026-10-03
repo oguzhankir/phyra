@@ -1,4 +1,15 @@
-import { Maximize, RotateCcw, Focus, Eye, Ruler } from 'lucide-react';
+import {
+  Maximize,
+  RotateCcw,
+  Focus,
+  Eye,
+  EyeOff,
+  Ruler,
+  ZoomIn,
+  ZoomOut,
+  MoreHorizontal,
+  Flag,
+} from 'lucide-react';
 import type { CameraView } from './camera';
 
 type Props = {
@@ -7,90 +18,122 @@ type Props = {
   selectionCount: number;
   isolated: boolean;
   measuring: boolean;
+  conditionsShown: boolean;
   onView: (view: CameraView) => void;
   onFit: () => void;
+  onFitSelection: () => void;
+  onZoom: (factor: number) => void;
   onReset: () => void;
   onIsolate: () => void;
   onRestore: () => void;
   onMeasure: () => void;
+  onConditions: () => void;
+  onActions: (element: HTMLButtonElement) => void;
 };
 
-export default function ViewportTools({
-  dimension,
-  view,
-  selectionCount,
-  isolated,
-  measuring,
-  onView,
-  onFit,
-  onReset,
-  onIsolate,
-  onRestore,
-  onMeasure,
-}: Props) {
+export default function ViewportTools(props: Props) {
   return (
-    <div className="viewport-actions" role="toolbar" aria-label="Viewport tools">
-      <label className="viewport-view-label">
-        <span>View</span>
-        <select
-          aria-label="Camera orientation"
-          value={dimension === '2d' ? 'top' : view}
-          onChange={(event) => onView(event.target.value as CameraView)}
+    <div className="viewport-actions" role="toolbar" aria-label="Model view tools">
+      <div className="viewport-action-group">
+        <button title="Zoom in (+)" aria-label="Zoom in" onClick={() => props.onZoom(0.8)}>
+          <ZoomIn size={15} />
+        </button>
+        <button title="Zoom out (−)" aria-label="Zoom out" onClick={() => props.onZoom(1.25)}>
+          <ZoomOut size={15} />
+        </button>
+        <button title="Fit model (F)" aria-label="Fit model" onClick={props.onFit}>
+          <Maximize size={15} />
+          <span>Fit model</span>
+        </button>
+        <button
+          title="Fit selected boundaries (Shift+F)"
+          aria-label="Fit selection"
+          disabled={!props.selectionCount}
+          onClick={props.onFitSelection}
         >
-          {dimension === '2d' ? (
-            <option value="top">Normal · XY</option>
-          ) : (
-            <>
-              <option value="custom" disabled>
-                Custom orientation
-              </option>
-              <option value="isometric">Isometric</option>
-              <option value="front">Front · −Y</option>
-              <option value="back">Back · +Y</option>
-              <option value="right">Right · +X</option>
-              <option value="left">Left · −X</option>
-              <option value="top">Top · +Z</option>
-              <option value="bottom">Bottom · −Z</option>
-            </>
-          )}
-        </select>
-      </label>
-      <button title="Fit model (F)" aria-label="Fit model" onClick={onFit}>
-        <Maximize size={14} />
-      </button>
-      <button title="Reset camera" aria-label="Reset camera" onClick={onReset}>
-        <RotateCcw size={14} />
-      </button>
-      <span className="viewport-tool-divider" />
-      <button
-        title="Show selected boundaries only"
-        aria-label="Isolate selected boundaries"
-        aria-pressed={isolated}
-        disabled={selectionCount === 0}
-        onClick={onIsolate}
-      >
-        <Focus size={14} />
-        <span>Isolate</span>
-      </button>
-      <button
-        title="Restore all boundaries"
-        aria-label="Restore all boundaries"
-        disabled={!isolated}
-        onClick={onRestore}
-      >
-        <Eye size={14} />
-        <span>Show all</span>
-      </button>
-      <span className="viewport-tool-divider" />
-      <button
-        title="Measure undeformed distance between two mesh nodes or geometry vertices"
-        aria-label="Measure undeformed node distance"
-        aria-pressed={measuring}
-        onClick={onMeasure}
-      >
-        <Ruler size={14} />
-        <span>Measure</span>
-      </button>
+          <Focus size={15} />
+          <span>Fit selection</span>
+        </button>
+        <button title="Reset camera" aria-label="Reset camera" onClick={props.onReset}>
+          <RotateCcw size={15} />
+          <span>Reset</span>
+        </button>
+        <span className="viewport-tool-divider" />
+        <label className="viewport-view-label">
+          <span>View</span>
+          <select
+            aria-label="Camera orientation"
+            value={props.dimension === '2d' ? 'top' : props.view}
+            disabled={props.dimension === '2d'}
+            onChange={(event) => props.onView(event.target.value as CameraView)}
+          >
+            {props.dimension === '2d' ? (
+              <option value="top">Plan · XY</option>
+            ) : (
+              <>
+                <option value="custom" disabled>
+                  Custom orientation
+                </option>
+                <option value="isometric">Isometric</option>
+                <option value="front">Front · −Y</option>
+                <option value="back">Back · +Y</option>
+                <option value="right">Right · +X</option>
+                <option value="left">Left · −X</option>
+                <option value="top">Top · +Z</option>
+                <option value="bottom">Bottom · −Z</option>
+              </>
+            )}
+          </select>
+        </label>
+      </div>
+      <div className="viewport-action-group viewport-selection-tools">
+        <button
+          title="Show selected boundaries only"
+          aria-label="Isolate selected boundaries"
+          aria-pressed={props.isolated}
+          disabled={!props.selectionCount}
+          onClick={props.onIsolate}
+        >
+          <EyeOff size={15} />
+          <span>Isolate</span>
+        </button>
+        {props.isolated && (
+          <button
+            title="Restore all boundaries"
+            aria-label="Restore all boundaries"
+            onClick={props.onRestore}
+          >
+            <Eye size={15} />
+            <span>Show all</span>
+          </button>
+        )}
+        <button
+          title="Measure undeformed distance between two mesh nodes or geometry vertices"
+          aria-label="Measure undeformed node distance"
+          aria-pressed={props.measuring}
+          onClick={props.onMeasure}
+        >
+          <Ruler size={15} />
+          <span>Measure</span>
+        </button>
+        <button
+          title="Show or hide support and load symbols"
+          aria-label="Show boundary condition symbols"
+          aria-pressed={props.conditionsShown}
+          onClick={props.onConditions}
+        >
+          <Flag size={15} />
+          <span>Conditions</span>
+        </button>
+        <button
+          title="Model actions (right-click or Shift+F10)"
+          aria-label="Model actions"
+          aria-haspopup="menu"
+          onClick={(event) => props.onActions(event.currentTarget)}
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
     </div>
   );
 }

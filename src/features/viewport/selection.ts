@@ -1,5 +1,13 @@
 import type { RegionId } from '../../domain/project/regions';
 
+/** Right-click preserves a multi-selection when its boundary is already selected. */
+export function contextSelection(
+  selected: readonly RegionId[],
+  region: RegionId | null,
+): RegionId[] {
+  return region && !selected.includes(region) ? [region] : [...selected];
+}
+
 export type SelectionMode = 'replace' | 'add' | 'toggle';
 
 export function selectionIntent(

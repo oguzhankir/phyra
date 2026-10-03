@@ -35,8 +35,8 @@ const Viewport = lazy(() => import('../features/viewport/Viewport'));
 import ModelTree from '../features/workbench/ModelTree';
 import {
   sectionDescriptions,
-  sectionTitles,
   stageForSection,
+  workflowStages,
 } from '../features/workbench/navigation';
 import ProjectWorkspaceBar from '../features/workbench/ProjectWorkspaceBar';
 import StudyReadiness from '../features/workbench/StudyReadiness';
@@ -196,7 +196,6 @@ export default function ProjectDocumentWorkspace({
     exportFields,
     showHelp,
     leftWidth,
-    rightWidth,
     section,
     constraintId,
     loadId,
@@ -249,6 +248,8 @@ export default function ProjectDocumentWorkspace({
   } = workbench;
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [sketchTarget, setSketchTarget] = useState<HTMLDivElement | null>(null);
+  const editingSketch = section === 'geometry' && project.geometry.kind === 'profile';
   const stage = stageForSection(section);
   const missingCheck = workbench.preparation.checks.find(
     (check) =>
@@ -256,11 +257,6 @@ export default function ProjectDocumentWorkspace({
   );
   const reviewSection =
     missingCheck?.section ?? (workbench.preparation.canRun ? 'solver' : 'study');
-  const reviewLabel = missingCheck
-    ? `Review ${sectionTitles[missingCheck.section].toLowerCase()}`
-    : workbench.preparation.canRun
-      ? 'Review analysis'
-      : 'Review preparation';
   const canCompute = !locked && !workbench.nativeLocked && workbench.preparation.canRun && desktop;
   const canMesh = !locked && !workbench.nativeLocked && workbench.preparation.canMesh && desktop;
   useModalFocus(active && commandsOpen && !modalBlocked && !help && !confirmation, () =>
@@ -365,43 +361,71 @@ export default function ProjectDocumentWorkspace({
             onSave={() => void save()}
           />
         }
+        <nav className="workbench-workflow" aria-label="Analysis workflow">
+          {workflowStages.map((item) => (
+            <button
+              key={item.id}
+              className={stage.id === item.id ? 'active' : ''}
+              aria-current={stage.id === item.id ? 'step' : undefined}
+              title={item.description}
+              onClick={() => selectSection(item.entrySection)}
+            >
+              <span>{item.number}</span>
+              {item.title}
+            </button>
+          ))}
+          <button className="workflow-readiness" onClick={() => selectSection('study')}>
+            {workbench.preparation.canRun ? <Check size={14} /> : <ChevronRight size={14} />}
+            {workbench.preparation.completed}/{workbench.preparation.total} checks
+          </button>
+        </nav>
         <div className="workspace">
           <aside id={`model-panel-${seed.id}`} className="model-panel" style={{ width: leftWidth }}>
-            <ModelTree
-              documentId={seed.id}
-              project={project}
-              section={section}
-              constraintId={constraintId}
-              loadId={loadId}
-              namedSelectionId={namedSelectionId}
-              hasSelection={selected.length > 0}
-              locked={locked}
-              cells={stat?.cells}
-              solved={solved}
-              stale={!!data && !currentData}
-              onSection={selectSection}
-              onAddSupport={addConstraint}
-              onAddLoad={addLoad}
-              onAddSelection={addNamedSelection}
+            <div className="model-browser">
+              <ModelTree
+                documentId={seed.id}
+                project={project}
+                section={section}
+                constraintId={constraintId}
+                loadId={loadId}
+                namedSelectionId={namedSelectionId}
+                hasSelection={selected.length > 0}
+                locked={locked}
+                cells={stat?.cells}
+                solved={solved}
+                stale={!!data && !currentData}
+                onSection={selectSection}
+                onAddSupport={() => addConstraint()}
+                onAddLoad={() => addLoad()}
+                onAddSelection={() => addNamedSelection()}
+                onDeleteSupport={workbench.deleteSupport}
+                onDeleteLoad={workbench.deleteLoad}
+                onDeleteSelection={workbench.deleteSelection}
+                onSelectBoundaries={setSelected}
+              />
+            </div>
+            <PropertyInspector
+              workbench={{ ...workbench, sketchTarget: editingSketch ? sketchTarget : null }}
+              panelId={`properties-panel-${seed.id}`}
             />
           </aside>
           <div
             className="panel-splitter"
             role="separator"
-            aria-label="Resize model panel"
+            aria-label="Resize model and properties panel"
             aria-orientation="vertical"
             aria-controls={`model-panel-${seed.id}`}
-            aria-valuemin={184}
-            aria-valuemax={360}
+            aria-valuemin={300}
+            aria-valuemax={520}
             aria-valuenow={leftWidth}
             tabIndex={0}
             title="Drag or use the left and right arrow keys to resize"
             onKeyDown={(event) => {
               if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
               event.preventDefault();
-              adjustPanel('left', event.key === 'ArrowRight' ? 20 : -20);
+              adjustPanel(event.key === 'ArrowRight' ? 20 : -20);
             }}
-            onPointerDown={(event) => resize(event, 'left')}
+            onPointerDown={resize}
           />
           <main className="work-area">
             <div className="work-heading">
@@ -413,8 +437,11 @@ export default function ProjectDocumentWorkspace({
                   <ChevronRight size={12} />
                   <span>{is2D ? '2D plane stress' : '3D solid elasticity'}</span>
                 </div>
-                <h1 title={sectionDescriptions[section]}>{sectionTitles[section]}</h1>
-                <p className="work-subtitle">{sectionDescriptions[section]}</p>
+                <h1 title={sectionDescriptions[section]}>{project.name}</h1>
+                <p className="work-subtitle">
+                  {is2D ? 'Plane-stress model' : 'Solid model'} · Select an object to edit its
+                  properties
+                </p>
               </div>
               <div className="run-actions">
                 {section === 'solver' && supportsPinn(project) && !busy && (
@@ -438,10 +465,14 @@ export default function ProjectDocumentWorkspace({
                     {cancelling ? 'Stopping…' : 'Cancel'}
                   </button>
                 ) : stage.id === 'prepare' ? (
-                  <button className="primary" onClick={() => selectSection(reviewSection)}>
-                    {reviewLabel}
-                    <ArrowRight size={15} />
-                  </button>
+                  <>
+                    <button className="secondary" onClick={() => selectSection('geometry')}>
+                      Edit geometry
+                    </button>
+                    <button className="primary" onClick={() => selectSection(reviewSection)}>
+                      Mesh & method <ArrowRight size={15} />
+                    </button>
+                  </>
                 ) : section === 'mesh' ? (
                   <>
                     <button className="secondary" onClick={() => selectSection('solver')}>
@@ -563,36 +594,54 @@ export default function ProjectDocumentWorkspace({
               </div>
             )}
             {section === 'study' && (
-              <StudyReadiness preparation={workbench.preparation} onSection={selectSection} />
+              <details className="preparation-disclosure">
+                <summary>
+                  {workbench.preparation.canRun
+                    ? 'Definition ready for analysis'
+                    : 'Complete the study definition'}{' '}
+                  · {workbench.preparation.completed}/{workbench.preparation.total} checks
+                </summary>
+                <StudyReadiness preparation={workbench.preparation} onSection={selectSection} />
+              </details>
             )}
             <div className="viewport-wrap">
-              <Suspense fallback={<span role="status">Opening model view…</span>}>
-                <Viewport
-                  active={active}
-                  onCondition={(kind, id) =>
-                    selectSection(kind === 'constraint' ? 'constraints' : 'loads', id)
-                  }
-                  selectionMode={selectionMode}
-                  onSelectionChange={setSelected}
-                  theme={theme}
-                  project={project}
-                  data={currentData}
-                  field={field}
-                  selected={selected}
-                  onSelect={selectRegion}
-                  onProbe={(probe) => {
-                    probeOwner.current =
-                      probe && resultSelection ? { probe, selection: resultSelection } : null;
-                    setProbe(probe);
-                  }}
-                  onVerified={verification ? verified : undefined}
-                  edges={edges}
-                  source={fieldSource}
-                  animate={animate}
-                  deformation={deformation}
-                  customScale={customScale}
-                />
-              </Suspense>
+              {editingSketch && <div ref={setSketchTarget} className="central-sketch" />}
+              <div className={`model-viewport${editingSketch ? ' sketch-editing' : ''}`}>
+                <Suspense fallback={<span role="status">Opening model view…</span>}>
+                  <Viewport
+                    active={active}
+                    onCondition={(kind, id) =>
+                      selectSection(kind === 'constraint' ? 'constraints' : 'loads', id)
+                    }
+                    locked={locked}
+                    onEditGeometry={() => selectSection('geometry')}
+                    onAddCondition={(kind, boundaries) => {
+                      if (kind === 'constraint') workbench.addConstraintOn(boundaries);
+                      else workbench.addLoadOn(boundaries);
+                    }}
+                    onAddNamedSelection={workbench.addNamedSelectionOn}
+                    selectionMode={selectionMode}
+                    onSelectionChange={setSelected}
+                    theme={theme}
+                    project={project}
+                    data={currentData}
+                    field={field}
+                    selected={selected}
+                    onSelect={selectRegion}
+                    onProbe={(probe) => {
+                      probeOwner.current =
+                        probe && resultSelection ? { probe, selection: resultSelection } : null;
+                      setProbe(probe);
+                    }}
+                    onVerified={verification ? verified : undefined}
+                    edges={edges}
+                    source={fieldSource}
+                    animate={animate}
+                    deformation={deformation}
+                    customScale={customScale}
+                  />
+                </Suspense>
+              </div>
               {field && (
                 <div className="contour-legend">
                   <strong>{field.label}</strong>
@@ -660,16 +709,20 @@ export default function ProjectDocumentWorkspace({
                         </button>
                       ))}
                     </div>
-                    <button className="text-button" disabled={locked} onClick={addConstraint}>
+                    <button
+                      className="text-button"
+                      disabled={locked}
+                      onClick={() => addConstraint()}
+                    >
                       Add support
                     </button>
-                    <button className="text-button" disabled={locked} onClick={addLoad}>
+                    <button className="text-button" disabled={locked} onClick={() => addLoad()}>
                       Add load
                     </button>
                     <button
                       className="text-button"
                       disabled={locked || project.namedSelections.length >= 100}
-                      onClick={addNamedSelection}
+                      onClick={() => addNamedSelection()}
                     >
                       <Bookmark size={13} /> Save boundary set
                     </button>
@@ -760,25 +813,6 @@ export default function ProjectDocumentWorkspace({
               />
             )}
           </main>
-          <div
-            className="panel-splitter"
-            role="separator"
-            aria-label="Resize properties panel"
-            aria-orientation="vertical"
-            aria-controls={`properties-panel-${seed.id}`}
-            aria-valuemin={260}
-            aria-valuemax={430}
-            aria-valuenow={rightWidth}
-            tabIndex={0}
-            title="Drag or use the left and right arrow keys to resize"
-            onKeyDown={(event) => {
-              if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-              event.preventDefault();
-              adjustPanel('right', event.key === 'ArrowLeft' ? 20 : -20);
-            }}
-            onPointerDown={(event) => resize(event, 'right')}
-          />
-          <PropertyInspector workbench={workbench} panelId={`properties-panel-${seed.id}`} />
         </div>
         {active && (
           <WorkbenchOverlays

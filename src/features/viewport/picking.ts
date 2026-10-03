@@ -111,3 +111,25 @@ export function visibleTriangles(
       ids.push(triangle);
   return new Uint32Array(ids);
 }
+
+/** Camera framing uses boundary vertices, never rescales the SI mesh or field buffers. */
+export function selectedBoundaryBounds(
+  source: SurfaceData,
+  regions: ReadonlySet<RegionId>,
+  maximumScale: number,
+): THREE.Box3 | null {
+  const bounds = new THREE.Box3();
+  const indices = source.boundaryEdges ?? source.triangles;
+  const mapping = source.edgeRegions ?? source.regions;
+  const width = source.boundaryEdges ? 2 : 3;
+  const undeformed = new THREE.Vector3();
+  for (let facet = 0; facet < mapping.length; facet++) {
+    if (!regions.has(source.regionIds[mapping[facet]])) continue;
+    for (let corner = 0; corner < width; corner++) {
+      const node = indices[facet * width + corner];
+      bounds.expandByPoint(undeformed.fromArray(source.positions, node * 3));
+      if (maximumScale > 0) bounds.expandByPoint(displayedNode(source, node, maximumScale));
+    }
+  }
+  return bounds.isEmpty() ? null : bounds;
+}

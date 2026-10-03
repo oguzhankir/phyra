@@ -16,7 +16,7 @@ import type { HelpContext } from '../help/content';
 type Setter<T> = Dispatch<SetStateAction<T>>;
 // The inspector consumes a domain definition and explicit edit/view actions, never application lifecycle internals.
 export interface ProjectInspectorModel {
-  rightWidth: number;
+  sketchTarget?: HTMLElement | null;
   section: Section;
   showHelp: (context?: HelpContext) => void;
   locked: boolean;

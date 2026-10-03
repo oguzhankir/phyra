@@ -108,3 +108,8 @@ export function cameraResizeFactor(
       : boxFitDistance(span, direction, up, aspect, verticalFovDegrees);
   return fit(newAspect) / fit(oldAspect);
 }
+
+/** Button zoom changes camera distance only, with the same limits as pointer navigation. */
+export function zoomedDistance(distance: number, factor: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, distance * factor));
+}
