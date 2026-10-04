@@ -150,8 +150,11 @@ pub async fn assistant_stream(
     request.validate()?;
     providers::validate_settings(&request.settings, true)?;
     let selected = request.settings.clone();
+    let content = serde_json::to_value(&request).map_err(|_| "Invalid assistant request")?;
     blocking_storage(Arc::clone(&state.storage_lock), move || {
-        storage::require_connection(&storage::directory(&app)?, &selected)
+        let directory = storage::directory(&app)?;
+        storage::require_connection(&directory, &selected)?;
+        storage::reject_saved_json_credentials(&directory, &content)
     })
     .await?;
     let cancel = state
@@ -297,9 +300,7 @@ pub async fn assistant_publish_snapshot(
     let content = serde_json::to_value(&snapshot).map_err(|_| "Invalid MCP snapshot")?;
     let directory = blocking_storage(Arc::clone(&state.storage_lock), move || {
         let directory = storage::directory(&app)?;
-        let settings = storage::read_settings(&directory)?;
-        let secret = storage::credential(&settings)?;
-        storage::reject_json_credentials(&content, secret.as_deref().map(|s| s.as_str()))?;
+        storage::reject_saved_json_credentials(&directory, &content)?;
         Ok(directory)
     })
     .await?;

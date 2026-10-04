@@ -60,6 +60,16 @@ export default function AssistantSettingsPanel({
     (item) => assistantConnectionKey(item.settings) === assistantConnectionKey(settings),
   );
   const connected = !!connection && ready(connection);
+  const sharedKey =
+    !!connection &&
+    !connection.settings.local &&
+    connections.some(
+      (item) =>
+        item !== connection &&
+        !item.settings.local &&
+        item.settings.provider === connection.settings.provider &&
+        new URL(item.settings.endpoint).origin === new URL(connection.settings.endpoint).origin,
+    );
   const custom = settings.provider === 'compatible' || settings.provider === 'ollama';
   useEffect(() => setSaved(configuration), [configuration]);
   useEffect(
@@ -261,8 +271,12 @@ export default function AssistantSettingsPanel({
                 </span>
                 <h3>Disconnect {providerNames[settings.provider]}?</h3>
                 <p>
-                  This connection and its saved API key will be removed from this device. Your
-                  conversations stay saved.
+                  {settings.local
+                    ? 'This local connection will be removed from this device.'
+                    : sharedKey
+                      ? 'This connection will be removed. Its API key stays available to your other connections at this endpoint.'
+                      : 'This connection and its saved API key will be removed from this device.'}{' '}
+                  Your conversations stay saved.
                 </p>
                 <div className="assistant-disconnect-target">
                   <ProviderLogo provider={settings.provider} />

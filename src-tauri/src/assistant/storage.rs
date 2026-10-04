@@ -320,7 +320,7 @@ pub fn read_configuration(directory: &Path) -> Result<Configuration, String> {
     configuration_with(read_stored_with(directory, &mut present)?, &mut present)
 }
 pub fn read_settings(directory: &Path) -> Result<Settings, String> {
-    // Ordinary history/snapshot reads need active provenance, not a key inventory.
+    // Active settings are provenance only; content publication scans the saved registry below.
     let path = directory.join("settings.json");
     if !path.exists() {
         return Ok(Settings::default());
@@ -751,6 +751,62 @@ pub fn reject_json_credentials(
     }
     Ok(())
 }
+fn credential_namespaces(
+    settings: impl IntoIterator<Item = Settings>,
+) -> Result<Vec<Settings>, String> {
+    let mut seen = HashSet::new();
+    let mut namespaces = Vec::new();
+    for connection in settings {
+        validate_settings(&connection, false)?;
+        if !connection.local && seen.insert(credential_account(&connection)?) {
+            if namespaces.len() >= MAX_HISTORY_CREDENTIAL_NAMESPACES {
+                return Err("Assistant content can use at most 32 remote provider credential namespaces; start a new conversation or disconnect unused providers".into());
+            }
+            namespaces.push(connection);
+        }
+    }
+    Ok(namespaces)
+}
+fn scan_json_credentials_with(
+    value: &serde_json::Value,
+    settings: Vec<Settings>,
+    mut lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
+) -> Result<(), String> {
+    for connection in settings {
+        if let Some(secret) = lookup(&connection).map_err(|_| CREDENTIAL_ACCESS_ERROR)? {
+            // Scan decoded strings, including object keys, so JSON escaping cannot
+            // hide opaque compatible-provider credentials. Secrets never enter errors.
+            reject_json_credentials(value, Some(&secret))?;
+        }
+    }
+    Ok(())
+}
+/// Call inside the native blocking storage transaction before publication or transport.
+pub fn reject_saved_json_credentials(
+    directory: &Path,
+    value: &serde_json::Value,
+) -> Result<(), String> {
+    reject_saved_json_credentials_with(directory, value, credential)
+}
+fn reject_saved_json_credentials_with(
+    directory: &Path,
+    value: &serde_json::Value,
+    lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
+) -> Result<(), String> {
+    // Generic tokens and the complete registry/resource bounds are checked before
+    // any secret lookup. Registry reads never rewrite legacy settings.
+    reject_json_credentials(value, None)?;
+    let stored = read_stored_with(directory, &mut credential_present)?;
+    let settings = credential_namespaces(
+        std::iter::once(stored.settings).chain(
+            stored
+                .connections
+                .into_iter()
+                .map(|connection| connection.settings),
+        ),
+    )?;
+    scan_json_credentials_with(value, settings, lookup)
+}
 pub fn write_conversation_checked(
     directory: &Path,
     conversation: &Conversation,
@@ -762,19 +818,22 @@ fn write_conversation_checked_with(
     directory: &Path,
     conversation: &Conversation,
     active: &Settings,
-    mut lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
+    lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
 ) -> Result<(), String> {
     // Validate every namespace and the bound before any OS lookup or disk write.
-    let settings = history_credential_settings(conversation, active)?;
+    let historical = history_credential_settings(conversation, active)?;
     let value = serde_json::to_value(conversation).map_err(|_| "Invalid assistant history")?;
     reject_json_credentials(&value, None)?;
-    for connection in settings {
-        if let Some(secret) = lookup(&connection)? {
-            // Scan decoded strings so JSON escaping cannot hide quoted or
-            // backslash-containing compatible-provider credentials.
-            reject_json_credentials(&value, Some(&secret))?;
-        }
-    }
+    let stored = read_stored_with(directory, &mut credential_present)?;
+    let settings = credential_namespaces(
+        historical.into_iter().chain(
+            stored
+                .connections
+                .into_iter()
+                .map(|connection| connection.settings),
+        ),
+    )?;
+    scan_json_credentials_with(&value, settings, lookup)?;
     write_conversation(directory, conversation)
 }
 fn history_directory(directory: &Path) -> Result<PathBuf, String> {
@@ -944,6 +1003,229 @@ mod tests {
             context_tokens: None,
             output_tokens: None,
         }]
+    }
+    fn fixture_inactive_connections(directory: &Path) -> Settings {
+        let active = fixture_local();
+        save_connection_with(directory, active.clone(), fixture_models(), &mut |_| {
+            Ok(true)
+        })
+        .unwrap();
+        for settings in [
+            fixture_compatible("https://inactive.example/v1"),
+            fixture_compatible("https://inactive.example:443/v2"),
+            fixture_compatible("https://inactive.example:8443/v1"),
+            Settings {
+                provider: Provider::Openai,
+                model: "fixture".into(),
+                endpoint: official_endpoint(Provider::Openai).unwrap().into(),
+                local: false,
+            },
+            fixture_compatible("https://api.openai.com/v1"),
+        ] {
+            save_connection_with(directory, settings, fixture_models(), &mut |_| Ok(true)).unwrap();
+        }
+        assert_eq!(read_settings(directory).unwrap().provider, Provider::Ollama);
+        active
+    }
+    #[test]
+    fn saved_credential_scans_deduplicate_origins_but_preserve_provider_and_port_namespaces() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture_inactive_connections(directory.path());
+        let mut looked_up = Vec::new();
+        reject_saved_json_credentials_with(
+            directory.path(),
+            &serde_json::json!({"project":{"name":"Fixture project"}}),
+            |settings| {
+                looked_up.push(credential_account(settings).unwrap());
+                Ok(None)
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            looked_up,
+            vec![
+                "compatible:https://inactive.example",
+                "compatible:https://inactive.example:8443",
+                "openai:https://api.openai.com",
+                "compatible:https://api.openai.com",
+            ]
+        );
+    }
+    #[test]
+    fn inactive_opaque_credentials_cannot_enter_snapshot_or_outbound_request_strings() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture_inactive_connections(directory.path());
+        let original_settings = fs::read(directory.path().join("settings.json")).unwrap();
+        let snapshot = Snapshot {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            project_id: None,
+            revision: None,
+            project: None,
+            run: None,
+            help: vec![Help {
+                id: "overview".into(),
+                title: "Overview".into(),
+                content: "Safe help".into(),
+            }],
+            capabilities: vec![],
+        };
+        crate::assistant::mcp::write_consent(
+            directory.path(),
+            &snapshot,
+            &uuid::Uuid::new_v4().to_string(),
+            &[McpTool::Help],
+        )
+        .unwrap();
+        let lease = owned_path(&directory.path().join("mcp"), &snapshot.session_id).unwrap();
+        let original_lease = fs::read(&lease).unwrap();
+        let secret = "opaque\"fixture\\credential";
+        for value in [
+            serde_json::json!({"project":{"name":secret}}),
+            serde_json::json!({"system":secret,"context":{"text":"Safe"},"messages":[]}),
+            serde_json::json!({"system":"Safe","context":{"text":secret},"messages":[]}),
+            serde_json::json!({"system":"Safe","context":{"text":"Safe"},"messages":[{"role":"user","content":secret}]}),
+            serde_json::json!({secret:"Object keys are checked too"}),
+        ] {
+            reject_json_credentials(&value, None).unwrap();
+            let error = reject_saved_json_credentials_with(directory.path(), &value, |settings| {
+                assert_eq!(
+                    credential_account(settings).unwrap(),
+                    "compatible:https://inactive.example"
+                );
+                Ok(Some(Zeroizing::new(secret.into())))
+            })
+            .unwrap_err();
+            assert!(!error.contains(secret));
+            assert_eq!(fs::read(&lease).unwrap(), original_lease);
+            assert_eq!(
+                fs::read(directory.path().join("settings.json")).unwrap(),
+                original_settings
+            );
+        }
+    }
+    #[test]
+    fn inactive_opaque_credentials_cannot_be_transmitted_as_a_valid_request_model_id() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut settings = fixture_inactive_connections(directory.path());
+        let secret = "opaque-fixture-credential";
+        settings.model = secret.into();
+        let request = Request {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            session_id: uuid::Uuid::new_v4().to_string(),
+            conversation_id: uuid::Uuid::new_v4().to_string(),
+            project_id: None,
+            settings,
+            messages: vec![ChatMessage {
+                role: Role::User,
+                content: "Safe question".into(),
+            }],
+            system: "Safe system".into(),
+            context: Context {
+                kind: ContextKind::Help,
+                project_id: None,
+                study_id: None,
+                revision: None,
+                source_ids: vec![],
+                text: "Safe help".into(),
+            },
+            allow_remote: false,
+            max_output_tokens: 4096,
+        };
+        request.validate().unwrap();
+        validate_settings(&request.settings, true).unwrap();
+        let value = serde_json::to_value(request).unwrap();
+        reject_json_credentials(&value, None).unwrap();
+        let error = reject_saved_json_credentials_with(directory.path(), &value, |settings| {
+            assert_eq!(
+                credential_account(settings).unwrap(),
+                "compatible:https://inactive.example"
+            );
+            Ok(Some(Zeroizing::new(secret.into())))
+        })
+        .unwrap_err();
+        assert!(!error.contains(secret));
+    }
+    #[test]
+    fn inactive_saved_credentials_are_rejected_before_initial_conversation_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let active = fixture_inactive_connections(directory.path());
+        let secret = "opaque-fixture-credential";
+        let mut conversation = fixture_conversation();
+        let mut message = fixture_message(&active);
+        message.context = Some(Context {
+            kind: ContextKind::Help,
+            project_id: None,
+            study_id: None,
+            revision: None,
+            source_ids: vec!["overview".into()],
+            text: format!("Context containing {secret}"),
+        });
+        conversation.messages.push(message);
+        let error =
+            write_conversation_checked_with(directory.path(), &conversation, &active, |settings| {
+                assert_eq!(
+                    credential_account(settings).unwrap(),
+                    "compatible:https://inactive.example"
+                );
+                Ok(Some(Zeroizing::new(secret.into())))
+            })
+            .unwrap_err();
+        assert!(!error.contains(secret));
+        assert!(!directory.path().join("conversations").exists());
+    }
+    #[test]
+    fn unavailable_inactive_credentials_fail_closed_without_returning_os_error_details() {
+        let directory = tempfile::tempdir().unwrap();
+        let active = fixture_inactive_connections(directory.path());
+        let error = reject_saved_json_credentials_with(
+            directory.path(),
+            &serde_json::json!({"help": "Safe text"}),
+            |_| Err("opaque-fixture-key in an OS error".into()),
+        )
+        .unwrap_err();
+        assert_eq!(error, CREDENTIAL_ACCESS_ERROR);
+        let conversation = fixture_conversation();
+        let error =
+            write_conversation_checked_with(directory.path(), &conversation, &active, |_| {
+                Err("opaque-fixture-key in an OS error".into())
+            })
+            .unwrap_err();
+        assert_eq!(error, CREDENTIAL_ACCESS_ERROR);
+        assert!(!directory.path().join("conversations").exists());
+    }
+    #[test]
+    fn cumulative_saved_and_historical_namespaces_are_bounded_before_secret_lookup() {
+        let directory = tempfile::tempdir().unwrap();
+        let active = fixture_local();
+        save_connection_with(
+            directory.path(),
+            active.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        save_connection_with(
+            directory.path(),
+            fixture_compatible("https://inactive.example/v1"),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        let mut conversation = fixture_conversation();
+        for index in 0..MAX_HISTORY_CREDENTIAL_NAMESPACES {
+            conversation
+                .messages
+                .push(fixture_message(&fixture_compatible(&format!(
+                    "https://history-{index}.example/v1"
+                ))));
+        }
+        let error =
+            write_conversation_checked_with(directory.path(), &conversation, &active, |_| {
+                panic!("All namespaces must be validated before OS secret lookup")
+            })
+            .unwrap_err();
+        assert!(error.contains("at most 32"));
+        assert!(!directory.path().join("conversations").exists());
     }
     #[test]
     fn catalog_refresh_cannot_resurrect_disconnected_local_or_shared_origin_connections() {
