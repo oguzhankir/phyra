@@ -136,10 +136,13 @@ export default function AssistantWorkbench() {
                       configuration={mcp.configuration}
                       audit={mcp.audit}
                       busy={mcp.busy}
+                      auditBusy={mcp.auditBusy}
+                      clientBusy={mcp.clientBusy}
                       error={mcp.error}
                       activeName={active?.project.name ?? null}
-                      onConfigure={(scopes) => void mcp.configure(scopes)}
+                      onConfigure={(tools) => void mcp.configure(tools)}
                       onAudit={() => void mcp.readAudit()}
+                      onOpenClient={() => void mcp.openClient()}
                     />
                   ) : undefined
                 }

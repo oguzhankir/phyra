@@ -12,11 +12,11 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Central 2D sketch drafting adds exact rounded-slot outlines with tangent lines/semicircular ends and midpoint splitting of straight boundaries, preserving validated Apply/Revert and explicit boundary repair.
 - Object context menus in the model tree and viewport create and edit loads, supports and boundary sets directly from the selected geometry; explicit zoom, fit-selection and view controls make model navigation discoverable.
 
-- Redesigned Chat with an icon launcher, composer model picker, explicit context chips and conversation-scoped sharing approval instead of repeated checkboxes. Models & connections offers official featured models, account-discovered selections and one connection action; no model-ID text entry is required.
-- Integrations separates local MCP management from chat, with Documentation/Current project access cards, copyable client configuration, disconnection and an access log.
+- AI assistant with independent saved provider connections, a searchable model picker across connected accounts, direct sending with automatic active-study context, and searchable conversation history grouped by date. Connection status, key replacement, failures and disconnection stay in a dedicated connection screen.
+- Local MCP starts in one step with individual read-only tool switches, client-specific copyable configuration, native VS Code installation and a terminal-style access log. Changing enabled tools revokes prior client configurations.
 - Isolated assistant session transactions and presentation contracts support independent development while preserving exact context, cancellation, stream ordering and history failure recovery.
 - Search actions now explains editor navigation and project actions. Help/F1 is the single general help entry, and help/action search use restrained keyboard focus styling.
-- Explicit provider disconnection removes its saved key and active model selection while preserving local conversations and projects. Saved keys remain available across application restarts.
+- Provider disconnection removes only that connection and its saved key; other connections, local conversations and projects remain available. Legacy assistant settings migrate to a versioned connection registry.
 - macOS packaging accepts an installed `APPLE_SIGNING_IDENTITY`, signs embedded native code before its containing bundle, and refuses an unavailable identity instead of silently substituting ad hoc signing.
 - Home screen for creating a named 2D or 3D project, opening a local project and starting from an editable example.
 - Home and a closable project tab that preserve the current project while moving between the start screen and workbench. Close with the tab’s ×, File → Close project or Ctrl/⌘ W.
@@ -24,11 +24,13 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - A preparation checklist checks study, geometry, material, supports, loads, mesh settings and method eligibility before execution. Boundary restraint checks account for rigid translation and rotation; the worker remains authoritative after meshing.
 - Independent project tabs preserve each document’s edits, file association, recovery and run/result ownership, with a 32-document session limit.
 - Bounded interactive 2D profile drafting with rectangles, polylines, circular arcs, radius edits, grid snapping and circular holes, followed by validated Apply or Revert.
-- Optional BYOK documentation/study chat with native Gemini, OpenAI Responses, Anthropic Messages and compatible/local Ollama text streaming, model discovery, OS credential storage, inspectable context consent and bounded local conversation history.
-- Opt-in local read-only MCP inspection of help, active project and run summaries, with native scopes, revocation, expiring session consent and an access audit.
+- Optional BYOK documentation/study chat with native Gemini, OpenAI Responses, Anthropic Messages and compatible/local Ollama text streaming, model discovery, OS credential storage, deliberate-send consent and bounded local conversation history.
+- Opt-in local read-only MCP inspection of help, active project and run summaries, with native tool permissions, revocation, expiring session consent and an access audit.
 - In-product mathematical formulations for 3D/plane-stress FEM, scaled PINN residuals/losses and Kirsch reference assumptions, with primary references and source links.
 
 ### Changed
+
+- Shared searchable selectors and focused detail dialogs replace native dropdowns and disclosure rows throughout the workbench, with keyboard navigation and light/dark styling.
 
 - Project schema v5 records the selected Physics ML formulation. Frozen v1–v4 inputs migrate explicitly to strong-form; unchanged legacy fields remain eligible for ordinary ownership, fingerprint and field validation. Recovery discovery preserves original journal bytes.
 

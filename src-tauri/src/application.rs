@@ -83,6 +83,7 @@ pub(crate) fn run() {
             assistant::commands::assistant_delete_conversation,
             assistant::commands::assistant_publish_snapshot,
             assistant::commands::assistant_configure_mcp,
+            assistant::mcp::assistant_open_mcp_client,
             assistant::commands::assistant_mcp_audit,
             assistant::commands::assistant_release_session,
             assistant::references::assistant_open_reference,

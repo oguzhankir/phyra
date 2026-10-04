@@ -14,7 +14,7 @@ const snapshot = (): AssistantSnapshot => ({
 const revoked: AssistantMcpConfiguration = {
   enabled: false,
   protocolVersion: '2025-11-25',
-  scopes: [],
+  tools: [],
   command: null,
   args: [],
 };

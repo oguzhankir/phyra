@@ -9,7 +9,7 @@ import type {
   AssistantConversation,
   AssistantConversationSummary,
   AssistantSnapshot,
-  AssistantMcpScope,
+  AssistantMcpTool,
   AssistantMcpConfiguration,
   AssistantMcpAudit,
 } from '../../domain/assistant/types';
@@ -92,9 +92,12 @@ export function publishAssistantSnapshot(snapshot: AssistantSnapshot): Promise<v
 }
 export function configureAssistantMcp(
   sessionId: string,
-  scopes: AssistantMcpScope[],
+  tools: AssistantMcpTool[],
 ): Promise<AssistantMcpConfiguration> {
-  return invoke('assistant_configure_mcp', { sessionId, scopes });
+  return invoke('assistant_configure_mcp', { sessionId, tools });
+}
+export function openAssistantMcpClient(sessionId: string): Promise<void> {
+  return invoke('assistant_open_mcp_client', { sessionId });
 }
 export function getAssistantMcpAudit(sessionId: string): Promise<AssistantMcpAudit[]> {
   return invoke('assistant_mcp_audit', { sessionId });

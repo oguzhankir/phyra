@@ -111,18 +111,18 @@ export interface AssistantSnapshot {
   help: { id: string; title: string; content: string }[];
   capabilities: { id: string; description: string; available: boolean }[];
 }
-export type AssistantMcpScope = 'help' | 'project' | 'run';
+export type AssistantMcpTool = 'phyra_capabilities' | 'phyra_help' | 'phyra_project' | 'phyra_run';
 export interface AssistantMcpConfiguration {
   enabled: boolean;
   protocolVersion: '2025-11-25';
-  scopes: AssistantMcpScope[];
+  tools: AssistantMcpTool[];
   command: string | null;
   args: string[];
 }
 export interface AssistantMcpAudit {
   time: number;
   tool: string;
-  scope: AssistantMcpScope | 'capabilities';
+  scope: 'help' | 'project' | 'run' | 'capabilities';
   projectId: string | null;
   revision: number | null;
   allowed: boolean;
