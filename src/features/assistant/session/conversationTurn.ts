@@ -56,7 +56,7 @@ export function prepareConversationTurn({
   allowRemote: boolean;
   system: string;
 }): ConversationTurn {
-  if (!settings.model.trim()) throw new Error('Choose a model in Assistant settings.');
+  if (!settings.model.trim()) throw new Error('Choose a model in the assistant.');
   const input = promptHistory(base.messages, context.text, system, question);
   if (!input.fits)
     throw new Error('The question or attached context exceeds the supported request limits.');

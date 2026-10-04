@@ -50,13 +50,23 @@ impl Default for Settings {
 pub struct Configuration {
     pub settings: Settings,
     pub credential_present: bool,
+    pub connections: Vec<Connection>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Connection {
+    pub settings: Settings,
+    pub credential_present: bool,
+    pub models: Vec<Model>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Model {
     pub id: String,
     pub name: String,
-    pub streaming: &'static str,
+    pub streaming: String,
     pub context_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
 }

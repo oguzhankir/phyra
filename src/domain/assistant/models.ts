@@ -1,4 +1,24 @@
-import type { AssistantModel, AssistantProvider } from './types';
+import type {
+  AssistantConnection,
+  AssistantModel,
+  AssistantProvider,
+  AssistantSettings,
+} from './types';
+
+/** UI identity follows the validated provider endpoint, independently of the selected model. */
+export function assistantConnectionKey(settings: AssistantSettings): string {
+  let endpoint = settings.endpoint.trim().replace(/\/+$/, '');
+  try {
+    endpoint = new URL(endpoint).toString().replace(/\/+$/, '');
+  } catch {
+    // Draft endpoints keep an identity until native validation provides a precise error.
+  }
+  return `${settings.provider}:${settings.local ? 'local' : 'remote'}:${endpoint}`;
+}
+
+export function assistantConnectionReady(connection: AssistantConnection): boolean {
+  return !connection.error && (connection.settings.local || connection.credentialPresent);
+}
 
 export interface FeaturedAssistantModel {
   id: string;

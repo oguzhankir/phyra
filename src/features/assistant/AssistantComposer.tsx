@@ -1,8 +1,13 @@
 import { useEffect, useId, useRef } from 'react';
-import { ArrowUp, BookOpen, ChevronDown, FileBox, Square } from 'lucide-react';
-import type { AssistantConfiguration, AssistantContext } from '../../domain/assistant/types';
-import { assistantModelChoices } from '../../domain/assistant/models';
+import { ArrowUp, RefreshCw, Square } from 'lucide-react';
+import type {
+  AssistantConfiguration,
+  AssistantContext,
+  AssistantSettings,
+} from '../../domain/assistant/types';
+import Select from '../../shared/ui/Select';
 import { ProviderLogo } from './providers';
+import { chatModelChoices, chatModelKey } from './chatModels';
 
 export default function AssistantComposer({
   question,
@@ -11,20 +16,16 @@ export default function AssistantComposer({
   desktop,
   pending,
   locked,
-  includeStudy,
-  studyName,
-  revision,
   context,
   error,
-  onScope,
   onModel,
+  onRefreshModels,
   modelBusy,
   onSend,
   onStop,
   onConnect,
-  includedTurns,
   omittedTurns,
-  priorStudy,
+  focusInput,
 }: {
   question: string;
   onQuestion: (value: string) => void;
@@ -32,31 +33,38 @@ export default function AssistantComposer({
   desktop: boolean;
   pending: boolean;
   locked: boolean;
-  includeStudy: boolean;
-  studyName: string | null;
-  revision: number | null;
   context: AssistantContext | null;
   error: string | null;
-  onScope: (study: boolean) => void;
-  onModel: (id: string) => void;
+  onModel: (settings: AssistantSettings) => void;
+  onRefreshModels: () => void;
   modelBusy: boolean;
   onSend: () => void;
   onStop: () => void;
   onConnect: () => void;
-  includedTurns: number;
   omittedTurns: number;
-  priorStudy: boolean;
+  focusInput: boolean;
 }) {
   const id = useId();
   const composer = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (desktop) composer.current?.focus();
-  }, [desktop]);
+    if (desktop && focusInput) composer.current?.focus();
+  }, [desktop, focusInput]);
   useEffect(() => {
-    if (question && document.activeElement?.closest('.assistant-empty')) composer.current?.focus();
+    if (
+      focusInput &&
+      (document.activeElement?.closest('.assistant-empty, .assistant-send') ||
+        document.activeElement === document.body)
+    )
+      composer.current?.focus();
+    const input = composer.current;
+    if (input) {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(180, Math.max(62, input.scrollHeight))}px`;
+    }
   }, [question]);
   const settings = configuration?.settings;
   const connected = !!settings?.model && (settings.local || !!configuration?.credentialPresent);
+  const choices = chatModelChoices(configuration);
   return (
     <form
       className="assistant-composer"
@@ -65,51 +73,6 @@ export default function AssistantComposer({
         onSend();
       }}
     >
-      <div className="assistant-context-bar" role="group" aria-label="Message context">
-        <button
-          type="button"
-          className="assistant-scope-chip"
-          aria-pressed={!includeStudy}
-          disabled={pending}
-          onClick={() => onScope(false)}
-        >
-          <BookOpen size={13} />
-          Help only
-        </button>
-        <button
-          type="button"
-          className="assistant-scope-chip"
-          aria-pressed={includeStudy}
-          title={
-            studyName
-              ? `Include ${studyName}, revision ${revision}`
-              : 'Open a project to attach its study'
-          }
-          disabled={!studyName || pending}
-          onClick={() => onScope(true)}
-        >
-          <FileBox size={13} />
-          This study
-        </button>
-        <details className="assistant-context-preview">
-          <summary title="Review the exact context">
-            Context <ChevronDown size={12} />
-          </summary>
-          <div>
-            <strong>
-              {includeStudy ? `${studyName} · revision ${revision}` : 'Product documentation'}
-            </strong>
-            <p>
-              {priorStudy &&
-                'Earlier messages include study data. Start a new chat to exclude them. '}
-              {includedTurns} preceding turn(s)
-              {omittedTurns ? ` · ${omittedTurns} older turn(s) omitted` : ''}. No files or field
-              buffers.
-            </p>
-            <pre>{context?.text ?? 'Context unavailable.'}</pre>
-          </div>
-        </details>
-      </div>
       <div className="assistant-input-box">
         <label className="sr-only" htmlFor={id}>
           Message the assistant
@@ -119,9 +82,9 @@ export default function AssistantComposer({
           ref={composer}
           value={question}
           maxLength={16000}
-          placeholder={connected ? 'Ask about your study…' : 'Ask a question…'}
+          placeholder={connected ? 'Ask anything about your study…' : 'Ask a question…'}
           rows={3}
-          disabled={!desktop || pending}
+          disabled={!desktop}
           onChange={(event) => onQuestion(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -133,19 +96,35 @@ export default function AssistantComposer({
         <div className="assistant-composer-actions">
           {connected && settings ? (
             <div className="assistant-model-picker">
-              <ProviderLogo provider={settings.provider} />
-              <select
+              <Select
                 aria-label="Chat model"
-                value={settings.model}
+                compact
+                searchable
+                value={chatModelKey(settings)}
+                options={choices.map((choice) => ({
+                  ...choice,
+                  icon: <ProviderLogo provider={choice.settings.provider} />,
+                }))}
+                placeholder={settings.model}
                 disabled={pending || modelBusy || !desktop}
-                onChange={(event) => onModel(event.target.value)}
+                onChange={(value) => {
+                  const choice = choices.find((item) => item.value === value);
+                  if (choice) onModel(choice.settings);
+                }}
+              />
+              <button
+                type="button"
+                className="assistant-model-refresh"
+                aria-label="Refresh available models"
+                title="Refresh available models"
+                disabled={pending || modelBusy || !desktop}
+                onClick={onRefreshModels}
               >
-                {assistantModelChoices(settings.provider, null, settings.model).map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                <RefreshCw
+                  size={13}
+                  className={modelBusy ? 'assistant-connection-spinner' : undefined}
+                />
+              </button>
             </div>
           ) : (
             <button
@@ -154,7 +133,7 @@ export default function AssistantComposer({
               onClick={onConnect}
               disabled={!desktop}
             >
-              Connect a model
+              Connect a provider
             </button>
           )}
           {pending ? (
@@ -172,10 +151,8 @@ export default function AssistantComposer({
               type="submit"
               className="assistant-send primary"
               aria-label="Send message"
-              title="Send · Enter"
-              disabled={
-                !desktop || !connected || !question.trim() || !context || locked || modelBusy
-              }
+              title="Send message"
+              disabled={!desktop || !question.trim() || !context || locked || modelBusy}
             >
               <ArrowUp size={18} />
             </button>
@@ -187,18 +164,17 @@ export default function AssistantComposer({
           {error}
         </p>
       )}
-      <div className="assistant-composer-footnote">
-        <span>
-          {!desktop
-            ? 'Chat connections are available in the desktop app.'
-            : includeStudy
-              ? `${studyName} · revision ${revision}`
-              : priorStudy
-                ? 'Earlier study messages included'
-                : 'No project attached'}
-        </span>
-        <span>Shift Enter for a new line</span>
-      </div>
+      {!desktop && (
+        <p className="assistant-composer-notice">
+          AI connections are available in the desktop app.
+        </p>
+      )}
+      {omittedTurns > 0 && (
+        <p className="assistant-composer-notice">
+          {omittedTurns} older {omittedTurns === 1 ? 'turn is' : 'turns are'} outside this model’s
+          message window.
+        </p>
+      )}
     </form>
   );
 }

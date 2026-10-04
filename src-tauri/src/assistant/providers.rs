@@ -282,7 +282,7 @@ async fn list_models_with_credential(
             models.push(Model {
                 id,
                 name,
-                streaming,
+                streaming: streaming.into(),
                 context_tokens,
                 output_tokens,
             });

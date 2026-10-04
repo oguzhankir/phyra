@@ -24,6 +24,18 @@ export function saveAssistantSettings(
 ): Promise<AssistantConfiguration> {
   return invoke('assistant_save_settings', { settings });
 }
+export function saveAssistantConnection(
+  settings: AssistantSettings,
+  models: AssistantModel[],
+): Promise<AssistantConfiguration> {
+  return invoke('assistant_save_connection', { settings, models });
+}
+export function refreshAssistantConnection(
+  settings: AssistantSettings,
+  models: AssistantModel[],
+): Promise<AssistantConfiguration> {
+  return invoke('assistant_refresh_connection', { settings, models });
+}
 // The password crosses IPC once for secure storage. No native command retrieves it.
 export function storeAssistantCredential(
   settings: AssistantSettings,

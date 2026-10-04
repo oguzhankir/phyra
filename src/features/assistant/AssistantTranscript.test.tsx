@@ -53,7 +53,7 @@ it('renders the complete welcome content in an empty conversation', () => {
       onError={() => {}}
     />,
   );
-  expect(html).toContain('Engineering help');
+  expect(html).toContain('Your engineering assistant');
   expect(html).toContain('How do I start a structural study?');
   expect(html).toContain('aria-label="Assistant conversation"');
 });

@@ -23,12 +23,7 @@ pub async fn assistant_get_settings(
     state: State<'_, AssistantState>,
 ) -> Result<Configuration, String> {
     blocking_storage(Arc::clone(&state.storage_lock), move || {
-        let settings = storage::read_settings(&storage::directory(&app)?)?;
-        let credential_present = storage::credential_present(&settings)?;
-        Ok(Configuration {
-            settings,
-            credential_present,
-        })
+        storage::read_configuration(&storage::directory(&app)?)
     })
     .await
 }
@@ -39,25 +34,50 @@ pub async fn assistant_save_settings(
     settings: Settings,
 ) -> Result<Configuration, String> {
     blocking_storage(Arc::clone(&state.storage_lock), move || {
-        providers::validate_settings(&settings, false)?;
-        let credential_present = storage::credential_present(&settings)?;
-        storage::write_settings(&storage::directory(&app)?, settings.clone())?;
-        Ok(Configuration {
-            settings,
-            credential_present,
-        })
+        storage::select_settings(&storage::directory(&app)?, settings)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn assistant_save_connection(
+    app: tauri::AppHandle,
+    state: State<'_, AssistantState>,
+    settings: Settings,
+    models: Vec<Model>,
+) -> Result<Configuration, String> {
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        storage::save_connection(&storage::directory(&app)?, settings, models)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn assistant_refresh_connection(
+    app: tauri::AppHandle,
+    state: State<'_, AssistantState>,
+    settings: Settings,
+    models: Vec<Model>,
+) -> Result<Configuration, String> {
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        storage::refresh_connection(&storage::directory(&app)?, settings, models)
     })
     .await
 }
 #[tauri::command]
 pub async fn assistant_store_credential(
+    app: tauri::AppHandle,
     state: State<'_, AssistantState>,
     settings: Settings,
     credential: String,
 ) -> Result<(), String> {
     let credential = Zeroizing::new(credential);
     blocking_storage(Arc::clone(&state.storage_lock), move || {
-        storage::store_credential(&settings, credential)
+        let directory = storage::directory(&app)?;
+        storage::preflight_connection(&directory, &settings)?;
+        storage::store_credential(&settings, credential)?;
+        // Retain an approved connection even when subsequent discovery fails.
+        // A failed discovery is repairable without asking the user to re-enter a key.
+        storage::remember_connection(&directory, settings).map_err(|_| "Credential saved in the OS store, but the connection could not be recorded. Reopen Connections and retry.".to_string())?;
+        Ok(())
     })
     .await
 }
@@ -118,6 +138,7 @@ pub async fn assistant_list_models(
 }
 #[tauri::command]
 pub async fn assistant_stream(
+    app: tauri::AppHandle,
     state: State<'_, AssistantState>,
     request: Request,
     channel: Channel<Event>,
@@ -128,6 +149,11 @@ pub async fn assistant_stream(
         .map_err(|_| "Assistant connections are busy; cancel a request before sending again")?;
     request.validate()?;
     providers::validate_settings(&request.settings, true)?;
+    let selected = request.settings.clone();
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        storage::require_connection(&storage::directory(&app)?, &selected)
+    })
+    .await?;
     let cancel = state
         .streams
         .lock()
