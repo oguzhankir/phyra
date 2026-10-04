@@ -1326,7 +1326,7 @@ The reported normalized potential is strain energy minus external work. It may b
   {
     id: 'assistant',
     title: 'Ask the documentation and study assistant',
-    summary: 'Connect your own provider, inspect the context, and keep explanations traceable.',
+    summary: 'Connect your providers, choose a model, and ask about the active study.',
     category: 'Get started',
     kind: 'Guide',
     keywords: [
@@ -1350,10 +1350,10 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Connect and select a model',
         steps: [
-          'Open Chat with the speech-bubble icon or Ctrl/⌘ J, then open Models & connections.',
+          'Open AI assistant with the assistant icon or Ctrl/⌘ J, then open Connections.',
           'Choose Gemini, OpenAI, Anthropic, an OpenAI-compatible HTTPS endpoint, or a user-managed Ollama/local loopback endpoint. Remote connections use your own provider key.',
-          'Choose a featured model, paste your key and Connect. The app checks the models reported by that account before applying a first connection. Additional reported models are selectable from a list; no model ID text entry is needed. Use the composer model selector for subsequent model changes. Discovery does not prove every listed model supports this text-stream request.',
-          'Choose Help only or This study in the composer and inspect Context. The first remote send asks you to approve the conversation, provider origin and data scope. Continued messages reuse that approval; changing the recipient or expanding from help to study needs approval again.',
+          'Paste your key and Connect. The app checks the models reported by that account before saving the connection. Connect several providers independently; each connection keeps its own endpoint and model catalog. Connecting another provider does not replace the model selected in an existing chat.',
+          'Choose a model in the composer from your connected providers. Write your question and Send. Sending authorizes that turn to use the selected provider with relevant offline help and the active study snapshot; there is no separate context attachment or repeated sharing dialog.',
         ],
         paragraphs: [
           'The implemented transport supports streaming text: Gemini streamGenerateContent, OpenAI Responses, Anthropic Messages, and OpenAI-compatible Chat Completions for compatible/Ollama endpoints. This assistant does not invoke model tools, browse the web, edit a definition, start numerical work or export fields. Model limits and usage are shown only when the provider supplies them; pricing and cost estimates are unknown.',
@@ -1364,8 +1364,8 @@ The reported normalized potential is strain energy minus external work. It may b
         title: 'What the context contains',
         paragraphs: [
           'Documentation context retrieves articles from this installed application’s offline help. Study context adds the exact SI definition, preparation status, available run/result summaries, measured diagnostics and project/study/revision identity. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
-          'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. The preview reports included and omitted turns. Those messages may contain an earlier study explanation. Review the context and start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
-          'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source and inspect Context sent for the original snapshot. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
+          'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. Those messages may contain an earlier study explanation. Start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
+          'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
         ],
         note: {
           tone: 'warning',
@@ -1375,9 +1375,9 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Local history and cancellation',
         paragraphs: [
-          'Conversation history is stored separately from .phyra archives in the application’s local assistant storage, in version 1 format. The bounds are 160 messages and 2 MiB per conversation, 100 conversations and 32 MiB total history. History may contain private study definitions and summaries you chose to attach; it is not encrypted project backup.',
+          'Conversation history is stored separately from .phyra archives in the application’s local assistant storage, in version 1 format. The bounds are 160 messages and 2 MiB per conversation, 100 conversations and 32 MiB total history. History may contain private study definitions and summaries included with your questions; it is not encrypted project backup.',
           'The app saves the question before contacting a provider. If this initial write fails, the question stays in the composer and no remote request starts. If the response cannot be saved, its text stays in the panel with Retry save. Repair credential authorization or local storage, then retry. Restore saved copy requires confirmation before discarding unsaved response changes; a failed restore keeps the text. A conversation opened in two document tabs shares its latest text. A response reaching the local history limit stops with its partial text marked cancelled.',
-          'Provider connections persist across application restarts. Models & connections → Disconnect removes the active provider key and model selection after confirmation, preserving local conversations and projects. Removing a stored key does not revoke it at the provider. On macOS, changed ad hoc development builds can require renewed Keychain authorization; a stable signing identity is part of the packaged-product setup.',
+          'Provider connections persist across application restarts. Connections lists each saved provider separately. Disconnect removes that connection and its saved key while preserving local conversations and projects; other connected providers remain available. Removing a stored key does not revoke it at the provider. On macOS, changed ad hoc development builds can require renewed Keychain authorization; a stable signing identity is part of the packaged-product setup.',
           'Stop cancels the native provider stream and preserves the visible partial response with its cancellation status. A provider may already have processed submitted input; cancellation does not establish a billing refund. Delete a conversation through the history control when it is no longer wanted.',
           'Offline help and all numerical analysis remain available without a provider account or key. The browser preview exposes offline help; provider connections and native credential storage require the desktop app.',
         ],
@@ -1387,8 +1387,8 @@ The reported normalized potential is strain energy minus external work. It may b
   },
   {
     id: 'local-mcp',
-    title: 'Grant local MCP inspection access',
-    summary: 'Expose selected read-only snapshots to a local stdio client with revocable consent.',
+    title: 'Connect local MCP tools',
+    summary: 'Choose individual read-only tools and connect your desktop AI client.',
     category: 'Reference',
     kind: 'Guide',
     keywords: [
@@ -1405,16 +1405,30 @@ The reported normalized potential is strain energy minus external work. It may b
     ],
     sections: [
       {
-        title: 'Choose the scope and register a client',
+        title: 'Choose tools and connect a client',
         steps: [
-          'Open Integrations in the chat header. Phyra MCP offers Documentation access or Current project access, which includes help, the active definition and run summary.',
-          'Enable MCP for the selected access level. Copy configuration into a local MCP client that supports stdio; the configuration uses the application-selected executable and session arguments.',
-          'Restart the client for a new session. Open Access log to inspect allowed and denied requests. Disconnect in Phyra to revoke that access.',
+          'Open Integrations in the assistant header. In Tools, enable or disable Inspect capabilities, Search product help, Read study definition and Inspect analysis results independently.',
+          'Choose Start MCP, then Connect client. Open in VS Code uses its official installation handler so you can review and install the server there. Copy configuration offers the VS Code servers format or the mcpServers format used by Claude and compatible desktop clients.',
+          'Keep Phyra open and start the server in your client. Access log shows allowed and denied requests. Changing the enabled tools invalidates older clients; use the updated configuration and restart their Phyra server. Stop MCP revokes access.',
         ],
         paragraphs: [
-          'The implemented server is pinned to MCP protocol 2025-11-25. It exposes versioned capability/help/project/run inspection and resources, with project/revision and run provenance where the granted scope permits them. Access follows the active project tab; the client should inspect each returned identity before using a snapshot.',
-          'Consent is native-enforced and refreshed by the active application session. Its lease expires after 90 seconds without refresh, and closing/releasing the session revokes it. Enabling access authorizes that local client to read the selected snapshots until revoked or expired; a client’s own provider may handle data under its separate configuration.',
+          'The implemented server is pinned to MCP protocol 2025-11-25. It exposes versioned capability/help/project/run inspection and resources, with project/revision and run provenance where the enabled tools permit them. Access follows the active project tab; the client should inspect each returned identity before using a snapshot.',
+          'Consent is native-enforced and refreshed by the active application session. Its lease expires after 90 seconds without refresh, and closing/releasing the session revokes it. Starting MCP authorizes that local client to read the enabled tool snapshots until revoked or expired; a client’s own provider may handle data under its separate configuration.',
           'The current MCP surface has no model mutations, geometry changes, mesh/run/export actions, arbitrary file reads, general shell or public network listener. Approved agent workflows and parameter sweeps remain future work. Read-only access does not establish that an external client’s interpretation is scientifically correct.',
+        ],
+        references: [
+          {
+            title: 'VS Code MCP installation and client configuration',
+            authors: 'Microsoft',
+            url: 'https://code.visualstudio.com/api/extension-guides/ai/mcp',
+            scope: 'Official local stdio server configuration and vscode:mcp/install URI handler.',
+          },
+          {
+            title: 'Local stdio client configuration',
+            authors: 'Model Context Protocol contributors',
+            url: 'https://modelcontextprotocol.io/docs/develop/connect-local-servers',
+            scope: 'Official Claude Desktop mcpServers configuration and server restart guidance.',
+          },
         ],
       },
     ],

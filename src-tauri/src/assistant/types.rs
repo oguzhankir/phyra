@@ -236,10 +236,14 @@ pub struct Capability {
     pub available: bool,
 }
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Scope {
+pub enum McpTool {
+    #[serde(rename = "phyra_capabilities")]
+    Capabilities,
+    #[serde(rename = "phyra_help")]
     Help,
+    #[serde(rename = "phyra_project")]
     Project,
+    #[serde(rename = "phyra_run")]
     Run,
 }
 #[derive(Serialize)]
@@ -247,7 +251,7 @@ pub enum Scope {
 pub struct McpConfiguration {
     pub enabled: bool,
     pub protocol_version: &'static str,
-    pub scopes: Vec<Scope>,
+    pub tools: Vec<McpTool>,
     pub command: Option<String>,
     pub args: Vec<String>,
 }

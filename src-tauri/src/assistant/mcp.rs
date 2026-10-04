@@ -19,7 +19,7 @@ const LEASE_MS: u64 = 90_000;
 pub struct Consent {
     format_version: u32,
     pub token: String,
-    pub scopes: Vec<Scope>,
+    pub tools: Vec<McpTool>,
     expires_at: u64,
     pub snapshot: Snapshot,
 }
@@ -93,27 +93,20 @@ pub fn write_consent(
     directory: &Path,
     snapshot: &Snapshot,
     token: &str,
-    scopes: &[Scope],
+    enabled_tools: &[McpTool],
 ) -> Result<(), String> {
     validate_snapshot(snapshot)?;
     uuid(token)?;
-    if scopes.len() > 3
-        || scopes
-            .iter()
-            .enumerate()
-            .any(|(i, s)| scopes[..i].contains(s))
-    {
-        return Err("Invalid MCP scope selection".into());
-    }
-    if scopes.is_empty() {
+    validate_tools(enabled_tools)?;
+    if enabled_tools.is_empty() {
         return revoke(directory, &snapshot.session_id);
     }
     storage::atomic_json(
         &storage::owned_path(&mcp_directory(directory)?, &snapshot.session_id)?,
         &Consent {
-            format_version: 1,
+            format_version: 2,
             token: token.into(),
-            scopes: scopes.into(),
+            tools: enabled_tools.into(),
             expires_at: now() + LEASE_MS,
             snapshot: snapshot.clone(),
         },
@@ -140,15 +133,16 @@ fn consent(directory: &Path, session: &str, token: &str) -> Result<Consent, Stri
         &storage::owned_path(&directory.join("mcp"), session)?,
         MAX_SNAPSHOT as u64,
     )?;
-    if consent.format_version != 1
+    if consent.format_version != 2
         || consent.token != token
         || consent.expires_at < now()
         || consent.expires_at > now() + LEASE_MS
         || consent.snapshot.session_id != session
-        || consent.scopes.is_empty()
+        || consent.tools.is_empty()
     {
         return Err("Desktop read-only MCP consent has expired or been revoked".into());
     }
+    validate_tools(&consent.tools)?;
     validate_snapshot(&consent.snapshot)?;
     Ok(consent)
 }
@@ -186,34 +180,45 @@ pub fn audits(directory: &Path, session: &str) -> Result<Vec<Audit>, String> {
 fn tool(name: &str, scope: &str, description: &str, args: Value) -> Value {
     json!({"name":name,"description":description,"inputSchema":args,"annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false},"_meta":{"phyra/scope":scope,"phyra/schemaVersion":1}})
 }
-fn tools(scopes: &[Scope]) -> Vec<Value> {
+fn validate_tools(enabled_tools: &[McpTool]) -> Result<(), String> {
+    if enabled_tools.len() > 4
+        || enabled_tools
+            .iter()
+            .enumerate()
+            .any(|(index, item)| enabled_tools[..index].contains(item))
+    {
+        return Err("Invalid MCP tool selection".into());
+    }
+    Ok(())
+}
+fn tool_scope(item: McpTool) -> &'static str {
+    match item {
+        McpTool::Capabilities => "capabilities",
+        McpTool::Help => "help",
+        McpTool::Project => "project",
+        McpTool::Run => "run",
+    }
+}
+fn tools(enabled_tools: &[McpTool]) -> Vec<Value> {
     let empty = json!({"type":"object","properties":{},"additionalProperties":false});
-    let mut result = vec![tool(
-        "phyra_capabilities",
-        "capabilities",
-        "Inspect implemented read-only capabilities and active project/revision",
-        empty.clone(),
-    )];
-    if scopes.contains(&Scope::Help) {
-        result.push(tool("phyra_help","help","Read versioned offline Phyra help with source IDs",json!({"type":"object","properties":{"sourceId":{"type":"string","maxLength":128}},"additionalProperties":false})));
-    }
-    if scopes.contains(&Scope::Project) {
-        result.push(tool(
-            "phyra_project",
-            "project",
-            "Read the exact current project definition in SI with its project/revision identity",
-            empty.clone(),
-        ));
-    }
-    if scopes.contains(&Scope::Run) {
-        result.push(tool(
-            "phyra_run",
-            "run",
-            "Read the published run identity, provenance, current/stale state and bounded summary",
-            empty,
-        ));
-    }
-    result
+    enabled_tools.iter().map(|item| match item {
+        McpTool::Capabilities => tool(
+            "phyra_capabilities", "capabilities",
+            "Inspect implemented read-only Phyra capabilities", empty.clone(),
+        ),
+        McpTool::Help => tool(
+            "phyra_help", "help", "Read versioned offline Phyra help with source IDs",
+            json!({"type":"object","properties":{"sourceId":{"type":"string","maxLength":128}},"additionalProperties":false}),
+        ),
+        McpTool::Project => tool(
+            "phyra_project", "project",
+            "Read the exact current project definition in SI with its project/revision identity", empty.clone(),
+        ),
+        McpTool::Run => tool(
+            "phyra_run", "run",
+            "Read the published run identity, provenance, current/stale state and bounded summary", empty.clone(),
+        ),
+    }).collect()
 }
 fn error(id: Value, code: i32, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
@@ -336,9 +341,12 @@ impl Server {
             }
         };
         match method {
-            "tools/list" => Some(result(id, json!({"tools":tools(&consent.scopes)}))),
+            "tools/list" => Some(result(id, json!({"tools":tools(&consent.tools)}))),
             "resources/list" => {
-                let resources:Vec<Value>=consent.scopes.iter().map(|scope| {let name=match scope {Scope::Help=>"help",Scope::Project=>"project",Scope::Run=>"run"};json!({"uri":format!("phyra://{session}/{name}"),"name":format!("Phyra {name} snapshot"),"mimeType":"application/json"})}).collect();
+                let resources: Vec<Value> = consent.tools.iter().map(|item| {
+                    let name = tool_scope(*item);
+                    json!({"uri":format!("phyra://{session}/{name}"),"name":format!("Phyra {name} snapshot"),"mimeType":"application/json"})
+                }).collect();
                 Some(result(id, json!({"resources":resources})))
             }
             "tools/call" | "resources/read" => {
@@ -372,10 +380,10 @@ impl Server {
                     (format!("resources/read:{scope}"), scope, json!({}), valid)
                 };
                 let enabled = match scope {
-                    "capabilities" => true,
-                    "help" => consent.scopes.contains(&Scope::Help),
-                    "project" => consent.scopes.contains(&Scope::Project),
-                    "run" => consent.scopes.contains(&Scope::Run),
+                    "capabilities" => consent.tools.contains(&McpTool::Capabilities),
+                    "help" => consent.tools.contains(&McpTool::Help),
+                    "project" => consent.tools.contains(&McpTool::Project),
+                    "run" => consent.tools.contains(&McpTool::Run),
                     _ => false,
                 };
                 let allowed = enabled && valid;
@@ -409,8 +417,8 @@ impl Server {
                     &consent.snapshot,
                     scope,
                     args.get("sourceId").and_then(Value::as_str),
-                    consent.scopes.contains(&Scope::Project)
-                        || consent.scopes.contains(&Scope::Run),
+                    consent.tools.contains(&McpTool::Project)
+                        || consent.tools.contains(&McpTool::Run),
                 ) {
                     Ok(v) => v,
                     Err(_) => return Some(error(id, -32602, "Unknown Phyra help source")),
@@ -434,6 +442,55 @@ impl Server {
             )),
         }
     }
+}
+// Official VS Code handler accepts a URL-encoded server configuration:
+// https://code.visualstudio.com/api/extension-guides/ai/mcp#create-an-mcp-installation-url
+fn vscode_installation_uri(command: &str, session: &str, token: &str) -> Result<String, String> {
+    uuid(session)?;
+    uuid(token)?;
+    let config = json!({"name":"phyra","type":"stdio","command":command,"args":["--mcp-read-only",session,token]}).to_string();
+    if config.len() > 4096 {
+        return Err("The MCP client configuration is too large".into());
+    }
+    let mut encoded = String::new();
+    for byte in config.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            use std::fmt::Write as _;
+            write!(&mut encoded, "%{byte:02X}").map_err(|_| "Invalid MCP installation URI")?;
+        }
+    }
+    Ok(format!("vscode:mcp/install?{encoded}"))
+}
+#[tauri::command]
+pub async fn assistant_open_mcp_client(
+    state: tauri::State<'_, super::AssistantState>,
+    session_id: String,
+) -> Result<(), String> {
+    uuid(&session_id)?;
+    let uri = {
+        let snapshots = state
+            .snapshots
+            .lock()
+            .map_err(|_| "MCP snapshot state is unavailable")?;
+        let published = snapshots
+            .get(&session_id)
+            .ok_or("Start Phyra MCP before connecting a client")?;
+        // Validate the live native grant; no caller-supplied URI, path or executable is accepted.
+        consent(&published.directory, &session_id, &published.token)?;
+        let command =
+            std::env::current_exe().map_err(|_| "The installed Phyra executable is unavailable")?;
+        vscode_installation_uri(&command.to_string_lossy(), &session_id, &published.token)?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        super::references::open_uri(
+            &uri,
+            "VS Code; install the app or copy the MCP configuration instead",
+        )
+    })
+    .await
+    .map_err(|_| "The MCP client opener failed")?
 }
 pub fn stdio(session: &str, token: &str) -> Result<(), String> {
     uuid(session)?;
@@ -510,7 +567,7 @@ mod tests {
             }],
             capabilities: vec![],
         };
-        write_consent(directory.path(), &snapshot, &token, &[Scope::Help]).unwrap();
+        write_consent(directory.path(), &snapshot, &token, &[McpTool::Help]).unwrap();
         (directory, session, token)
     }
     fn initialize(server: &mut Server, directory: &Path, session: &str, token: &str) {
@@ -529,7 +586,7 @@ mod tests {
         );
     }
     #[test]
-    fn scopes_lifecycle_and_revocation_are_native_enforced() {
+    fn tool_permissions_lifecycle_and_revocation_are_native_enforced() {
         let (directory, session, token) = setup();
         let mut server = Server::new();
         assert!(server
@@ -591,6 +648,158 @@ mod tests {
         assert_eq!(history.len(), 7);
         assert!(history.last().unwrap().allowed);
         assert_eq!(history.last().unwrap().scope, "help");
+    }
+    #[test]
+    fn every_tool_and_resource_obeys_the_selected_allowlist() {
+        let (directory, session, token) = setup();
+        let snapshot = consent(directory.path(), &session, &token)
+            .unwrap()
+            .snapshot;
+        for enabled in [
+            McpTool::Capabilities,
+            McpTool::Help,
+            McpTool::Project,
+            McpTool::Run,
+        ] {
+            write_consent(directory.path(), &snapshot, &token, &[enabled]).unwrap();
+            let mut server = Server::new();
+            initialize(&mut server, directory.path(), &session, &token);
+            let listed = server
+                .handle(
+                    directory.path(),
+                    &session,
+                    &token,
+                    json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+                )
+                .unwrap();
+            let resource_list = server
+                .handle(
+                    directory.path(),
+                    &session,
+                    &token,
+                    json!({"jsonrpc":"2.0","id":3,"method":"resources/list"}),
+                )
+                .unwrap();
+            assert_eq!(
+                listed
+                    .pointer("/result/tools")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                resource_list
+                    .pointer("/result/resources")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                listed.pointer("/result/tools/0/name").unwrap(),
+                &serde_json::to_value(enabled).unwrap()
+            );
+            for (tool, permission) in [
+                ("phyra_capabilities", McpTool::Capabilities),
+                ("phyra_help", McpTool::Help),
+                ("phyra_project", McpTool::Project),
+                ("phyra_run", McpTool::Run),
+            ] {
+                let response = server.handle(directory.path(), &session, &token,
+                    json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":tool,"arguments":{}}})).unwrap();
+                assert_eq!(response.get("result").is_some(), permission == enabled);
+                let response = server.handle(directory.path(), &session, &token,
+                    json!({"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":format!("phyra://{session}/{}", tool_scope(permission))}})).unwrap();
+                assert_eq!(response.get("result").is_some(), permission == enabled);
+            }
+        }
+        assert!(write_consent(
+            directory.path(),
+            &snapshot,
+            &token,
+            &[McpTool::Help, McpTool::Help]
+        )
+        .is_err());
+    }
+    #[test]
+    fn changing_a_grant_invalidates_old_initialized_clients() {
+        let (directory, session, token) = setup();
+        let snapshot = consent(directory.path(), &session, &token)
+            .unwrap()
+            .snapshot;
+        let mut older = Server::new();
+        initialize(&mut older, directory.path(), &session, &token);
+        let replacement = uuid::Uuid::new_v4().to_string();
+        write_consent(
+            directory.path(),
+            &snapshot,
+            &replacement,
+            &[McpTool::Capabilities],
+        )
+        .unwrap();
+        let response = older
+            .handle(
+                directory.path(),
+                &session,
+                &token,
+                json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            )
+            .unwrap();
+        assert_eq!(response.pointer("/error/code").unwrap(), &json!(-32001));
+        let mut newer = Server::new();
+        initialize(&mut newer, directory.path(), &session, &replacement);
+        let response = newer
+            .handle(
+                directory.path(),
+                &session,
+                &replacement,
+                json!({"jsonrpc":"2.0","id":3,"method":"tools/list"}),
+            )
+            .unwrap();
+        assert_eq!(
+            response.pointer("/result/tools/0/name").unwrap(),
+            &json!("phyra_capabilities")
+        );
+    }
+    #[test]
+    fn legacy_and_duplicate_tool_grants_are_rejected_without_rewriting() {
+        let (directory, session, token) = setup();
+        let mut stored = consent(directory.path(), &session, &token).unwrap();
+        let path =
+            storage::owned_path(&mcp_directory(directory.path()).unwrap(), &session).unwrap();
+        stored.format_version = 1;
+        storage::atomic_json(&path, &stored, MAX_SNAPSHOT).unwrap();
+        let legacy_bytes = storage::read_owned_bytes(&path, MAX_SNAPSHOT as u64).unwrap();
+        assert!(consent(directory.path(), &session, &token).is_err());
+        assert_eq!(
+            storage::read_owned_bytes(&path, MAX_SNAPSHOT as u64).unwrap(),
+            legacy_bytes
+        );
+        stored.format_version = 2;
+        stored.tools = vec![McpTool::Help, McpTool::Help];
+        storage::atomic_json(&path, &stored, MAX_SNAPSHOT).unwrap();
+        assert!(consent(directory.path(), &session, &token).is_err());
+    }
+    #[test]
+    fn vscode_uri_only_installs_the_native_stdio_configuration() {
+        let session = uuid::Uuid::new_v4().to_string();
+        let token = uuid::Uuid::new_v4().to_string();
+        let uri = vscode_installation_uri(
+            "/Applications/Phyra App.app/Contents/MacOS/phyra",
+            &session,
+            &token,
+        )
+        .unwrap();
+        assert!(uri.starts_with("vscode:mcp/install?%7B%22"));
+        assert!(uri.contains("%22name%22%3A%22phyra%22"));
+        assert!(uri.contains("Phyra%20App.app"));
+        assert!(uri.contains("--mcp-read-only"));
+        assert!(!uri.contains(' '));
+        assert!(vscode_installation_uri("phyra", "../session", &token).is_err());
+        assert!(vscode_installation_uri(&"x".repeat(4097), &session, &token).is_err());
     }
     #[test]
     fn stdio_frames_are_real_pinned_json_rpc_and_bounded() {

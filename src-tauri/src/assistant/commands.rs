@@ -326,7 +326,7 @@ pub async fn assistant_publish_snapshot(
             snapshot.session_id.clone(),
             Published {
                 snapshot,
-                scopes: vec![],
+                tools: vec![],
                 token: uuid::Uuid::new_v4().to_string(),
                 directory,
                 last_publication: publication_sequence,
@@ -339,7 +339,7 @@ pub async fn assistant_publish_snapshot(
 pub fn assistant_configure_mcp(
     state: State<'_, AssistantState>,
     session_id: String,
-    scopes: Vec<Scope>,
+    tools: Vec<McpTool>,
 ) -> Result<McpConfiguration, String> {
     uuid(&session_id)?;
     let mut snapshots = state
@@ -358,19 +358,19 @@ pub fn assistant_configure_mcp(
     let published = snapshots
         .get_mut(&session_id)
         .ok_or("Publish the current document/help snapshot before enabling MCP")?;
-    if scopes.is_empty() {
-        mcp::revoke(&published.directory, &session_id)?;
-        published.scopes.clear();
-        published.token = uuid::Uuid::new_v4().to_string();
+    if tools.is_empty() {
+        published.configure_tools(&tools)?;
         return Ok(McpConfiguration {
             enabled: false,
             protocol_version: mcp::PROTOCOL,
-            scopes,
+            tools,
             command: None,
             args: vec![],
         });
     }
-    if published.scopes.is_empty() {
+    let command =
+        std::env::current_exe().map_err(|_| "The installed Phyra executable is unavailable")?;
+    if published.tools.is_empty() {
         let audit = storage::owned_path(&mcp::mcp_directory(&published.directory)?, &session_id)?
             .with_extension("audit");
         if audit.exists() {
@@ -383,19 +383,11 @@ pub fn assistant_configure_mcp(
             std::fs::remove_file(audit).map_err(|_| "Could not restart MCP audit")?;
         }
     }
-    mcp::write_consent(
-        &published.directory,
-        &published.snapshot,
-        &published.token,
-        &scopes,
-    )?;
-    published.scopes = scopes.clone();
-    let command =
-        std::env::current_exe().map_err(|_| "The installed Phyra executable is unavailable")?;
+    published.configure_tools(&tools)?;
     Ok(McpConfiguration {
         enabled: true,
         protocol_version: mcp::PROTOCOL,
-        scopes,
+        tools,
         command: Some(command.to_string_lossy().into_owned()),
         args: vec![
             "--mcp-read-only".into(),

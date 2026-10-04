@@ -22,6 +22,7 @@ fn reference(value: &str) -> Result<Url, String> {
         }
         "ai.google.dev"
         | "developers.openai.com"
+        | "code.visualstudio.com"
         | "platform.claude.com"
         | "modelcontextprotocol.io"
         | "doi.org"
@@ -43,17 +44,21 @@ fn reference(value: &str) -> Result<Url, String> {
 #[tauri::command]
 pub fn assistant_open_reference(url: String) -> Result<(), String> {
     let url = reference(&url)?;
+    open_uri(url.as_str(), "reference")
+}
+// Call only with a validated reference or a native-constructed MCP installation URI.
+pub(super) fn open_uri(url: &str, destination: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("/usr/bin/open")
-            .arg(url.as_str())
+            .arg(url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .map_err(|_| "The OS browser opener is unavailable")?;
+            .map_err(|_| format!("The OS could not open {destination}"))?;
         if !status.success() {
-            return Err("The OS browser could not open this reference".into());
+            return Err(format!("The OS could not open {destination}"));
         }
         Ok(())
     }
@@ -64,12 +69,12 @@ pub fn assistant_open_reference(url: String) -> Result<(), String> {
             .encode_wide()
             .chain(Some(0))
             .collect();
-        let target: Vec<u16> = std::ffi::OsStr::new(url.as_str())
+        let target: Vec<u16> = std::ffi::OsStr::new(url)
             .encode_wide()
             .chain(Some(0))
             .collect();
-        // ShellExecute opens a validated HTTPS URI through the OS browser
-        // association. The URI cannot supply a shell command or executable.
+        // ShellExecute opens a validated reference or native-constructed MCP URI
+        // through its OS association. No arbitrary URI or executable is accepted.
         let outcome = unsafe {
             windows_sys::Win32::UI::Shell::ShellExecuteW(
                 std::ptr::null_mut(),
@@ -81,14 +86,16 @@ pub fn assistant_open_reference(url: String) -> Result<(), String> {
             )
         };
         if outcome as isize <= 32 {
-            return Err("The OS browser could not open this reference".into());
+            return Err(format!("The OS could not open {destination}"));
         }
         Ok(())
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = url;
-        Err("Copy this reference URL to open it in your browser".into())
+        Err(format!(
+            "Copy the configuration or URL to open {destination} manually"
+        ))
     }
 }
 #[cfg(test)]
@@ -100,6 +107,7 @@ mod tests {
         assert!(reference("https://github.com/oguzhankir/phyra/issues").is_ok());
         for input in [
             "file:///etc/passwd",
+            "vscode:mcp/install?%7B%22command%22%3A%22arbitrary%22%7D",
             "https://user:password@doi.org/reference",
             "https://evil.example/reference",
             "https://github.com/another/repository",

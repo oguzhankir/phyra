@@ -12,7 +12,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use types::{Scope, Snapshot};
+use types::{McpTool, Snapshot};
 
 pub struct AssistantState {
     streams: Mutex<Streams>,
@@ -43,7 +43,7 @@ struct OwnedRequest {
 }
 struct Published {
     snapshot: Snapshot,
-    scopes: Vec<Scope>,
+    tools: Vec<McpTool>,
     token: String,
     directory: PathBuf,
     last_publication: u64,
@@ -55,13 +55,24 @@ fn publication_sequence(value: u64) -> Result<(), String> {
     Ok(())
 }
 impl Published {
+    fn configure_tools(&mut self, tools: &[McpTool]) -> Result<(), String> {
+        let token = uuid::Uuid::new_v4().to_string();
+        if tools.is_empty() {
+            mcp::revoke(&self.directory, &self.snapshot.session_id)?;
+        } else {
+            mcp::write_consent(&self.directory, &self.snapshot, &token, tools)?;
+        }
+        self.token = token;
+        self.tools = tools.into();
+        Ok(())
+    }
     fn adopt(&mut self, snapshot: Snapshot, sequence: u64) -> Result<bool, String> {
         publication_sequence(sequence)?;
         if sequence <= self.last_publication {
             return Ok(false);
         }
-        if !self.scopes.is_empty() {
-            mcp::write_consent(&self.directory, &snapshot, &self.token, &self.scopes)?;
+        if !self.tools.is_empty() {
+            mcp::write_consent(&self.directory, &snapshot, &self.token, &self.tools)?;
         }
         self.snapshot = snapshot;
         self.last_publication = sequence;
@@ -154,6 +165,51 @@ pub fn stop_owned(state: &AssistantState) {
 mod tests {
     use super::*;
     #[test]
+    fn configuring_tools_rotates_the_live_token_atomically_and_revocation_ignores_invalid_snapshot()
+    {
+        let directory = tempfile::tempdir().unwrap();
+        let session = uuid::Uuid::new_v4().to_string();
+        let mut published = Published {
+            snapshot: Snapshot {
+                session_id: session.clone(),
+                project_id: None,
+                revision: None,
+                project: None,
+                run: None,
+                help: vec![],
+                capabilities: vec![],
+            },
+            tools: vec![],
+            token: uuid::Uuid::new_v4().to_string(),
+            directory: directory.path().to_path_buf(),
+            last_publication: 1,
+        };
+        let original_token = published.token.clone();
+        published.configure_tools(&[McpTool::Help]).unwrap();
+        assert_ne!(published.token, original_token);
+        let previous_token = published.token.clone();
+        published.configure_tools(&[McpTool::Capabilities]).unwrap();
+        assert_ne!(published.token, previous_token);
+        let path =
+            storage::owned_path(&mcp::mcp_directory(directory.path()).unwrap(), &session).unwrap();
+        let saved = storage::read_owned_bytes(&path, 1024 * 1024).unwrap();
+        let token = published.token.clone();
+        assert!(published
+            .configure_tools(&[McpTool::Help, McpTool::Help])
+            .is_err());
+        assert_eq!(published.token, token);
+        assert!(published.tools == vec![McpTool::Capabilities]);
+        assert_eq!(
+            storage::read_owned_bytes(&path, 1024 * 1024).unwrap(),
+            saved
+        );
+        published.snapshot.project_id = Some("invalid-without-project".into());
+        published.configure_tools(&[]).unwrap();
+        assert!(published.tools.is_empty());
+        assert_ne!(published.token, token);
+        assert!(!path.exists());
+    }
+    #[test]
     fn out_of_order_publication_cannot_replace_newer_snapshot_or_consent_lease() {
         use types::Help;
         let directory = tempfile::tempdir().unwrap();
@@ -173,7 +229,7 @@ mod tests {
         };
         let mut published = Published {
             snapshot: snapshot("Initial"),
-            scopes: vec![Scope::Help],
+            tools: vec![McpTool::Help],
             token: uuid::Uuid::new_v4().to_string(),
             directory: directory.path().to_path_buf(),
             last_publication: 0,
