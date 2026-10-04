@@ -9,9 +9,9 @@
 
 Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. **v0.3.0** brings interactive 2D sketch drafting, experimental potential-energy PINNs, independent project tabs and an optional AI assistant to local linear static elasticity workflows.
 
-[![Watch the Phyra v0.3.0 launch video](assets/media/phyra-introduction-poster.jpg)](https://github.com/oguzhankir/phyra/raw/refs/heads/main/assets/media/phyra-introduction.mp4)
-
-[Watch or download the 48-second launch video](https://github.com/oguzhankir/phyra/raw/refs/heads/main/assets/media/phyra-introduction.mp4) · English narration and captions · 1080p
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/6410b967-105d-4277-9f87-1a2c943de4b5" poster="assets/media/phyra-introduction-poster.jpg" controls="controls" playsinline="playsinline" preload="metadata" width="100%" aria-label="Phyra v0.3.0 launch video with English narration and captions"></video>
+</p>
 
 **Explore:** [source repository](https://github.com/oguzhankir/phyra) · [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
