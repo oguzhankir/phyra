@@ -50,17 +50,19 @@ Typos, internal refactoring, test-only changes and contributor tooling need no e
 Plan product outcomes in the [roadmap](ROADMAP.md); assign a version only when the next release scope is selected. To synchronize the app, Tauri, Rust, Python engine and both lockfiles, run:
 
 ```sh
-npm run release:version -- 0.2.0
+npm run release:version -- 0.3.0
 ```
 
-This edits version metadata only. Move the completed scope from Unreleased in CHANGELOG.md into a section for the selected version; assign a date only when the release actually exists. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.2.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
+This edits version metadata only. Move the completed scope from Unreleased in CHANGELOG.md into a section for the selected version; assign a date only when the release actually exists. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.3.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
 
 ```sh
-git tag -a v0.2.0 -m "Phyra v0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "Phyra v0.3.0"
+git push origin v0.3.0
 ```
 
 Pushing that tag starts `.github/workflows/release.yml`. It runs the full scientific and packaged desktop checks on macOS Apple Silicon and Windows x64, stages installers, license/notice files and SHA-256 checksums, then creates a **draft** GitHub Release. The public-distribution readiness gate must be enabled by the repository owner after the target-specific installation, trust and GPL Corresponding Source review is complete. Review the draft and publish it to make the installers available from [GitHub Releases](https://github.com/oguzhankir/phyra/releases/latest). A published release updates that `latest` download page; Phyra does not yet update an already-installed app automatically.
+
+A source-only release can publish the versioned repository without distributing bundled dependencies. If installer redistribution remains incomplete, keep binary assets private: remove installer assets and their installer-specific checksum/notice files from the draft before publishing it, and state that users must build locally. GitHub's tag source archives then contain Phyra's code and build scripts; they are not a complete Corresponding Source offer for a separately distributed native installer. Do not infer redistribution readiness from a successful build or an enabled repository variable.
 
 The macOS inspector rejects a native runtime requiring later than macOS 14 or linking developer libraries. Prefer the official Python 3.12 distribution; recreate a Homebrew environment if it fails this check. MPS capability must be tested outside restrictive execution sandboxes. Windows setup defaults to CPU Torch to avoid an unnecessary GPU runtime; an explicitly installed compatible CUDA build is detected by the engine but has not been verified here.
 

@@ -4,6 +4,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+## 0.3.0
+
 ### Added
 
 - Experimental potential-energy plane-stress PINN on rectangles and profiles, with exact compatible finite straight-segment displacement conditions, force/pressure/spatial traction, signed energy history and a finer independent integration audit that rejects underintegrated fields. Training uses no FEM labels.
@@ -25,8 +27,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - A preparation checklist checks study, geometry, material, supports, loads, mesh settings and method eligibility before execution. Boundary restraint checks account for rigid translation and rotation; the worker remains authoritative after meshing.
 - Independent project tabs preserve each document’s edits, file association, recovery and run/result ownership, with a 32-document session limit.
 - Bounded interactive 2D profile drafting with rectangles, polylines, circular arcs, radius edits, grid snapping and circular holes, followed by validated Apply or Revert.
-- Optional BYOK documentation/study chat with native Gemini, OpenAI Responses, Anthropic Messages and compatible/local Ollama text streaming, model discovery, OS credential storage, deliberate-send consent and bounded local conversation history.
-- Opt-in local read-only MCP inspection of help, active project and run summaries, with native tool permissions, revocation, expiring session consent and an access audit.
+- Native Gemini, OpenAI Responses, Anthropic Messages and compatible/local Ollama text streaming, account model discovery and OS credential storage for the optional assistant.
 - In-product mathematical formulations for 3D/plane-stress FEM, scaled PINN residuals/losses and Kirsch reference assumptions, with primary references and source links.
 
 ### Changed

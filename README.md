@@ -7,7 +7,7 @@
 
 <p align="center"><strong>Prepare a physical problem. Solve locally. Understand the result.</strong></p>
 
-Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. The **0.2.0 development build** supports linear static elasticity, with a professional light/dark workspace, contextual engineering help and real FEM/PINN comparison.
+Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. **v0.3.0** brings interactive 2D sketch drafting, experimental potential-energy PINNs, independent project tabs and an optional AI assistant to local linear static elasticity workflows.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c47e6fcf-36c7-40b5-82f3-3d48e4d9600a" controls="controls" width="100%" aria-label="Phyra product walkthrough"></video>
@@ -97,7 +97,7 @@ Independent analytical/manufactured references live in [engine tests](engine/tes
 
 **Prior platform baseline:** [scientific and packaged verification at `3498f34`](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed on macOS 15 Apple Silicon and Windows Server 2022 x64. It covers that earlier snapshot's FEM/PINN rendering, persistence, cancellation and recovery; it does not verify this PR's later profile, architecture or interface changes. Representative-user usability remains open.
 
-Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages are ad hoc sealed rather than Developer ID signed/notarized; production distribution trust is unfinished on both targets. Source and the current product walkthrough are available; public installers require the redistribution work below.
+Minimum macOS 14 execution and manual consumer installation, native dialogs and uninstall remain open. macOS development packages use ad hoc or explicitly configured local signing; Developer ID signing/notarization and production distribution trust remain unfinished on both targets. Source releases and local build instructions are available; public installers require the redistribution work below.
 
 Phyra's direction is capable engineering preparation combined with validated Physics ML: CAD/sketching and richer physical conditions; thermal/fluid and coupled families; inverse problems, reusable operators, uncertainty and controlled engineering assistance. Contributions should deliver complete, reproducible workflows rather than placeholder modules. See [the roadmap](ROADMAP.md), the [contribution guide](CONTRIBUTING.md) and its [implementation ownership and extension guide](CONTRIBUTING.md#finding-and-extending-the-implementation). Automated dependency checks enforce those boundaries.
 
