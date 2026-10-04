@@ -1,5 +1,6 @@
 import type { Project } from '../../domain/contracts/types';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
+import Select from '../../shared/ui/Select';
 
 import type { ProjectInspectorModel } from './model';
 import ProfileEditor from './ProfileEditor';
@@ -25,18 +26,28 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
       <Group title={is2D ? 'Plane domain' : 'Solid definition'}>
         <label className="field-label">
           <span>{is2D ? 'Domain' : 'Primitive'}</span>
-          <select
+          <Select
+            aria-label={is2D ? 'Domain' : 'Primitive'}
             value={project.geometry.kind}
-            onChange={(event) => {
+            options={[
+              { value: 'box', label: is2D ? 'Rectangular domain' : 'Rectangular solid' },
+              ...(is2D
+                ? [{ value: 'profile', label: 'Line / arc profile with circular holes' }]
+                : [
+                    { value: 'cylinder', label: 'Cylinder · X axis' },
+                    { value: 'bracket', label: 'L bracket · XY plane' },
+                  ]),
+            ]}
+            onChange={(value) => {
               if (invalidDraftsRef.current.size) {
                 setError('Complete or revert the numeric input before changing primitive.');
                 return;
               }
-              const kind = event.target.value as Project['geometry']['kind'];
+              const kind = value as Project['geometry']['kind'];
               if (kind === project.geometry.kind) return;
               const count = project.study.constraints.length + project.study.loads.length;
               edit((next) => {
-                changeGeometryKind(next, event.target.value as Project['geometry']['kind']);
+                changeGeometryKind(next, kind);
               });
               setSelected([]);
               setConstraintId(null);
@@ -45,16 +56,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
                 `Primitive changed · ${count} boundary assignments cleared. Named sets require repair; Undo restores the definition.`,
               );
             }}
-          >
-            <option value="box">{is2D ? 'Rectangular domain' : 'Rectangular solid'}</option>
-            {is2D && <option value="profile">Line / arc profile with circular holes</option>}
-            {!is2D && (
-              <>
-                <option value="cylinder">Cylinder · X axis</option>
-                <option value="bracket">L bracket · XY plane</option>
-              </>
-            )}
-          </select>
+          />
         </label>
         {project.geometry.kind !== 'profile' &&
           (

@@ -2,6 +2,7 @@ import { ArrowUpRight, Plus, Trash2 } from 'lucide-react';
 import type { Load } from '../../domain/contracts/types';
 import { assignedRegions } from '../../domain/project/regions';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
+import Select from '../../shared/ui/Select';
 
 import type { ProjectInspectorModel } from './model';
 import BoundaryAssignments from './BoundaryAssignments';
@@ -53,11 +54,17 @@ export default function LoadEditor({ workbench }: { workbench: ProjectInspectorM
             </label>
             <label className="field-label">
               <span>Type</span>
-              <select
+              <Select
+                aria-label="Load type"
                 value={load.kind}
-                onChange={(event) =>
+                options={[
+                  { value: 'force', label: 'Distributed total force' },
+                  { value: 'pressure', label: 'Boundary pressure' },
+                  ...(is2D ? [{ value: 'traction', label: 'Spatial vector traction' }] : []),
+                ]}
+                onChange={(value) =>
                   editLoad((item) => {
-                    item.kind = event.target.value as Load['kind'];
+                    item.kind = value as Load['kind'];
                     if (item.kind === 'traction')
                       item.traction ??= {
                         kind: 'affine',
@@ -68,11 +75,7 @@ export default function LoadEditor({ workbench }: { workbench: ProjectInspectorM
                     else delete item.traction;
                   })
                 }
-              >
-                <option value="force">Distributed total force</option>
-                <option value="pressure">Boundary pressure</option>
-                {is2D && <option value="traction">Spatial vector traction</option>}
-              </select>
+              />
             </label>
             {load.kind === 'force' ? (
               <>
@@ -116,12 +119,17 @@ export default function LoadEditor({ workbench }: { workbench: ProjectInspectorM
               <>
                 <label className="field-label">
                   <span>Stress field defining traction</span>
-                  <select
+                  <Select
+                    aria-label="Stress field defining traction"
                     value={load.traction?.kind ?? 'affine'}
-                    onChange={(event) =>
+                    options={[
+                      { value: 'affine', label: 'Affine symmetric stress' },
+                      { value: 'kirsch', label: 'Kirsch circular-hole stress' },
+                    ]}
+                    onChange={(value) =>
                       editLoad((item) => {
                         item.traction =
-                          event.target.value === 'kirsch'
+                          value === 'kirsch'
                             ? {
                                 kind: 'kirsch',
                                 radius: project.geometry.radius,
@@ -131,10 +139,7 @@ export default function LoadEditor({ workbench }: { workbench: ProjectInspectorM
                             : { kind: 'affine', xx: [0, 0, 0], yy: [0, 0, 0], xy: [0, 0, 0] };
                       })
                     }
-                  >
-                    <option value="affine">Affine symmetric stress</option>
-                    <option value="kirsch">Kirsch circular-hole stress</option>
-                  </select>
+                  />
                 </label>
                 {load.traction?.kind === 'affine' ? (
                   <>

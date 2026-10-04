@@ -42,6 +42,7 @@ import ProjectWorkspaceBar from '../features/workbench/ProjectWorkspaceBar';
 import StudyReadiness from '../features/workbench/StudyReadiness';
 import { NumericDraftContext } from '../shared/forms/PropertyControls';
 import { useModalFocus } from '../shared/ui/useModalFocus';
+import Select from '../shared/ui/Select';
 
 import PropertyInspector from '../features/project/PropertyInspector';
 import { useWorkbench } from './useWorkbench';
@@ -272,6 +273,9 @@ export default function ProjectDocumentWorkspace({
       if (
         !active ||
         modalBlocked ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        document.querySelector('.modal[aria-modal="true"]') ||
         (!event.metaKey && !event.ctrlKey) ||
         event.key.toLowerCase() !== 'k'
       )
@@ -536,18 +540,18 @@ export default function ProjectDocumentWorkspace({
                   ? 'RECTANGLE'
                   : project.geometry.kind.toUpperCase()}
               </div>
-              <select
+              <Select
+                compact
                 aria-label="Boundary selection mode"
                 value={selectionMode}
-                onChange={(event) =>
-                  setSelectionMode(event.target.value as 'replace' | 'add' | 'toggle')
-                }
+                onChange={(value) => setSelectionMode(value as 'replace' | 'add' | 'toggle')}
                 title="Click replaces; Shift adds; Ctrl/Command toggles"
-              >
-                <option value="replace">Replace selection</option>
-                <option value="add">Add to selection</option>
-                <option value="toggle">Toggle selection</option>
-              </select>
+                options={[
+                  { value: 'replace', label: 'Replace selection' },
+                  { value: 'add', label: 'Add to selection' },
+                  { value: 'toggle', label: 'Toggle selection' },
+                ]}
+              />
               {currentData && (
                 <label className="edge-toggle">
                   <input
@@ -559,21 +563,20 @@ export default function ProjectDocumentWorkspace({
                 </label>
               )}
               {solved && (
-                <select
+                <Select
+                  compact
                   aria-label="Displayed result field"
                   disabled={!solved || locked}
                   value={solved ? fieldId : 'geometry'}
-                  onChange={(event) => {
-                    setFieldId(event.target.value as FieldId);
+                  options={availableFields.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                  }))}
+                  onChange={(value) => {
+                    setFieldId(value as FieldId);
                     setProbe(null);
                   }}
-                >
-                  {availableFields.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                />
               )}
             </div>
             {currentData?.manifest.operation === 'compare' && (
@@ -598,15 +601,7 @@ export default function ProjectDocumentWorkspace({
               </div>
             )}
             {section === 'study' && (
-              <details className="preparation-disclosure">
-                <summary>
-                  {workbench.preparation.canRun
-                    ? 'Definition ready for analysis'
-                    : 'Complete the study definition'}{' '}
-                  · {workbench.preparation.completed}/{workbench.preparation.total} checks
-                </summary>
-                <StudyReadiness preparation={workbench.preparation} onSection={selectSection} />
-              </details>
+              <StudyReadiness preparation={workbench.preparation} onSection={selectSection} />
             )}
             <div className="viewport-wrap">
               {editingSketch && <div ref={setSketchTarget} className="central-sketch" />}

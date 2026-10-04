@@ -1,8 +1,10 @@
 import { Cpu } from 'lucide-react';
-import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
+import { useEffect, useState } from 'react';
+import DetailDialog from '../../shared/ui/DetailDialog';
 import type { Project } from '../../domain/contracts/types';
 import { changeStudySolver, supportsPinn } from '../../domain/project/study';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
+import Select from '../../shared/ui/Select';
 
 import type { ProjectInspectorModel } from './model';
 export default function SolverEditor({ workbench }: { workbench: ProjectInspectorModel }) {
@@ -22,8 +24,6 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
     setError,
   } = workbench;
   const pinnAvailable = supportsPinn(project);
-  const advancedSettings = useRef<HTMLDetailsElement>(null);
-  const deviceSettings = useRef<HTMLDetailsElement>(null);
   const trainingConfigurationInvalid = /PINN architecture|learning rate/i.test(validation ?? '');
   const configuringPinn = pinnAvailable && isPinn;
   const [repairingSavedSettings, setRepairingSavedSettings] = useState(
@@ -33,13 +33,6 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
     configuringPinn || trainingConfigurationInvalid || repairingSavedSettings;
   useEffect(() => {
     if (trainingConfigurationInvalid && !configuringPinn) setRepairingSavedSettings(true);
-    if (
-      advancedSettings.current &&
-      (trainingConfigurationInvalid ||
-        advancedSettings.current.querySelector('input[aria-invalid="true"]'))
-    )
-      advancedSettings.current.open = true;
-    if (deviceError && deviceSettings.current) deviceSettings.current.open = true;
   }, [validation, deviceError, trainingConfigurationInvalid, configuringPinn]);
   const chooseMethod = (kind: Project['study']['solver']['kind']) => {
     if (invalidDraftsRef.current.size) {
@@ -58,32 +51,30 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
       : selectedDevice
         ? `${selectedDevice.label} · ${selectedDevice.precision}`
         : `${requestedDevice.toUpperCase()} · availability unconfirmed`;
-  const keepInvalidInputsVisible = (event: SyntheticEvent<HTMLDetailsElement>) => {
-    const details = event.currentTarget;
-    if (!details.open && details.querySelector('input[aria-invalid="true"]')) details.open = true;
-  };
   return (
     <>
       <Group title="Solution method">
         {is2D && (
           <label className="field-label">
             <span>Physics ML formulation</span>
-            <select
+            <Select
+              aria-label="Physics ML formulation"
               value={project.study.solver.pinn.formulation}
-              onChange={(event) => {
+              options={[
+                { value: 'strong-form', label: 'Strong-form residual · rectangle' },
+                { value: 'potential-energy', label: 'Potential energy · rectangle / profile' },
+              ]}
+              onChange={(value) => {
                 if (invalidDraftsRef.current.size) {
                   setError('Complete or revert the numeric input before changing formulation.');
                   return;
                 }
                 edit((next) => {
-                  next.study.solver.pinn.formulation = event.target
-                    .value as Project['study']['solver']['pinn']['formulation'];
+                  next.study.solver.pinn.formulation =
+                    value as Project['study']['solver']['pinn']['formulation'];
                 });
               }}
-            >
-              <option value="strong-form">Strong-form residual · rectangle</option>
-              <option value="potential-energy">Potential energy · rectangle / profile</option>
-            </select>
+            />
           </label>
         )}
         <div className="segmented" role="group" aria-label="Solution method">
@@ -161,16 +152,10 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
               </p>
             )}
           </Group>
-          <details
-            className="inspector-disclosure"
-            ref={advancedSettings}
-            open={repairingSavedSettings || undefined}
-            onToggle={(event) => {
-              keepInvalidInputsVisible(event);
-              if (trainingConfigurationInvalid) event.currentTarget.open = true;
-            }}
+          <DetailDialog
+            title="Advanced training settings"
+            forceOpen={trainingConfigurationInvalid || repairingSavedSettings}
           >
-            <summary>Advanced training settings</summary>
             <div className="inspector-disclosure-body">
               <div className="form-grid">
                 {(
@@ -227,7 +212,7 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
                   : 'Editing saved settings does not enable PINN training or change the selected solution method.'}
               </p>
             </div>
-          </details>
+          </DetailDialog>
           {!configuringPinn && (
             <button
               className="secondary full"
@@ -241,50 +226,47 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
       )}
       {configuringPinn && (
         <>
-          <details
-            className="inspector-disclosure"
-            ref={deviceSettings}
-            onToggle={(event) => {
-              keepInvalidInputsVisible(event);
-              if (deviceError) event.currentTarget.open = true;
-            }}
+          <DetailDialog
+            title={
+              <>
+                Compute device <small>{deviceLabel}</small>
+              </>
+            }
+            forceOpen={!!deviceError}
           >
-            <summary>
-              Compute device <small>{deviceLabel}</small>
-            </summary>
             <div className="inspector-disclosure-body">
               <label className="field-label">
                 <span>Training device</span>
-                <select
+                <Select
+                  aria-label="Training device"
                   value={project.study.solver.pinn.device}
-                  onChange={(event) =>
+                  options={[
+                    { value: 'auto', label: 'Auto · CPU · float64' },
+                    ...(devices?.devices
+                      .filter(
+                        (device) => device.available && ['cpu', 'mps', 'cuda'].includes(device.id),
+                      )
+                      .map((device) => ({
+                        value: device.id,
+                        label: `${device.label} · ${device.precision}`,
+                      })) ?? []),
+                    ...(requestedDevice !== 'auto' && !selectedDevice
+                      ? [
+                          {
+                            value: requestedDevice,
+                            label: `Saved preference · ${requestedDevice.toUpperCase()} (availability unconfirmed)`,
+                            disabled: true,
+                          },
+                        ]
+                      : []),
+                  ]}
+                  onChange={(value) =>
                     edit((next) => {
-                      next.study.solver.pinn.device = event.target
-                        .value as Project['study']['solver']['pinn']['device'];
+                      next.study.solver.pinn.device =
+                        value as Project['study']['solver']['pinn']['device'];
                     })
                   }
-                >
-                  <option value="auto">Auto · CPU · float64</option>
-                  {devices?.devices
-                    .filter(
-                      (device) => device.available && ['cpu', 'mps', 'cuda'].includes(device.id),
-                    )
-                    .map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.label} · {device.precision}
-                      </option>
-                    ))}
-                  {project.study.solver.pinn.device !== 'auto' &&
-                    !devices?.devices.some(
-                      (device) =>
-                        device.available && device.id === project.study.solver.pinn.device,
-                    ) && (
-                      <option value={project.study.solver.pinn.device} hidden>
-                        Saved preference · {project.study.solver.pinn.device.toUpperCase()}{' '}
-                        (availability unconfirmed)
-                      </option>
-                    )}
-                </select>
+                />
               </label>
               <button
                 className="secondary full"
@@ -315,7 +297,7 @@ export default function SolverEditor({ workbench }: { workbench: ProjectInspecto
                 </p>
               )}
             </div>
-          </details>
+          </DetailDialog>
           <p className="property-hint method-device-note">
             Auto uses CPU float64. Available devices report their precision; each completed run
             records the device and precision actually used.

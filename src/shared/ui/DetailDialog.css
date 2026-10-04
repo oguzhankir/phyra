@@ -1,0 +1,113 @@
+.detail-action {
+  margin: 9px 0;
+}
+.detail-dialog-trigger {
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+  font-size: 12px;
+}
+.detail-dialog-trigger > span {
+  min-width: 0;
+  line-height: 1.5;
+}
+.detail-dialog-trigger > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.detail-dialog-trigger small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.modal-backdrop.detail-dialog-backdrop {
+  z-index: 900;
+}
+.detail-dialog-backdrop[hidden] {
+  display: none;
+}
+.modal.detail-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(760px, calc(100dvh - 48px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.detail-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.detail-dialog .detail-dialog-header h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.detail-dialog .detail-dialog-header h2 small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.detail-dialog-header .icon-button {
+  flex-shrink: 0;
+}
+.detail-dialog-body {
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.detail-dialog-body .field-label {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.detail-dialog-body p + p {
+  margin-top: 10px;
+}
+.detail-dialog-body pre {
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.detail-dialog-body code {
+  overflow-wrap: anywhere;
+}
+.detail-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+}
+.detail-dialog-error {
+  padding: 0 20px 14px;
+  color: var(--danger);
+  font-size: 12px;
+}

@@ -281,7 +281,7 @@
   line-height: 1.6;
 }
 .properties-scroll input:not([type='checkbox']),
-.properties-scroll select {
+.properties-scroll .select-trigger {
   min-height: 34px;
   font-size: 13px;
 }
@@ -289,37 +289,8 @@
   min-height: 32px;
   font-size: 12px;
 }
-.inspector-disclosure {
-  margin: 12px 0 18px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-subtle);
-}
-.inspector-disclosure > summary {
-  padding: 11px 12px;
-  min-height: 38px;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-  cursor: pointer;
-}
-.inspector-disclosure > summary:hover {
-  background: var(--hover);
-}
-.inspector-disclosure > summary small {
-  display: block;
-  margin: 4px 0 0 15px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-  overflow-wrap: anywhere;
-}
-.inspector-disclosure[open] > summary {
-  border-bottom: 1px solid var(--line);
-}
 .inspector-disclosure-body {
-  padding: 14px 12px;
+  padding: 0;
 }
 .inspector-disclosure-body .metric:first-child {
   padding-top: 0;

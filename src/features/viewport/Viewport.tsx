@@ -1,3 +1,4 @@
+import DetailDialog from '../../shared/ui/DetailDialog';
 import {
   cameraOrientation,
   planeFitDistance,
@@ -1350,47 +1351,58 @@ export default function Viewport(props: Props) {
       </div>
       {conditionsShown &&
         (props.project.study.constraints.length > 0 || props.project.study.loads.length > 0) && (
-          <details className="viewport-condition-legend">
-            <summary>
-              <span className="support-key">{supportSymbol} Supports</span>
-              <span className="load-key">↗ Loads</span>
-            </summary>
-            <p>Symbols mark undeformed boundaries. Arrows show direction; lengths are schematic.</p>
-            {[
-              ...props.project.study.constraints.map((item) => ({
-                item,
-                kind: 'constraint' as const,
-                detail: supportDescription(item, props.project.study.dimension),
-              })),
-              ...props.project.study.loads.map((item) => ({
-                item,
-                kind: 'load' as const,
-                detail: loadDescription(item, props.project.study.dimension),
-              })),
-            ].map(({ item, kind, detail }) => (
-              <button
-                key={`${kind}:${item.id}`}
-                onClick={() => {
-                  props.onSelectionChange?.(item.regions);
-                  if (!props.onSelectionChange && item.regions[0]) props.onSelect(item.regions[0]);
-                  props.onCondition?.(kind, item.id);
-                }}
-              >
-                <strong className={kind === 'constraint' ? 'support-key' : 'load-key'}>
-                  {kind === 'constraint' ? supportSymbol : '↗'} {item.name}
-                </strong>
-                <span>
-                  {item.regions
-                    .map(
-                      (id) =>
-                        boundaryNames.find((region) => region.id === id)?.name ?? `${id} (missing)`,
-                    )
-                    .join(', ') || 'No boundary assigned'}
-                </span>
-                <small>{detail}</small>
-              </button>
-            ))}
-          </details>
+          <DetailDialog
+            className="viewport-condition-legend"
+            title={
+              <>
+                <span className="support-key">{supportSymbol} Supports</span>
+                <span className="load-key">↗ Loads</span>
+              </>
+            }
+          >
+            <div className="viewport-condition-list">
+              <p>
+                Symbols mark undeformed boundaries. Arrows show direction; lengths are schematic.
+              </p>
+              {[
+                ...props.project.study.constraints.map((item) => ({
+                  item,
+                  kind: 'constraint' as const,
+                  detail: supportDescription(item, props.project.study.dimension),
+                })),
+                ...props.project.study.loads.map((item) => ({
+                  item,
+                  kind: 'load' as const,
+                  detail: loadDescription(item, props.project.study.dimension),
+                })),
+              ].map(({ item, kind, detail }) => (
+                <button
+                  key={`${kind}:${item.id}`}
+                  data-detail-close
+                  onClick={() => {
+                    props.onSelectionChange?.(item.regions);
+                    if (!props.onSelectionChange && item.regions[0])
+                      props.onSelect(item.regions[0]);
+                    props.onCondition?.(kind, item.id);
+                  }}
+                >
+                  <strong className={kind === 'constraint' ? 'support-key' : 'load-key'}>
+                    {kind === 'constraint' ? supportSymbol : '↗'} {item.name}
+                  </strong>
+                  <span>
+                    {item.regions
+                      .map(
+                        (id) =>
+                          boundaryNames.find((region) => region.id === id)?.name ??
+                          `${id} (missing)`,
+                      )
+                      .join(', ') || 'No boundary assigned'}
+                  </span>
+                  <small>{detail}</small>
+                </button>
+              ))}
+            </div>
+          </DetailDialog>
         )}
       {error && <div className="viewport-error">{error}</div>}
       <ViewportTools
