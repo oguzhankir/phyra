@@ -1,3 +1,4 @@
+import DetailDialog from '../shared/ui/DetailDialog';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { invokeVerification as invoke } from '../platform/desktop/verification';
@@ -36,10 +37,9 @@ function StartupFailure({ message }: { message: string }) {
           Retry startup. If the problem continues, restart the application and review preserved
           recovery copies. Include the technical details when reporting the failure.
         </p>
-        <details>
-          <summary>Technical details</summary>
+        <DetailDialog title={<> Technical details </>}>
           <pre>{message}</pre>
-        </details>
+        </DetailDialog>
         <button className="primary" onClick={() => window.location.reload()}>
           Retry startup
         </button>

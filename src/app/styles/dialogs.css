@@ -73,11 +73,6 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.startup-failure details {
-  margin-bottom: 14px;
-  font-size: 11px;
-  color: var(--muted);
-}
 .startup-failure pre {
   padding: 10px;
   background: var(--surface-subtle);

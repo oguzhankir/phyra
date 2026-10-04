@@ -1,6 +1,8 @@
+import DetailDialog from '../../shared/ui/DetailDialog';
 import { Activity, Pause, Play } from 'lucide-react';
 import { displayValue, formatValue } from '../../domain/units';
 import { Group, Metric, NumberInput } from '../../shared/forms/PropertyControls';
+import Select from '../../shared/ui/Select';
 
 import type { ProjectInspectorModel } from './model';
 export default function ResultsInspector({ workbench }: { workbench: ProjectInspectorModel }) {
@@ -81,8 +83,7 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
             value={currentData.manifest.summary.strainEnergy}
             unit="J"
           />
-          <details className="inspector-disclosure">
-            <summary>Equilibrium and execution details</summary>
+          <DetailDialog title={<> Equilibrium and execution details </>}>
             <div className="inspector-disclosure-body">
               <Metric
                 label="Force imbalance"
@@ -125,7 +126,7 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
                 Stresses use tensor shear components.
               </p>
             </div>
-          </details>
+          </DetailDialog>
           <p className="property-hint">
             {currentData.manifest.operation === 'train'
               ? 'Learned fields require independent comparison before engineering interpretation.'
@@ -155,8 +156,7 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
               unit="%"
             />
           )}
-          <details className="inspector-disclosure">
-            <summary>Reference errors and assumptions</summary>
+          <DetailDialog title={<> Reference errors and assumptions </>}>
             <div className="inspector-disclosure-body">
               <Metric
                 label="Maximum displacement error"
@@ -195,7 +195,7 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
                 thickness.
               </p>
             </div>
-          </details>
+          </DetailDialog>
           <p className="property-hint">
             Agreement with an independent analytical field. Refine the mesh to assess convergence.
           </p>
@@ -204,15 +204,17 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
       <Group title="Deformation display">
         <label className="field-label">
           <span>Deformation</span>
-          <select
+          <Select
+            aria-label="Deformation"
             value={deformation}
-            onChange={(event) => setDeformation(event.target.value as typeof deformation)}
-          >
-            <option value="off">Undeformed</option>
-            <option value="actual">Actual scale · ×1</option>
-            <option value="auto">Auto amplification</option>
-            <option value="custom">Custom amplification</option>
-          </select>
+            options={[
+              { value: 'off', label: 'Undeformed' },
+              { value: 'actual', label: 'Actual scale · ×1' },
+              { value: 'auto', label: 'Auto amplification' },
+              { value: 'custom', label: 'Custom amplification' },
+            ]}
+            onChange={(value) => setDeformation(value as typeof deformation)}
+          />
         </label>
         {deformation === 'custom' && (
           <NumberInput
@@ -239,15 +241,14 @@ export default function ResultsInspector({ workbench }: { workbench: ProjectInsp
         <p className="property-hint">
           Animation cycles a static solution, not a dynamic simulation.
         </p>
-        <details className="inspector-disclosure">
-          <summary>About deformation scale</summary>
+        <DetailDialog title={<> About deformation scale </>}>
           <div className="inspector-disclosure-body">
             <p className="property-hint">
               Amplification uses displacement and model size, independent of the contour field. Gray
               edges show the undeformed outline.
             </p>
           </div>
-        </details>
+        </DetailDialog>
       </Group>
       <p className="property-hint">
         Export retains authoritative SI values and element stress fields.

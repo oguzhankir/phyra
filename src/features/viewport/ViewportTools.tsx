@@ -11,6 +11,7 @@ import {
   Flag,
 } from 'lucide-react';
 import type { CameraView } from './camera';
+import Select from '../../shared/ui/Select';
 
 type Props = {
   dimension: '2d' | '3d';
@@ -61,29 +62,27 @@ export default function ViewportTools(props: Props) {
         <span className="viewport-tool-divider" />
         <label className="viewport-view-label">
           <span>View</span>
-          <select
+          <Select
             aria-label="Camera orientation"
+            compact
             value={props.dimension === '2d' ? 'top' : props.view}
             disabled={props.dimension === '2d'}
-            onChange={(event) => props.onView(event.target.value as CameraView)}
-          >
-            {props.dimension === '2d' ? (
-              <option value="top">Plan · XY</option>
-            ) : (
-              <>
-                <option value="custom" disabled>
-                  Custom orientation
-                </option>
-                <option value="isometric">Isometric</option>
-                <option value="front">Front · −Y</option>
-                <option value="back">Back · +Y</option>
-                <option value="right">Right · +X</option>
-                <option value="left">Left · −X</option>
-                <option value="top">Top · +Z</option>
-                <option value="bottom">Bottom · −Z</option>
-              </>
-            )}
-          </select>
+            onChange={(value) => props.onView(value as CameraView)}
+            options={
+              props.dimension === '2d'
+                ? [{ value: 'top', label: 'Plan · XY' }]
+                : [
+                    { value: 'custom', label: 'Custom orientation', disabled: true },
+                    { value: 'isometric', label: 'Isometric' },
+                    { value: 'front', label: 'Front · −Y' },
+                    { value: 'back', label: 'Back · +Y' },
+                    { value: 'right', label: 'Right · +X' },
+                    { value: 'left', label: 'Left · −X' },
+                    { value: 'top', label: 'Top · +Z' },
+                    { value: 'bottom', label: 'Bottom · −Z' },
+                  ]
+            }
+          />
         </label>
       </div>
       <div className="viewport-action-group viewport-selection-tools">

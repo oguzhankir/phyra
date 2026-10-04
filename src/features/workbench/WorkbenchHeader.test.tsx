@@ -41,7 +41,7 @@ describe('workbench navigation', () => {
     expect(markup).not.toContain('Project file help');
   });
 
-  it('identifies action search and uses an accessible icon for chat', () => {
+  it('identifies action search and identifies the AI assistant and exposes proper application menus', () => {
     const markup = header();
     expect(markup).toContain('Search actions');
     expect(markup).toContain('<kbd>⌘/Ctrl K</kbd>');
@@ -49,7 +49,10 @@ describe('workbench navigation', () => {
     expect(markup).toMatch(
       /<button[^>]*class="assistant-launcher"[^>]*aria-label="Open AI assistant"[^>]*><svg/,
     );
-    expect(markup).toContain('Open chat · Ctrl/⌘ J');
+    expect(markup).toContain('Open AI assistant · Ctrl/⌘ J');
+    expect(markup.match(/aria-haspopup="menu"/g)).toHaveLength(3);
+    expect(markup).not.toContain('<details');
+    expect(markup).toContain('lucide-sparkles');
     expect(markup).not.toContain('>Assistant<');
   });
 });

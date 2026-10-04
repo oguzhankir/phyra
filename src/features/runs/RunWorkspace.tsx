@@ -218,8 +218,8 @@ export default function RunWorkspace({
                       measures integration sensitivity, separately from residuals and FEM field
                       comparison; it is not a field-error bound.
                     </p>
-                    <details className="run-details">
-                      <summary>Energy units and quadrature</summary>
+                    <section className="run-details">
+                      <h4>Energy units and quadrature</h4>
                       <p>
                         {energy.definition}. One dimensionless energy unit corresponds to{' '}
                         {formatValue(energy.physicalScale)} J.
@@ -230,7 +230,7 @@ export default function RunWorkspace({
                         {energy.boundaryPoints.toLocaleString()} boundary points.
                       </p>
                       <p>Audit: {energy.auditQuadrature}.</p>
-                    </details>
+                    </section>
                   </>
                 ) : (
                   <p>
@@ -415,10 +415,10 @@ export default function RunWorkspace({
                 </strong>
               </div>
               {jobId && (
-                <details className="run-details run-fact wide">
-                  <summary>Run identity</summary>
+                <section className="run-details run-fact wide">
+                  <h4>Run identity</h4>
                   <code className="run-id">{jobId}</code>
-                </details>
+                </section>
               )}
             </div>
             {manifest ? (
@@ -433,8 +433,8 @@ export default function RunWorkspace({
                   </span>
                   <strong>{manifest.statistics.cells.toLocaleString()}</strong>
                 </div>
-                <details className="run-details run-fact wide">
-                  <summary>Provenance</summary>
+                <section className="run-details run-fact wide">
+                  <h4>Provenance</h4>
                   <strong>Study revision {manifest.revision}</strong>
                   <p className="property-hint">
                     {project.study.formulation === 'plane-stress'
@@ -449,7 +449,7 @@ export default function RunWorkspace({
                       ? new Date(manifest.startedAt).toLocaleString()
                       : 'This run belongs to the exact saved input definition.'}
                   </p>
-                </details>
+                </section>
               </div>
             ) : execution ? (
               <div className="run-facts">

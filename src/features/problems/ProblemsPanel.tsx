@@ -1,3 +1,4 @@
+import DetailDialog from '../../shared/ui/DetailDialog';
 import './ProblemsPanel.css';
 import { AlertCircle, ChevronDown, ChevronUp, Info, TriangleAlert, X } from 'lucide-react';
 import type { Problem } from './problems';
@@ -56,10 +57,9 @@ export default function ProblemsPanel({ problems, open, onToggle, onAction, onDi
                   {problem.action}
                 </button>
                 {problem.details && (
-                  <details className="problem-details">
-                    <summary>Technical details</summary>
+                  <DetailDialog title={<> Technical details </>}>
                     <pre>{problem.details}</pre>
-                  </details>
+                  </DetailDialog>
                 )}
               </div>
               {problem.id === 'operation' && (

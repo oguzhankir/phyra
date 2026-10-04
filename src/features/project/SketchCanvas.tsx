@@ -28,6 +28,7 @@ import {
 import { formatValue } from '../../domain/units';
 import { NumberInput, NumericDraftContext } from '../../shared/forms/PropertyControls';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
+import Select from '../../shared/ui/Select';
 import './SketchCanvas.css';
 
 type Tool = 'select' | 'rectangle' | 'polyline' | 'hole' | 'slot';
@@ -677,12 +678,17 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
                   </label>
                   <label className="field-label">
                     <span>Curve</span>
-                    <select
+                    <Select
+                      aria-label="Curve"
                       value={selectedEdge.kind}
-                      onChange={(event) =>
+                      options={[
+                        { value: 'line', label: 'Straight line' },
+                        { value: 'arc', label: 'Circular arc' },
+                      ]}
+                      onChange={(value) =>
                         update((next) => {
                           const edge = next.outer[selection.index];
-                          edge.kind = event.target.value as 'line' | 'arc';
+                          edge.kind = value as 'line' | 'arc';
                           if (edge.kind === 'arc') {
                             edge.center = [
                               (edge.start[0] + edge.end[0]) / 2,
@@ -695,10 +701,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
                           }
                         })
                       }
-                    >
-                      <option value="line">Straight line</option>
-                      <option value="arc">Circular arc</option>
-                    </select>
+                    />
                   </label>
                   {selectedEdge.kind === 'arc' && selectedEdge.center && (
                     <>
@@ -727,17 +730,19 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
                       )}
                       <label className="field-label">
                         <span>Arc direction</span>
-                        <select
+                        <Select
+                          aria-label="Arc direction"
                           value={selectedEdge.clockwise ? 'cw' : 'ccw'}
-                          onChange={(event) =>
+                          options={[
+                            { value: 'ccw', label: 'Counterclockwise' },
+                            { value: 'cw', label: 'Clockwise' },
+                          ]}
+                          onChange={(value) =>
                             update((next) => {
-                              next.outer[selection.index].clockwise = event.target.value === 'cw';
+                              next.outer[selection.index].clockwise = value === 'cw';
                             })
                           }
-                        >
-                          <option value="ccw">Counterclockwise</option>
-                          <option value="cw">Clockwise</option>
-                        </select>
+                        />
                       </label>
                     </>
                   )}

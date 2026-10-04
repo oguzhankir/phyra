@@ -1,7 +1,9 @@
+import DetailDialog from '../../shared/ui/DetailDialog';
 import { Plus, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import type { Profile, Point2 } from '../../domain/contracts/project.generated';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
+import Select from '../../shared/ui/Select';
 import { freshBoundaryId, setArcRadius } from '../../domain/project/profile';
 import type { ProjectInspectorModel } from './model';
 import SketchCanvas from './SketchCanvas';
@@ -110,10 +112,15 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
           assignment repair.
         </p>
         {profile.outer.map((segment, index) => (
-          <details key={index}>
-            <summary>
-              {index + 1}. {segment.name} · {segment.kind} <code>{segment.id}</code>
-            </summary>
+          <DetailDialog
+            key={index}
+            title={
+              <>
+                {' '}
+                {index + 1}. {segment.name} · {segment.kind} <code>{segment.id}</code>{' '}
+              </>
+            }
+          >
             <label className="field-label">
               <span>Boundary name</span>
               <input
@@ -140,12 +147,17 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
             </label>
             <label className="field-label">
               <span>Exact curve</span>
-              <select
+              <Select
+                aria-label="Exact curve"
                 value={segment.kind}
-                onChange={(event) =>
+                options={[
+                  { value: 'line', label: 'Straight line' },
+                  { value: 'arc', label: 'Circular arc' },
+                ]}
+                onChange={(value) =>
                   change((next) => {
                     const edge = next.outer[index];
-                    edge.kind = event.target.value as 'line' | 'arc';
+                    edge.kind = value as 'line' | 'arc';
                     if (edge.kind === 'arc') {
                       edge.center ??= [
                         (edge.start[0] + edge.end[0]) / 2,
@@ -158,10 +170,7 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
                     }
                   })
                 }
-              >
-                <option value="line">Straight line</option>
-                <option value="arc">Circular arc</option>
-              </select>
+              />
             </label>
             {pointEditor('Start', segment.start, (value, axis) =>
               change((next) => {
@@ -203,17 +212,19 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
                 )}
                 <label className="field-label">
                   <span>Arc traversal</span>
-                  <select
+                  <Select
+                    aria-label="Arc traversal"
                     value={segment.clockwise ? 'clockwise' : 'counterclockwise'}
-                    onChange={(event) =>
+                    options={[
+                      { value: 'counterclockwise', label: 'Counterclockwise' },
+                      { value: 'clockwise', label: 'Clockwise' },
+                    ]}
+                    onChange={(value) =>
                       change((next) => {
-                        next.outer[index].clockwise = event.target.value === 'clockwise';
+                        next.outer[index].clockwise = value === 'clockwise';
                       })
                     }
-                  >
-                    <option value="counterclockwise">Counterclockwise</option>
-                    <option value="clockwise">Clockwise</option>
-                  </select>
+                  />
                 </label>
               </>
             )}
@@ -229,7 +240,7 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
               <Trash2 size={14} />
               Delete edge
             </button>
-          </details>
+          </DetailDialog>
         ))}
       </Group>
       <Group
@@ -268,10 +279,15 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
           </p>
         )}
         {profile.holes.map((hole, index) => (
-          <details key={index}>
-            <summary>
-              {hole.name} <code>{hole.id}</code>
-            </summary>
+          <DetailDialog
+            key={index}
+            title={
+              <>
+                {' '}
+                {hole.name} <code>{hole.id}</code>{' '}
+              </>
+            }
+          >
             <label className="field-label">
               <span>Boundary name</span>
               <input
@@ -322,7 +338,7 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
               <Trash2 size={14} />
               Delete hole
             </button>
-          </details>
+          </DetailDialog>
         ))}
       </Group>
     </>
