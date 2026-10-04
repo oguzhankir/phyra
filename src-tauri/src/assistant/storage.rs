@@ -138,29 +138,361 @@ pub fn atomic_json<T: Serialize>(path: &Path, value: &T, maximum: usize) -> Resu
         .map_err(|_| "Could not atomically save assistant storage")?;
     Ok(())
 }
+const MAX_CONNECTIONS: usize = 16;
+const MAX_SETTINGS: usize = 4 * 1024 * 1024;
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacySettings {
+    format_version: u32,
+    settings: Settings,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredConnection {
+    settings: Settings,
+    models: Vec<Model>,
+}
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredSettings {
     format_version: u32,
     settings: Settings,
+    connections: Vec<StoredConnection>,
+}
+fn same_connection(left: &Settings, right: &Settings) -> Result<bool, String> {
+    Ok(left.provider == right.provider
+        && left.local == right.local
+        && validate_settings(left, false)?
+            .as_str()
+            .trim_end_matches('/')
+            == validate_settings(right, false)?
+                .as_str()
+                .trim_end_matches('/'))
+}
+fn validate_models(models: &[Model]) -> Result<(), String> {
+    if models.len() > 500 {
+        return Err("A provider connection can report at most 500 models".into());
+    }
+    let mut ids = HashSet::new();
+    for model in models {
+        if model.id.is_empty()
+            || model.id.len() > 200
+            || !model
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))
+            || !ids.insert(&model.id)
+            || model.name.is_empty()
+            || model.name.len() > 200
+            || model.name.chars().any(char::is_control)
+            || !matches!(model.streaming.as_str(), "supported" | "unknown")
+            || model.context_tokens == Some(0)
+            || model.output_tokens == Some(0)
+        {
+            return Err("Invalid provider model metadata".into());
+        }
+        reject_credentials(&model.id, None)?;
+        reject_credentials(&model.name, None)?;
+    }
+    Ok(())
+}
+fn validate_stored(stored: &StoredSettings) -> Result<(), String> {
+    if stored.format_version != 2 || stored.connections.len() > MAX_CONNECTIONS {
+        return Err("Unsupported assistant settings version or connection limit".into());
+    }
+    validate_settings(&stored.settings, false)?;
+    for (index, connection) in stored.connections.iter().enumerate() {
+        validate_settings(&connection.settings, false)?;
+        validate_models(&connection.models)?;
+        for previous in &stored.connections[..index] {
+            if same_connection(&previous.settings, &connection.settings)? {
+                return Err("Duplicate assistant provider connection".into());
+            }
+        }
+    }
+    Ok(())
+}
+fn read_stored_with(
+    directory: &Path,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
+) -> Result<StoredSettings, String> {
+    let path = directory.join("settings.json");
+    if !path.exists() {
+        return Ok(StoredSettings {
+            format_version: 2,
+            settings: Settings::default(),
+            connections: vec![],
+        });
+    }
+    let bytes = read_owned_bytes(&path, MAX_SETTINGS as u64)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "Unsupported or malformed assistant storage")?;
+    match value
+        .get("formatVersion")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(2) => {
+            let stored: StoredSettings = serde_json::from_value(value)
+                .map_err(|_| "Unsupported or malformed assistant storage")?;
+            validate_stored(&stored)?;
+            Ok(stored)
+        }
+        Some(1) => {
+            if bytes.len() > 4096 {
+                return Err("Legacy assistant settings exceed their limit".into());
+            }
+            let legacy: LegacySettings = serde_json::from_value(value)
+                .map_err(|_| "Unsupported or malformed assistant storage")?;
+            validate_settings(&legacy.settings, false)?;
+            let mut candidates = vec![legacy.settings.clone()];
+            // Earlier releases retained official keys when users switched providers.
+            // Recover item presence only: no decryption, provider call or implicit reconnect.
+            for provider in [Provider::Gemini, Provider::Openai, Provider::Anthropic] {
+                let settings = Settings {
+                    provider,
+                    endpoint: official_endpoint(provider).unwrap().into(),
+                    ..Settings::default()
+                };
+                if !candidates
+                    .iter()
+                    .any(|other| same_connection(other, &settings).unwrap_or(false))
+                {
+                    candidates.push(settings);
+                }
+            }
+            let mut connections = Vec::new();
+            for settings in candidates {
+                if (settings.local && !settings.model.is_empty())
+                    || (!settings.local && present(&settings).unwrap_or(true))
+                {
+                    connections.push(StoredConnection {
+                        settings,
+                        models: vec![],
+                    });
+                }
+            }
+            Ok(StoredSettings {
+                format_version: 2,
+                settings: legacy.settings,
+                connections,
+            })
+        }
+        _ => Err("Unsupported assistant settings version".into()),
+    }
+}
+fn write_stored(directory: &Path, stored: &StoredSettings) -> Result<(), String> {
+    validate_stored(stored)?;
+    atomic_json(&directory.join("settings.json"), stored, MAX_SETTINGS)
+}
+fn configuration_with(
+    stored: StoredSettings,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
+) -> Result<Configuration, String> {
+    let mut connections = Vec::new();
+    for connection in stored.connections {
+        let (credential_present, error) = if connection.settings.local {
+            (false, None)
+        } else {
+            match present(&connection.settings) {
+                Ok(present) => (present, None),
+                Err(_) => (false, Some(CREDENTIAL_ACCESS_ERROR.into())),
+            }
+        };
+        connections.push(Connection {
+            settings: connection.settings,
+            credential_present,
+            models: connection.models,
+            error,
+        });
+    }
+    let credential_present = connections
+        .iter()
+        .find(|connection| same_connection(&connection.settings, &stored.settings).unwrap_or(false))
+        .is_some_and(|connection| connection.credential_present);
+    Ok(Configuration {
+        settings: stored.settings,
+        credential_present,
+        connections,
+    })
+}
+pub fn read_configuration(directory: &Path) -> Result<Configuration, String> {
+    let mut present = credential_present;
+    configuration_with(read_stored_with(directory, &mut present)?, &mut present)
 }
 pub fn read_settings(directory: &Path) -> Result<Settings, String> {
+    // Ordinary history/snapshot reads need active provenance, not a key inventory.
     let path = directory.join("settings.json");
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let stored: StoredSettings = read_json(&path, 4096)?;
-    if stored.format_version != 1 {
-        return Err("Unsupported assistant settings version".into());
+    let value: serde_json::Value = read_json(&path, MAX_SETTINGS as u64)?;
+    let settings = match value
+        .get("formatVersion")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(1) => serde_json::from_value::<LegacySettings>(value).map(|stored| stored.settings),
+        Some(2) => {
+            let stored: StoredSettings = serde_json::from_value(value)
+                .map_err(|_| "Unsupported or malformed assistant storage")?;
+            validate_stored(&stored)?;
+            return Ok(stored.settings);
+        }
+        _ => return Err("Unsupported assistant settings version".into()),
     }
-    validate_settings(&stored.settings, false)?;
-    Ok(stored.settings)
+    .map_err(|_| "Unsupported or malformed assistant storage")?;
+    validate_settings(&settings, false)?;
+    Ok(settings)
 }
-pub fn write_settings(directory: &Path, settings: Settings) -> Result<(), String> {
+fn save_connection_with(
+    directory: &Path,
+    settings: Settings,
+    models: Vec<Model>,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
+) -> Result<Configuration, String> {
+    validate_settings(&settings, false)?;
+    validate_models(&models)?;
+    if !settings.local && !present(&settings)? {
+        return Err("Store a provider credential before connecting".into());
+    }
+    let mut stored = read_stored_with(directory, present)?;
+    if let Some(connection) = stored
+        .connections
+        .iter_mut()
+        .find(|connection| same_connection(&connection.settings, &settings).unwrap_or(false))
+    {
+        connection.settings = settings.clone();
+        connection.models = models;
+    } else {
+        if stored.connections.len() >= MAX_CONNECTIONS {
+            return Err("At most 16 assistant connections can be saved".into());
+        }
+        stored.connections.push(StoredConnection {
+            settings: settings.clone(),
+            models,
+        });
+    }
+    let active_ready = !stored.settings.model.is_empty()
+        && stored.connections.iter().any(|connection| {
+            same_connection(&connection.settings, &stored.settings).unwrap_or(false)
+        });
+    if !active_ready {
+        stored.settings = settings;
+    }
+    write_stored(directory, &stored)?;
+    configuration_with(stored, present)
+}
+pub fn save_connection(
+    directory: &Path,
+    settings: Settings,
+    models: Vec<Model>,
+) -> Result<Configuration, String> {
+    save_connection_with(directory, settings, models, &mut credential_present)
+}
+fn refresh_connection_with(
+    directory: &Path,
+    settings: Settings,
+    models: Vec<Model>,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
+) -> Result<Configuration, String> {
+    validate_settings(&settings, false)?;
+    validate_models(&models)?;
+    let mut stored = read_stored_with(directory, present)?;
+    let connection = stored
+        .connections
+        .iter_mut()
+        .find(|connection| same_connection(&connection.settings, &settings).unwrap_or(false))
+        .ok_or("This connection was removed. Reconnect it before refreshing models.")?;
+    connection.models = models;
+    if connection.settings.model.is_empty() {
+        connection.settings.model = settings.model.clone();
+    }
+    if stored.settings.model.is_empty() && same_connection(&stored.settings, &settings)? {
+        stored.settings.model = settings.model;
+    }
+    write_stored(directory, &stored)?;
+    configuration_with(stored, present)
+}
+pub fn refresh_connection(
+    directory: &Path,
+    settings: Settings,
+    models: Vec<Model>,
+) -> Result<Configuration, String> {
+    refresh_connection_with(directory, settings, models, &mut credential_present)
+}
+pub fn preflight_connection(directory: &Path, settings: &Settings) -> Result<(), String> {
+    validate_settings(settings, false)?;
+    let stored = read_stored_with(directory, &mut credential_present)?;
+    if stored.connections.len() >= MAX_CONNECTIONS
+        && !stored
+            .connections
+            .iter()
+            .any(|connection| same_connection(&connection.settings, settings).unwrap_or(false))
+    {
+        return Err("At most 16 assistant connections can be saved".into());
+    }
+    Ok(())
+}
+pub fn remember_connection(directory: &Path, mut settings: Settings) -> Result<(), String> {
+    let stored = read_stored_with(directory, &mut credential_present)?;
+    if stored
+        .connections
+        .iter()
+        .any(|connection| same_connection(&connection.settings, &settings).unwrap_or(false))
+    {
+        return write_stored(directory, &stored);
+    }
+    settings.model.clear();
+    save_connection(directory, settings, vec![]).map(|_| ())
+}
+pub fn require_connection(directory: &Path, settings: &Settings) -> Result<(), String> {
+    let stored = read_stored_with(directory, &mut credential_present)?;
+    if !stored
+        .connections
+        .iter()
+        .any(|connection| same_connection(&connection.settings, settings).unwrap_or(false))
+    {
+        return Err("Connect this provider before sending a message".into());
+    }
+    Ok(())
+}
+fn select_settings_with(
+    directory: &Path,
+    settings: Settings,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
+) -> Result<Configuration, String> {
+    validate_settings(&settings, true)?;
+    let mut stored = read_stored_with(directory, present)?;
+    let connection = stored
+        .connections
+        .iter_mut()
+        .find(|connection| same_connection(&connection.settings, &settings).unwrap_or(false))
+        .ok_or("Connect this provider before choosing a model")?;
+    if !settings.local && !present(&settings)? {
+        return Err("Reconnect this provider before choosing a model".into());
+    }
+    if !connection.models.is_empty()
+        && !connection
+            .models
+            .iter()
+            .any(|model| model.id == settings.model)
+    {
+        return Err("Refresh this connection to choose an available model".into());
+    }
+    connection.settings.model = settings.model.clone();
+    stored.settings = settings;
+    write_stored(directory, &stored)?;
+    configuration_with(stored, present)
+}
+pub fn select_settings(directory: &Path, settings: Settings) -> Result<Configuration, String> {
+    select_settings_with(directory, settings, &mut credential_present)
+}
+#[cfg(test)]
+fn write_settings(directory: &Path, settings: Settings) -> Result<(), String> {
+    // Legacy fixtures exercise in-memory migration rather than pre-populating keys.
     validate_settings(&settings, false)?;
     atomic_json(
         &directory.join("settings.json"),
-        &StoredSettings {
+        &LegacySettings {
             format_version: 1,
             settings,
         },
@@ -223,9 +555,17 @@ pub fn credential_present(settings: &Settings) -> Result<bool, String> {
             Err(_) => Err(CREDENTIAL_ACCESS_ERROR.into()),
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        Ok(credential(settings)?.is_some())
+        match entry(settings)?.get_attributes() {
+            Ok(_) => Ok(true),
+            Err(keyring::Error::NoEntry) => Ok(false),
+            Err(_) => Err(CREDENTIAL_ACCESS_ERROR.into()),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("Secure provider credentials are supported on macOS and Windows".into())
     }
 }
 pub fn store_credential(settings: &Settings, value: Zeroizing<String>) -> Result<(), String> {
@@ -249,36 +589,59 @@ pub fn delete_credential(settings: &Settings) -> Result<(), String> {
     }
 }
 pub fn disconnect(directory: &Path, expected: &Settings) -> Result<Configuration, String> {
-    disconnect_with(directory, expected, delete_credential)
+    disconnect_with(
+        directory,
+        expected,
+        delete_credential,
+        &mut credential_present,
+    )
 }
 fn disconnect_with(
     directory: &Path,
     expected: &Settings,
     remove: impl FnOnce(&Settings) -> Result<(), String>,
+    present: &mut impl FnMut(&Settings) -> Result<bool, String>,
 ) -> Result<Configuration, String> {
-    let mut settings = read_settings(directory)?;
     validate_settings(expected, false)?;
-    if settings.provider != expected.provider
-        || settings.endpoint != expected.endpoint
-        || settings.local != expected.local
-        || settings.model != expected.model
-    {
-        return Err(
-            "The active connection changed. Reopen Connection before disconnecting.".into(),
-        );
+    let mut stored = read_stored_with(directory, present)?;
+    let index = stored
+        .connections
+        .iter()
+        .position(|connection| same_connection(&connection.settings, expected).unwrap_or(false))
+        .ok_or("This connection changed. Reopen Connections before disconnecting.")?;
+    let connection = &stored.connections[index].settings;
+    // Multiple endpoint paths can share one provider-origin key. Keep the key while
+    // another saved connection uses it; disconnect only the chosen endpoint.
+    let shared_key = !connection.local
+        && stored
+            .connections
+            .iter()
+            .enumerate()
+            .any(|(other_index, other)| {
+                other_index != index
+                    && credential_account(&other.settings).ok()
+                        == credential_account(connection).ok()
+            });
+    if !connection.local && !shared_key {
+        remove(connection)?;
     }
-    if !settings.local {
-        remove(&settings)?;
+    stored.connections.remove(index);
+    if same_connection(&stored.settings, expected)? {
+        stored.settings = stored
+            .connections
+            .first()
+            .map(|connection| connection.settings.clone())
+            .unwrap_or_else(|| {
+                let mut settings = expected.clone();
+                settings.model.clear();
+                settings
+            });
     }
-    settings.model.clear();
-    write_settings(directory, settings.clone()).map_err(|_| {
+    write_stored(directory, &stored).map_err(|_| {
         "Credential removed, but connection settings could not be updated. Retry disconnect."
             .to_string()
     })?;
-    Ok(Configuration {
-        settings,
-        credential_present: false,
-    })
+    configuration_with(stored, present)
 }
 pub fn reject_credentials(value: &str, secret: Option<&str>) -> Result<(), String> {
     if secret.is_some_and(|s| !s.is_empty() && value.contains(s)) {
@@ -573,6 +936,275 @@ mod tests {
             local: false,
         }
     }
+    fn fixture_models() -> Vec<Model> {
+        vec![Model {
+            id: "fixture".into(),
+            name: "Fixture".into(),
+            streaming: "unknown".into(),
+            context_tokens: None,
+            output_tokens: None,
+        }]
+    }
+    #[test]
+    fn catalog_refresh_cannot_resurrect_disconnected_local_or_shared_origin_connections() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = fixture_compatible("https://gateway.example/v1");
+        let second = fixture_compatible("https://gateway.example/v2");
+        let local = fixture_local();
+        for settings in [first.clone(), second.clone(), local.clone()] {
+            save_connection_with(directory.path(), settings, fixture_models(), &mut |_| {
+                Ok(true)
+            })
+            .unwrap();
+        }
+        disconnect_with(
+            directory.path(),
+            &first,
+            |_| panic!("Shared origin remains connected"),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        disconnect_with(
+            directory.path(),
+            &local,
+            |_| panic!("Local has no key"),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        let original = fs::read(directory.path().join("settings.json")).unwrap();
+        for stale in [first, local] {
+            assert!(refresh_connection_with(
+                directory.path(),
+                stale,
+                fixture_models(),
+                &mut |_| Ok(true)
+            )
+            .is_err());
+            assert_eq!(
+                fs::read(directory.path().join("settings.json")).unwrap(),
+                original
+            );
+        }
+        let refreshed =
+            refresh_connection_with(directory.path(), second, fixture_models(), &mut |_| {
+                Ok(true)
+            })
+            .unwrap();
+        assert_eq!(refreshed.connections.len(), 1);
+    }
+    #[test]
+    fn one_os_credential_status_failure_does_not_hide_other_providers_or_expose_error_details() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = fixture_compatible("https://first.example/v1");
+        let second = fixture_compatible("https://second.example/v1");
+        save_connection_with(
+            directory.path(),
+            first.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        save_connection_with(
+            directory.path(),
+            second.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        let original = fs::read(directory.path().join("settings.json")).unwrap();
+        let mut present = |settings: &Settings| {
+            if settings.endpoint == first.endpoint {
+                Err("opaque-fixture-secret".into())
+            } else {
+                Ok(true)
+            }
+        };
+        let value = configuration_with(
+            read_stored_with(directory.path(), &mut present).unwrap(),
+            &mut present,
+        )
+        .unwrap();
+        assert_eq!(value.connections.len(), 2);
+        assert!(!value.credential_present);
+        assert!(!value.connections[0].credential_present);
+        assert_eq!(
+            value.connections[0].error.as_deref(),
+            Some(CREDENTIAL_ACCESS_ERROR)
+        );
+        assert!(value.connections[1].credential_present);
+        assert!(value.connections[1].error.is_none());
+        assert!(!serde_json::to_string(&value)
+            .unwrap()
+            .contains("opaque-fixture-secret"));
+        assert_eq!(
+            fs::read(directory.path().join("settings.json")).unwrap(),
+            original
+        );
+        let selected = select_settings_with(directory.path(), second, &mut present).unwrap();
+        assert!(selected.credential_present);
+        assert_eq!(selected.settings.endpoint, "https://second.example/v1");
+    }
+    #[test]
+    fn connections_and_active_chat_selection_are_independent_and_disconnect_is_targeted() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = fixture_compatible("https://first.example/v1");
+        let second = fixture_compatible("https://second.example/v1");
+        let mut present = |_: &Settings| Ok(true);
+        let initial = save_connection_with(
+            directory.path(),
+            first.clone(),
+            fixture_models(),
+            &mut present,
+        )
+        .unwrap();
+        assert_eq!(initial.settings.endpoint, first.endpoint);
+        let both = save_connection_with(
+            directory.path(),
+            second.clone(),
+            fixture_models(),
+            &mut present,
+        )
+        .unwrap();
+        assert_eq!(both.connections.len(), 2);
+        assert_eq!(both.settings.endpoint, first.endpoint);
+        let selected =
+            select_settings_with(directory.path(), second.clone(), &mut present).unwrap();
+        assert_eq!(selected.settings.endpoint, second.endpoint);
+        assert_eq!(selected.connections[0].models[0].id, "fixture");
+        let mut removed = Vec::new();
+        let remaining = disconnect_with(
+            directory.path(),
+            &first,
+            |settings| {
+                removed.push(settings.endpoint.clone());
+                Ok(())
+            },
+            &mut present,
+        )
+        .unwrap();
+        assert_eq!(removed, vec![first.endpoint]);
+        assert_eq!(remaining.connections.len(), 1);
+        assert_eq!(remaining.settings.endpoint, second.endpoint);
+        assert!(remaining.credential_present);
+        assert_eq!(
+            read_json::<StoredSettings>(
+                &directory.path().join("settings.json"),
+                MAX_SETTINGS as u64
+            )
+            .unwrap()
+            .format_version,
+            2
+        );
+    }
+    #[test]
+    fn migration_finds_previously_approved_official_keys_without_rewriting_legacy_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            model: "fixture".into(),
+            ..Settings::default()
+        };
+        write_settings(directory.path(), settings.clone()).unwrap();
+        let original = fs::read(directory.path().join("settings.json")).unwrap();
+        let mut probed = Vec::new();
+        let mut present = |connection: &Settings| {
+            probed.push(connection.provider);
+            Ok(connection.provider != Provider::Anthropic)
+        };
+        let stored = read_stored_with(directory.path(), &mut present).unwrap();
+        assert_eq!(stored.connections.len(), 2);
+        assert_eq!(stored.settings.provider, Provider::Gemini);
+        assert_eq!(stored.settings.model, "fixture");
+        assert_eq!(
+            probed,
+            vec![Provider::Gemini, Provider::Openai, Provider::Anthropic]
+        );
+        assert_eq!(
+            fs::read(directory.path().join("settings.json")).unwrap(),
+            original
+        );
+    }
+    #[test]
+    fn endpoint_paths_share_credentials_but_can_be_disconnected_independently() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = fixture_compatible("https://gateway.example/v1");
+        let second = fixture_compatible("https://gateway.example/v2");
+        save_connection_with(
+            directory.path(),
+            first.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        save_connection_with(
+            directory.path(),
+            second.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        let remaining = disconnect_with(
+            directory.path(),
+            &first,
+            |_| panic!("Shared origin key must remain"),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        assert_eq!(remaining.connections.len(), 1);
+        assert_eq!(remaining.settings.endpoint, second.endpoint);
+    }
+    #[test]
+    fn unavailable_or_malformed_selection_preserves_registry() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = fixture_compatible("https://gateway.example/v1");
+        save_connection_with(
+            directory.path(),
+            settings.clone(),
+            fixture_models(),
+            &mut |_| Ok(true),
+        )
+        .unwrap();
+        let original = fs::read(directory.path().join("settings.json")).unwrap();
+        let mut changed = settings.clone();
+        changed.model = "unreported".into();
+        assert!(select_settings_with(directory.path(), changed, &mut |_| Ok(true)).is_err());
+        assert!(
+            select_settings_with(directory.path(), settings.clone(), &mut |_| Ok(false)).is_err()
+        );
+        let mut models = fixture_models();
+        models[0].name = "invalid\nname".into();
+        assert!(
+            save_connection_with(directory.path(), settings, models, &mut |_| Ok(true)).is_err()
+        );
+        assert_eq!(
+            fs::read(directory.path().join("settings.json")).unwrap(),
+            original
+        );
+    }
+    #[test]
+    fn connection_inventory_is_bounded_before_writing() {
+        let directory = tempfile::tempdir().unwrap();
+        for index in 0..MAX_CONNECTIONS {
+            save_connection_with(
+                directory.path(),
+                fixture_compatible(&format!("https://fixture-{index}.example/v1")),
+                fixture_models(),
+                &mut |_| Ok(true),
+            )
+            .unwrap();
+        }
+        let original = fs::read(directory.path().join("settings.json")).unwrap();
+        assert!(save_connection_with(
+            directory.path(),
+            fixture_compatible("https://additional.example/v1"),
+            fixture_models(),
+            &mut |_| Ok(true)
+        )
+        .is_err());
+        assert_eq!(
+            fs::read(directory.path().join("settings.json")).unwrap(),
+            original
+        );
+    }
     #[test]
     fn disconnect_removes_only_the_current_key_and_clears_the_persisted_model() {
         let directory = tempfile::tempdir().unwrap();
@@ -584,11 +1216,16 @@ mod tests {
             owned_path(&history_directory(directory.path()).unwrap(), &history.id).unwrap(),
         )
         .unwrap();
-        let value = disconnect_with(directory.path(), &settings, |selected| {
-            assert_eq!(selected.endpoint, settings.endpoint);
-            assert_eq!(selected.model, settings.model);
-            Ok(())
-        })
+        let value = disconnect_with(
+            directory.path(),
+            &settings,
+            |selected| {
+                assert_eq!(selected.endpoint, settings.endpoint);
+                assert_eq!(selected.model, settings.model);
+                Ok(())
+            },
+            &mut |selected| Ok(selected.provider == Provider::Compatible),
+        )
         .unwrap();
         assert!(value.settings.model.is_empty());
         assert!(!value.credential_present);
@@ -607,9 +1244,12 @@ mod tests {
         let settings = fixture_compatible("https://fixture.example/v1");
         write_settings(directory.path(), settings.clone()).unwrap();
         let previous = fs::read(directory.path().join("settings.json")).unwrap();
-        assert!(disconnect_with(directory.path(), &settings, |_| Err(
-            "Fixture OS failure".into()
-        ))
+        assert!(disconnect_with(
+            directory.path(),
+            &settings,
+            |_| Err("Fixture OS failure".into()),
+            &mut |_| Ok(true)
+        )
         .is_err());
         assert_eq!(
             fs::read(directory.path().join("settings.json")).unwrap(),
@@ -620,9 +1260,12 @@ mod tests {
     fn local_disconnect_does_not_access_the_os_credential_store() {
         let directory = tempfile::tempdir().unwrap();
         write_settings(directory.path(), fixture_local()).unwrap();
-        let value = disconnect_with(directory.path(), &fixture_local(), |_| {
-            panic!("Local endpoints have no managed key")
-        })
+        let value = disconnect_with(
+            directory.path(),
+            &fixture_local(),
+            |_| panic!("Local endpoints have no managed key"),
+            &mut |_| Ok(false),
+        )
         .unwrap();
         assert!(value.settings.model.is_empty());
         assert!(value.settings.local);
@@ -644,7 +1287,8 @@ mod tests {
         assert!(disconnect_with(
             directory.path(),
             &fixture_compatible("https://fixture.example/v1"),
-            |_| panic!("A stale confirmation cannot remove a different key")
+            |_| panic!("A stale confirmation cannot remove a different key"),
+            &mut |_| Ok(false)
         )
         .is_err());
         assert_eq!(read_settings(directory.path()).unwrap().model, "fixture");

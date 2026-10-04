@@ -4,7 +4,7 @@ import { ASSISTANT_DEFAULTS } from '../../domain/assistant/types';
 import AssistantPanel, { type AssistantViewModel } from './AssistantPanel';
 
 const session = (unsaved: boolean): AssistantViewModel => ({
-  configuration: { settings: ASSISTANT_DEFAULTS.gemini, credentialPresent: true },
+  configuration: { settings: ASSISTANT_DEFAULTS.gemini, credentialPresent: true, connections: [] },
   conversation: {
     formatVersion: 1,
     id: 'conversation',
@@ -21,10 +21,12 @@ const session = (unsaved: boolean): AssistantViewModel => ({
   retrySave: vi.fn(async () => {}),
   restoreSaved: vi.fn(async () => {}),
   configured: vi.fn(),
+  selectModel: vi.fn(async () => {}),
+  refreshModels: vi.fn(async () => {}),
   send: vi.fn(async () => false),
   stop: vi.fn(async () => {}),
   newConversation: vi.fn(),
-  openConversation: vi.fn(async () => {}),
+  openConversation: vi.fn(async () => true),
   removeConversation: vi.fn(async () => {}),
 });
 
@@ -58,11 +60,15 @@ it('removes the failure notice after saving and permits a new conversation', () 
   expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="New assistant conversation"/);
 });
 
-it('keeps context choice explicit without repeated checkbox controls', () => {
+it('starts a streamlined assistant without context chips or recurring approval UI', () => {
   const html = markup(session(false));
-  expect(html).toContain('Help only');
-  expect(html).toContain('This study');
+  expect(html).not.toContain('Help only');
+  expect(html).not.toContain('This study');
   expect(html).not.toContain('type="checkbox"');
-  expect(html).toContain('Models and providers');
+  expect(html).toContain('AI connections');
+  expect(html).toContain('AI assistant');
+  expect(html).not.toContain('Shift Enter');
+  expect(html).not.toContain('Confirm conversation sharing');
+  expect(html).not.toContain('<details');
   expect(html).not.toContain('Local MCP access');
 });

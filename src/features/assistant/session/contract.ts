@@ -17,7 +17,9 @@ export interface AssistantViewModel {
   unsaved: boolean;
   retrySave: () => Promise<void>;
   restoreSaved: () => Promise<void>;
-  configured: (settings: AssistantSettings, credentialPresent: boolean) => void;
+  configured: (configuration: AssistantConfiguration) => void;
+  selectModel: (settings: AssistantSettings) => Promise<void>;
+  refreshModels: (settings: AssistantSettings) => Promise<void>;
   send: (
     question: string,
     context: AssistantContext,
@@ -26,7 +28,7 @@ export interface AssistantViewModel {
   ) => Promise<boolean>;
   stop: () => Promise<void>;
   newConversation: () => void;
-  openConversation: (id: string) => Promise<void>;
+  openConversation: (id: string) => Promise<boolean>;
   removeConversation: (id: string) => Promise<void>;
 }
 

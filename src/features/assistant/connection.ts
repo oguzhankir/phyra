@@ -1,4 +1,8 @@
-import { assistantModelChoices } from '../../domain/assistant/models';
+import {
+  assistantConnectionKey,
+  assistantConnectionReady,
+  assistantModelChoices,
+} from '../../domain/assistant/models';
 import type {
   AssistantConfiguration,
   AssistantModel,
@@ -6,19 +10,19 @@ import type {
 } from '../../domain/assistant/types';
 import {
   listAssistantModels,
-  saveAssistantSettings,
+  saveAssistantConnection,
   storeAssistantCredential,
 } from '../../platform/desktop/assistant';
 
 interface ConnectionTransport {
   storeCredential: typeof storeAssistantCredential;
   listModels: typeof listAssistantModels;
-  saveSettings: typeof saveAssistantSettings;
+  saveConnection: typeof saveAssistantConnection;
 }
 const nativeConnection: ConnectionTransport = {
   storeCredential: storeAssistantCredential,
   listModels: listAssistantModels,
-  saveSettings: saveAssistantSettings,
+  saveConnection: saveAssistantConnection,
 };
 
 export function connectionIsActive(
@@ -26,20 +30,22 @@ export function connectionIsActive(
   settings: AssistantSettings,
 ): boolean {
   return Boolean(
-    configuration?.settings.model &&
-    configuration.settings.provider === settings.provider &&
-    configuration.settings.endpoint === settings.endpoint &&
-    (configuration.settings.local || configuration.credentialPresent),
+    configuration?.connections.some(
+      (connection) =>
+        assistantConnectionKey(connection.settings) === assistantConnectionKey(settings) &&
+        assistantConnectionReady(connection),
+    ),
   );
 }
 
-type ConnectionOutcome =
-  | { type: 'connected'; configuration: AssistantConfiguration; models: AssistantModel[] | null }
-  | { type: 'choose-model'; models: AssistantModel[] };
+type ConnectionOutcome = {
+  type: 'connected';
+  configuration: AssistantConfiguration;
+  models: AssistantModel[];
+};
 
 // One explicit action owns credential storage, account discovery and persistence.
-// Keys only cross the native bridge for storage; this operation never retrieves
-// keys or puts one into configuration, a model list, or its returned outcome.
+// Keys cross the native bridge only for OS storage and never enter returned state.
 export async function connectAssistantProvider(
   input: {
     settings: AssistantSettings;
@@ -57,25 +63,32 @@ export async function connectAssistantProvider(
     await transport.storeCredential(settings, input.credential.trim());
     input.onCredentialStored?.();
   }
-  let models = input.models;
-  // Updating a connected model does not need to read an OS key or make a new
-  // provider request. A first connection loads models and checks account access.
-  if (!connectionIsActive(input.configuration, settings) || newKey || !settings.model) {
+  const existing = input.configuration?.connections.find(
+    (connection) =>
+      assistantConnectionKey(connection.settings) === assistantConnectionKey(settings),
+  );
+  let models = input.models ?? existing?.models ?? [];
+  if (!connectionIsActive(input.configuration, settings) || newKey || !models.length) {
     models = await transport.listModels(settings);
     input.onModelsReported?.(models);
   }
-  if (models !== null) {
-    const choices = assistantModelChoices(settings.provider, models);
-    if (!choices.some((choice) => choice.available))
-      throw new Error(
-        'No text models were reported by this connection. Check your endpoint or provider access.',
-      );
-    if (!choices.some((choice) => choice.id === settings.model && choice.available))
-      return { type: 'choose-model', models };
-  }
+  const choices = assistantModelChoices(settings.provider, models).filter(
+    (choice) => choice.available,
+  );
+  if (!choices.length)
+    throw new Error(
+      'No text models were reported by this connection. Check your endpoint or provider access.',
+    );
+  // Connections do not ask users to choose a model. Preserve their saved choice
+  // where available; the first reported text model initializes a new connection.
+  const preferred = settings.model || existing?.settings.model;
+  const selected = {
+    ...settings,
+    model: choices.find((choice) => choice.id === preferred)?.id ?? choices[0].id,
+  };
   return {
     type: 'connected',
-    configuration: await transport.saveSettings(settings),
+    configuration: await transport.saveConnection(selected, models),
     models,
   };
 }

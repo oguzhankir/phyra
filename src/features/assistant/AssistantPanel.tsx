@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { History, MessageCircle, Plug, Plus, Settings2, X } from 'lucide-react';
-import type { AssistantContext } from '../../domain/assistant/types';
+import { History, Sparkles, Plug, Plus, Settings2, X } from 'lucide-react';
+import type { AssistantContext, AssistantSettings } from '../../domain/assistant/types';
 import { promptHistory } from '../../domain/assistant/prompt';
-import { previouslyApproved, sharingIdentity, sharingScope } from '../../domain/assistant/sharing';
-import { saveAssistantSettings } from '../../platform/desktop/assistant';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import { ASSISTANT_SYSTEM, assistantContext, type AssistantStudyContext } from './context';
-import { providerNames } from './providers';
 import { DraftAcceptance } from './draftAcceptance';
 import type { AssistantViewModel } from './session/contract';
 import AssistantComposer from './AssistantComposer';
@@ -45,39 +42,22 @@ export default function AssistantPanel({
     draftAcceptance.current.change();
     setQuestion(value);
   }
-  const [includeStudy, setIncludeStudy] = useState(false);
+  const includeStudy = !!study;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
   const [discardUnsaved, setDiscardUnsaved] = useState(false);
   const [modelBusy, setModelBusy] = useState(false);
-  const [grant, setGrant] = useState<string | null>(null);
-  const [approval, setApproval] = useState<{
-    identity: string;
-    question: string;
-    context: AssistantContext;
-    model: string;
-    documentId: string | null;
-  } | null>(null);
-  const modalOpen = settingsOpen || integrationsOpen || !!approval;
+  const modalOpen = settingsOpen || integrationsOpen;
   useEffect(() => {
     onModalChange?.(modalOpen);
     return () => onModalChange?.(false);
   }, [modalOpen, onModalChange]);
-  useModalFocus(
-    integrationsOpen || !!approval,
-    () => {
-      setIntegrationsOpen(false);
-      setApproval(null);
-    },
-    approval ? 'share-context' : 'integrations',
-  );
+  useModalFocus(integrationsOpen, () => setIntegrationsOpen(false), 'integrations');
   useEffect(() => {
     updateQuestion('');
-    setIncludeStudy(false);
     setUiError(null);
-    setApproval(null);
     setDiscardUnsaved(false);
   }, [study?.documentId, session.conversation.id]);
   useEffect(() => {
@@ -88,13 +68,10 @@ export default function AssistantPanel({
     ) {
       consumedDraft.current = draft.id;
       updateQuestion(draft.question);
-      setIncludeStudy(draft.includeStudy && !!study);
-      setApproval(null);
     }
   }, [draft, study?.documentId]);
   useEffect(() => {
     if (!open) {
-      setApproval(null);
       setIntegrationsOpen(false);
       setSettingsOpen(false);
     }
@@ -124,10 +101,6 @@ export default function AssistantPanel({
     await session.send(text.trim(), context, true, accepted);
   }
   async function submit() {
-    if (!settings?.model || (!settings.local && !session.configuration?.credentialPresent)) {
-      setSettingsOpen(true);
-      return;
-    }
     if (
       !question.trim() ||
       session.pending ||
@@ -138,49 +111,49 @@ export default function AssistantPanel({
       !historyInput?.fits
     )
       return;
-    const scope = sharingScope(session.conversation, prepared.context);
-    const identity = sharingIdentity(session.conversation, settings, scope);
-    if (
-      !settings.local &&
-      grant !== identity &&
-      !previouslyApproved(session.conversation, settings, scope)
-    ) {
-      setApproval({
-        identity,
-        question,
-        context: prepared.context,
-        model: settings.model,
-        documentId: study?.documentId ?? null,
-      });
+    if (!settings?.model || (!settings.local && !session.configuration?.credentialPresent)) {
+      setSettingsOpen(true);
       return;
     }
+    setHistoryOpen(false);
     await transmit(question, prepared.context);
   }
-  async function selectModel(model: string) {
-    if (!settings || session.pending || modelBusy || model === settings.model) return;
+  async function selectModel(value: AssistantSettings) {
+    if (session.pending || modelBusy) return;
     setModelBusy(true);
     setUiError(null);
     try {
-      const value = await saveAssistantSettings({ ...settings, model });
-      session.configured(value.settings, value.credentialPresent);
-    } catch (failure) {
-      setUiError(typeof failure === 'string' ? failure : 'The model could not be changed.');
+      await session.selectModel(value);
+    } finally {
+      setModelBusy(false);
+    }
+  }
+  async function refreshModels() {
+    if (!settings || session.pending || modelBusy) return;
+    setModelBusy(true);
+    try {
+      await session.refreshModels(settings);
     } finally {
       setModelBusy(false);
     }
   }
   if (!open) return null;
   return (
-    <aside className="assistant-panel" aria-label="Academic assistant">
+    <aside className="assistant-panel" aria-label="AI assistant">
       <header className="assistant-header">
         <div className="assistant-heading">
-          <MessageCircle size={17} />
-          <strong>Chat</strong>
+          <span className="assistant-mark">
+            <Sparkles size={17} />
+          </span>
+          <strong>AI assistant</strong>
         </div>
         <div className="assistant-header-actions">
           <button
             type="button"
-            onClick={session.newConversation}
+            onClick={() => {
+              session.newConversation();
+              setHistoryOpen(false);
+            }}
             disabled={session.pending || session.historyBusy || session.unsaved}
             aria-label="New assistant conversation"
             title="New chat"
@@ -201,8 +174,8 @@ export default function AssistantPanel({
             type="button"
             onClick={() => setSettingsOpen(true)}
             disabled={!desktop || session.pending || modelBusy}
-            aria-label="Models and providers"
-            title="Models and providers"
+            aria-label="AI connections"
+            title="AI connections"
           >
             <Settings2 size={17} />
           </button>
@@ -241,10 +214,7 @@ export default function AssistantPanel({
           study={study}
           desktop={desktop}
           onSource={onSource}
-          onPrompt={(text, attach) => {
-            updateQuestion(text);
-            setIncludeStudy(attach);
-          }}
+          onPrompt={updateQuestion}
           onError={setUiError}
         />
       )}
@@ -293,22 +263,16 @@ export default function AssistantPanel({
         desktop={desktop}
         pending={session.pending}
         locked={session.historyBusy || session.unsaved || !historyInput?.fits}
-        includeStudy={includeStudy}
-        studyName={study?.project.name ?? null}
-        revision={study?.project.revision ?? null}
         context={prepared.context}
         error={session.error || uiError || prepared.error}
-        onScope={setIncludeStudy}
-        onModel={(model) => void selectModel(model)}
+        onModel={(value) => void selectModel(value)}
+        onRefreshModels={() => void refreshModels()}
         modelBusy={modelBusy}
         onSend={() => void submit()}
         onStop={() => void session.stop()}
         onConnect={() => setSettingsOpen(true)}
-        includedTurns={historyInput?.includedTurns ?? 0}
         omittedTurns={historyInput?.omittedTurns ?? 0}
-        priorStudy={session.conversation.messages.some(
-          (message) => message.context?.kind === 'study',
-        )}
+        focusInput={!historyOpen}
       />
       {settingsOpen && (
         <AssistantSettingsPanel
@@ -326,7 +290,7 @@ export default function AssistantPanel({
             aria-label="AI integrations"
           >
             <header>
-              <h2>Integrations</h2>
+              <h2>AI integrations</h2>
               <button
                 type="button"
                 aria-label="Close integrations"
@@ -336,63 +300,6 @@ export default function AssistantPanel({
               </button>
             </header>
             {mcpPanel}
-          </section>
-        </div>
-      )}
-      {approval && settings && (
-        <div className="modal-backdrop">
-          <section
-            className="modal assistant-sharing"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm conversation sharing"
-          >
-            <h2>Chat with {providerNames[settings.provider]}</h2>
-            <p>
-              Your question, preceding messages and{' '}
-              {sharingScope(session.conversation, approval.context) === 'study'
-                ? 'study context'
-                : 'product documentation'}{' '}
-              will be sent to this provider.
-            </p>
-            <p>
-              This permission applies to this conversation. Sharing study data or changing the
-              provider requires approval again.
-            </p>
-            <div className="assistant-sharing-destination">
-              <strong>{providerNames[settings.provider]}</strong>
-              <span>{settings.endpoint}</span>
-            </div>
-            <details className="assistant-context-preview">
-              <summary>Review context</summary>
-              <pre>{approval.context.text}</pre>
-            </details>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setApproval(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => {
-                  const scope = sharingScope(session.conversation, approval.context);
-                  if (
-                    approval.identity !== sharingIdentity(session.conversation, settings, scope) ||
-                    approval.model !== settings.model ||
-                    approval.documentId !== (study?.documentId ?? null)
-                  ) {
-                    setApproval(null);
-                    setUiError('The chat changed. Review and send your question again.');
-                    return;
-                  }
-                  setGrant(approval.identity);
-                  setApproval(null);
-                  void transmit(approval.question, approval.context);
-                }}
-              >
-                Start chat
-              </button>
-            </div>
           </section>
         </div>
       )}

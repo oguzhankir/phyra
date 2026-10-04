@@ -10,6 +10,13 @@ export interface AssistantSettings {
 export interface AssistantConfiguration {
   settings: AssistantSettings;
   credentialPresent: boolean;
+  connections: AssistantConnection[];
+}
+export interface AssistantConnection {
+  settings: AssistantSettings;
+  credentialPresent: boolean;
+  models: AssistantModel[];
+  error?: string;
 }
 export interface AssistantModel {
   id: string;

@@ -1,45 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight,
+  ArrowLeft,
   Check,
-  ChevronRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
   KeyRound,
   LoaderCircle,
-  RefreshCw,
   ShieldCheck,
+  Unplug,
   X,
 } from 'lucide-react';
-import { assistantModelChoices, FEATURED_MODELS } from '../../domain/assistant/models';
 import {
   ASSISTANT_DEFAULTS,
   type AssistantConfiguration,
-  type AssistantModel,
   type AssistantProvider,
   type AssistantSettings,
 } from '../../domain/assistant/types';
 import {
-  deleteAssistantCredential,
   disconnectAssistant,
   getAssistantCredentialStatus,
+  getAssistantSettings,
   listAssistantModels,
 } from '../../platform/desktop/assistant';
+import { assistantConnectionKey, assistantConnectionReady } from '../../domain/assistant/models';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import { ProviderLogo, providerNames } from './providers';
-import { connectAssistantProvider, connectionIsActive } from './connection';
+import { connectAssistantProvider } from './connection';
 import './AssistantSettingsPanel.css';
 
-function sharesCredential(left: AssistantSettings, right: AssistantSettings): boolean {
-  if (left.provider !== right.provider || left.local || right.local) return false;
-  try {
-    return new URL(left.endpoint).origin === new URL(right.endpoint).origin;
-  } catch {
-    return false;
-  }
-}
-function initialSettings(configuration: AssistantConfiguration | null): AssistantSettings {
-  const settings = configuration?.settings ?? ASSISTANT_DEFAULTS.gemini;
-  return { ...settings, model: settings.model || FEATURED_MODELS[settings.provider][0]?.id || '' };
-}
+const ready = assistantConnectionReady;
 
 export default function AssistantSettingsPanel({
   configuration,
@@ -48,175 +38,150 @@ export default function AssistantSettingsPanel({
 }: {
   configuration: AssistantConfiguration | null;
   onClose: () => void;
-  onSaved: (settings: AssistantSettings, credentialPresent: boolean) => void;
+  onSaved: (configuration: AssistantConfiguration) => void;
 }) {
-  const [settings, setSettings] = useState(() => initialSettings(configuration));
+  const [saved, setSaved] = useState(configuration);
+  const [settings, setSettings] = useState<AssistantSettings>(() => ({
+    ...(configuration?.settings ?? ASSISTANT_DEFAULTS.gemini),
+  }));
   const [credentialPresent, setCredentialPresent] = useState(
     configuration?.credentialPresent ?? false,
   );
   const [credential, setCredential] = useState('');
   const [replaceKey, setReplaceKey] = useState(false);
-  const [models, setModels] = useState<AssistantModel[] | null>(null);
+  const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<{
-    settings: AssistantSettings;
-    connection: boolean;
-  } | null>(null);
-  const credentialLookupVersion = useRef(0);
+  const [removing, setRemoving] = useState(false);
+  const lookupVersion = useRef(0);
+  const connections = saved?.connections ?? [];
+  const connection = connections.find(
+    (item) => assistantConnectionKey(item.settings) === assistantConnectionKey(settings),
+  );
+  const connected = !!connection && ready(connection);
+  const custom = settings.provider === 'compatible' || settings.provider === 'ollama';
+  useEffect(() => setSaved(configuration), [configuration]);
   useEffect(
     () => () => {
-      credentialLookupVersion.current += 1;
+      lookupVersion.current += 1;
     },
     [],
   );
-  const custom = settings.provider === 'compatible' || settings.provider === 'ollama';
-  const choices = assistantModelChoices(settings.provider, models, settings.model);
-  const featured = choices.filter((model) => model.featured);
-  const additional = choices.filter((model) => !model.featured);
-  const active = connectionIsActive(configuration, settings);
-  const selectedCredentialIsActive = Boolean(
-    configuration?.settings.model &&
-    (sharesCredential(configuration.settings, settings) ||
-      (configuration.settings.local &&
-        settings.local &&
-        configuration.settings.provider === settings.provider &&
-        configuration.settings.endpoint === settings.endpoint)),
+  useModalFocus(
+    true,
+    () => {
+      if (busy) return;
+      if (removing) setRemoving(false);
+      else onClose();
+    },
+    removing ? 'disconnect-provider' : 'provider-connections',
   );
-  const canConnect = Boolean(
-    settings.endpoint.trim() && (settings.local || credentialPresent || credential.trim()),
-  );
-  useModalFocus(true, () => {
-    if (!busy) onClose();
-  });
   const fail = (failure: unknown) =>
     setError(
       typeof failure === 'string'
         ? failure
         : failure instanceof Error
           ? failure.message
-          : 'The connection could not be configured.',
+          : 'The connection could not be configured. Try again.',
     );
-
-  async function selectProvider(value: AssistantProvider) {
-    credentialLookupVersion.current += 1;
-    const selected = initialSettings(
-      configuration?.settings.provider === value
-        ? configuration
-        : { settings: ASSISTANT_DEFAULTS[value], credentialPresent: false },
-    );
+  async function inspect(selected: AssistantSettings) {
+    const version = ++lookupVersion.current;
+    if (selected.local || !selected.endpoint.trim()) {
+      setCredentialPresent(false);
+      return;
+    }
+    try {
+      const present = await getAssistantCredentialStatus(selected);
+      if (version === lookupVersion.current) setCredentialPresent(present);
+    } catch (failure) {
+      if (version === lookupVersion.current) fail(failure);
+    }
+  }
+  function selectProvider(provider: AssistantProvider, chosen?: AssistantSettings) {
+    lookupVersion.current += 1;
+    const existing = connections.find((item) => item.settings.provider === provider);
+    const selected = { ...(chosen ?? existing?.settings ?? ASSISTANT_DEFAULTS[provider]) };
     setSettings(selected);
-    setModels(null);
     setCredential('');
     setReplaceKey(false);
-    setCredentialPresent(false);
+    setShowKey(false);
     setError(null);
     setNotice(null);
-    setRemoving(null);
-    setBusy(true);
-    try {
-      if (!selected.local) setCredentialPresent(await getAssistantCredentialStatus(selected));
-    } catch (failure) {
-      if (selected.endpoint) fail(failure);
-    } finally {
-      setBusy(false);
-    }
+    setRemoving(false);
+    setCredentialPresent(
+      existing?.settings.endpoint === selected.endpoint && !!existing?.credentialPresent,
+    );
+    void inspect(selected);
   }
-
-  async function inspectEndpoint() {
-    if (settings.local || !settings.endpoint.trim()) return;
-    const lookupVersion = ++credentialLookupVersion.current;
-    try {
-      const present = await getAssistantCredentialStatus(settings);
-      if (lookupVersion !== credentialLookupVersion.current) return;
-      setCredentialPresent(present);
-      setError(null);
-    } catch (failure) {
-      if (lookupVersion !== credentialLookupVersion.current) return;
-      setCredentialPresent(false);
-      fail(failure);
-    }
-  }
-
-  async function discover() {
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const available = await listAssistantModels(settings);
-      setModels(available);
-      if (!assistantModelChoices(settings.provider, available).some((choice) => choice.available))
-        setError(
-          'No text models were reported by this connection. Check your endpoint or provider access.',
-        );
-      else setNotice('Available models refreshed.');
-    } catch (failure) {
-      fail(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function connect() {
-    credentialLookupVersion.current += 1;
+    if (busy) return;
+    lookupVersion.current += 1;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       const outcome = await connectAssistantProvider({
         settings,
-        configuration,
+        configuration: saved,
         credential,
-        models,
-        onCredentialStored: () => {
-          setCredentialPresent(true);
-          setReplaceKey(false);
-        },
-        onModelsReported: setModels,
+        models: connected && !credential.trim() ? await listAssistantModels(settings) : null,
+        onCredentialStored: () => setCredentialPresent(true),
       });
-      if (outcome.type === 'choose-model') {
-        setModels(outcome.models);
-        setNotice('Choose an available model to finish connecting.');
-        return;
-      }
       const value = outcome.configuration;
-      onSaved(value.settings, value.credentialPresent);
-      onClose();
+      setSaved(value);
+      onSaved(value);
+      const updated = value.connections.find(
+        (item) =>
+          item.settings.provider === settings.provider &&
+          item.settings.endpoint === settings.endpoint,
+      );
+      if (updated) {
+        setSettings(updated.settings);
+        setCredentialPresent(updated.credentialPresent);
+      }
+      setReplaceKey(false);
+      setNotice(
+        `${providerNames[settings.provider]} is ready. Choose its models in the assistant.`,
+      );
     } catch (failure) {
       fail(failure);
+      void inspect(settings);
+      try {
+        const value = await getAssistantSettings();
+        setSaved(value);
+        onSaved(value);
+      } catch {
+        /* Keep the original connection error visible. */
+      }
     } finally {
       setCredential('');
+      setShowKey(false);
       setBusy(false);
     }
   }
-
-  async function confirmRemoval() {
-    if (!removing) return;
-    credentialLookupVersion.current += 1;
+  async function disconnect() {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      if (removing.connection) {
-        const value = await disconnectAssistant(removing.settings);
-        onSaved(value.settings, value.credentialPresent);
-        onClose();
-      } else {
-        await deleteAssistantCredential(removing.settings);
-        setCredentialPresent(false);
-        setCredential('');
-        setReplaceKey(false);
-        setModels(null);
-        setRemoving(null);
-        setNotice('Saved key removed.');
-      }
+      const value = await disconnectAssistant(settings);
+      setSaved(value);
+      onSaved(value);
+      setCredentialPresent(false);
+      setCredential('');
+      setReplaceKey(false);
+      setRemoving(false);
+      setNotice(`${providerNames[settings.provider]} disconnected.`);
     } catch (failure) {
       fail(failure);
     } finally {
       setBusy(false);
     }
   }
-
+  const canConnect =
+    !!settings.endpoint.trim() &&
+    (settings.local || !!credential.trim() || (credentialPresent && !replaceKey));
   return (
     <div className="modal-backdrop assistant-connections-backdrop">
       <section
@@ -224,11 +189,12 @@ export default function AssistantSettingsPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="assistant-connections-title"
+        aria-busy={busy}
       >
         <header className="assistant-connections-header">
           <div>
-            <h2 id="assistant-connections-title">Models & connections</h2>
-            <p>Choose a provider. Bring your own key.</p>
+            <h2 id="assistant-connections-title">AI connections</h2>
+            <p>Connect your providers. Switch models from the assistant.</p>
           </div>
           <button
             type="button"
@@ -243,279 +209,284 @@ export default function AssistantSettingsPanel({
         <div className="assistant-connections-layout">
           <nav className="assistant-connections-providers" aria-label="AI providers">
             <span className="assistant-connections-section-label">Providers</span>
-            {(Object.keys(providerNames) as AssistantProvider[]).map((id) => (
-              <button
-                type="button"
-                key={id}
-                disabled={busy}
-                aria-pressed={settings.provider === id}
-                onClick={() => void selectProvider(id)}
-              >
-                <ProviderLogo provider={id} />
-                <span>{providerNames[id]}</span>
-                {configuration?.settings.model &&
-                configuration.settings.provider === id &&
-                (configuration.settings.local || configuration.credentialPresent) ? (
-                  <span className="assistant-connection-dot" aria-label="Current connection" />
-                ) : (
-                  <ChevronRight size={13} />
-                )}
-              </button>
-            ))}
+            {(Object.keys(providerNames) as AssistantProvider[]).map((provider) => {
+              const count = connections.filter(
+                (item) => item.settings.provider === provider && ready(item),
+              ).length;
+              return (
+                <button
+                  type="button"
+                  key={provider}
+                  disabled={busy}
+                  aria-pressed={settings.provider === provider}
+                  onClick={() => selectProvider(provider)}
+                >
+                  <ProviderLogo provider={provider} />
+                  <span>
+                    <strong>{providerNames[provider]}</strong>
+                    <small>
+                      {connections.some((item) => item.settings.provider === provider && item.error)
+                        ? 'Needs attention'
+                        : count
+                          ? `${count > 1 ? `${count} connections` : 'Connected'}`
+                          : 'Not connected'}
+                    </small>
+                  </span>
+                  {count > 0 && (
+                    <Check
+                      size={14}
+                      className="assistant-provider-connected"
+                      aria-label="Connected"
+                    />
+                  )}
+                </button>
+              );
+            })}
             <div className="assistant-connections-security">
               <ShieldCheck size={15} />
-              <span>Keys stay in your OS credential store.</span>
+              <span>API keys are secured by your device.</span>
             </div>
           </nav>
-          <div className="assistant-connections-content">
-            <div className="assistant-connection-heading">
-              <ProviderLogo provider={settings.provider} />
-              <h3>{providerNames[settings.provider]}</h3>
-              {active && (
-                <span className="assistant-connection-badge">
-                  <Check size={12} />
-                  Connected
+          <form
+            className="assistant-connections-content"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void (removing ? disconnect() : connect());
+            }}
+          >
+            {removing ? (
+              <div className="assistant-disconnect-view">
+                <span className="assistant-disconnect-icon">
+                  <Unplug size={24} />
                 </span>
-              )}
-            </div>
-            {custom && (
-              <label className="assistant-connection-field">
-                Endpoint
-                <input
-                  aria-label="Assistant API endpoint"
-                  value={settings.endpoint}
-                  disabled={busy}
-                  placeholder={
-                    settings.provider === 'ollama'
-                      ? 'http://127.0.0.1:11434/v1'
-                      : 'https://your-provider.example/v1'
-                  }
-                  onChange={(event) => {
-                    credentialLookupVersion.current += 1;
-                    const endpoint = event.target.value;
-                    let local = false;
-                    try {
-                      local = ['localhost', '127.0.0.1', '[::1]'].includes(
-                        new URL(endpoint).hostname,
-                      );
-                    } catch {
-                      /* Native validation explains an incomplete URL. */
-                    }
-                    setSettings({ ...settings, endpoint, local, model: '' });
-                    setCredential('');
-                    setCredentialPresent(
-                      credentialPresent &&
-                        sharesCredential(settings, { ...settings, endpoint, local }),
-                    );
-                    setModels(null);
-                    setNotice(null);
-                    setError(null);
-                  }}
-                  onBlur={() => void inspectEndpoint()}
-                />
-              </label>
-            )}
-            {settings.local ? (
-              <p className="assistant-connection-local">
-                Connect to models running on this device. No API key is needed.
-              </p>
-            ) : credentialPresent && !replaceKey ? (
-              <div className="assistant-connection-saved-key">
-                <KeyRound size={15} />
-                <span>API key saved securely</span>
-                <button type="button" disabled={busy} onClick={() => setReplaceKey(true)}>
-                  Replace key
-                </button>
+                <h3>Disconnect {providerNames[settings.provider]}?</h3>
+                <p>
+                  This connection and its saved API key will be removed from this device. Your
+                  conversations stay saved.
+                </p>
+                <div className="assistant-disconnect-target">
+                  <ProviderLogo provider={settings.provider} />
+                  <span>{settings.endpoint}</span>
+                </div>
               </div>
             ) : (
-              <label className="assistant-connection-field">
-                API key
-                <input
-                  type="password"
-                  aria-label="Assistant API key"
-                  value={credential}
-                  disabled={busy}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Paste your API key"
-                  onChange={(event) => {
-                    setCredential(event.target.value);
-                    setError(null);
-                  }}
-                />
-                <small>Saved on this device until you disconnect.</small>
-              </label>
-            )}
-            <div className="assistant-connection-model-heading">
-              <h4>Model</h4>
-              <button
-                type="button"
-                className="assistant-connection-refresh"
-                aria-label="Refresh available models"
-                title="Refresh available models"
-                disabled={busy || (!settings.local && !credentialPresent)}
-                onClick={() => void discover()}
-              >
-                <RefreshCw size={13} />
-                Refresh
-              </button>
-            </div>
-            {featured.length > 0 && (
-              <div
-                className="assistant-connection-models"
-                role="group"
-                aria-label="Featured assistant models"
-              >
-                {featured.map((model) => (
+              <>
+                <div className="assistant-connection-heading">
+                  <ProviderLogo provider={settings.provider} />
+                  <h3>{providerNames[settings.provider]}</h3>
+                  <span className={`assistant-connection-status ${connected ? 'connected' : ''}`}>
+                    {connected ? (
+                      <>
+                        <Check size={12} /> Connected
+                      </>
+                    ) : (
+                      'Not connected'
+                    )}
+                  </span>
+                </div>
+                {custom &&
+                  connections.filter((item) => item.settings.provider === settings.provider)
+                    .length > 0 && (
+                    <div className="assistant-endpoint-list" aria-label="Saved endpoints">
+                      {connections
+                        .filter((item) => item.settings.provider === settings.provider)
+                        .map((item) => (
+                          <button
+                            type="button"
+                            key={item.settings.endpoint}
+                            disabled={busy}
+                            aria-pressed={settings.endpoint === item.settings.endpoint}
+                            onClick={() => selectProvider(settings.provider, item.settings)}
+                          >
+                            {item.settings.endpoint}
+                          </button>
+                        ))}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          selectProvider(settings.provider, ASSISTANT_DEFAULTS[settings.provider])
+                        }
+                      >
+                        Add endpoint
+                      </button>
+                    </div>
+                  )}
+                {custom ? (
+                  <label className="assistant-connection-field">
+                    Endpoint
+                    <input
+                      aria-label="Assistant API endpoint"
+                      value={settings.endpoint}
+                      disabled={busy}
+                      placeholder={
+                        settings.provider === 'ollama'
+                          ? 'http://127.0.0.1:11434/v1'
+                          : 'https://your-provider.example/v1'
+                      }
+                      onChange={(event) => {
+                        lookupVersion.current += 1;
+                        const endpoint = event.target.value;
+                        let local = false;
+                        try {
+                          local = ['localhost', '127.0.0.1', '[::1]'].includes(
+                            new URL(endpoint).hostname,
+                          );
+                        } catch {
+                          /* Native validation explains incomplete URLs. */
+                        }
+                        setSettings({ ...settings, endpoint, local, model: '' });
+                        setCredentialPresent(false);
+                        setCredential('');
+                        setNotice(null);
+                        setError(null);
+                      }}
+                      onBlur={() => void inspect(settings)}
+                    />
+                  </label>
+                ) : (
+                  <p className="assistant-provider-endpoint">{settings.endpoint}</p>
+                )}
+                {settings.local ? (
+                  <div className="assistant-connection-info">
+                    <ShieldCheck size={18} />
+                    <div>
+                      <strong>Runs on your device</strong>
+                      <p>No API key is needed. Start your local server, then connect.</p>
+                    </div>
+                  </div>
+                ) : credentialPresent && !replaceKey ? (
+                  <div className="assistant-connection-saved-key">
+                    <KeyRound size={17} />
+                    <div>
+                      <strong>API key saved securely</strong>
+                      <span>
+                        {connected
+                          ? 'Ready to use in the assistant'
+                          : 'Verify the connection to finish setup'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setReplaceKey(true);
+                        setNotice(null);
+                      }}
+                    >
+                      Replace key
+                    </button>
+                  </div>
+                ) : (
+                  <label className="assistant-connection-field">
+                    API key
+                    <div className="assistant-key-input">
+                      <input
+                        aria-label="Assistant API key"
+                        type={showKey ? 'text' : 'password'}
+                        value={credential}
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={busy}
+                        placeholder="Paste your API key"
+                        onChange={(event) => setCredential(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                        aria-pressed={showKey}
+                        onClick={() => setShowKey(!showKey)}
+                      >
+                        {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    {replaceKey && (
+                      <button
+                        type="button"
+                        className="assistant-key-cancel"
+                        disabled={busy}
+                        onClick={() => {
+                          setReplaceKey(false);
+                          setCredential('');
+                          setShowKey(false);
+                        }}
+                      >
+                        Keep saved key
+                      </button>
+                    )}
+                  </label>
+                )}
+                <p className="assistant-connection-consent">
+                  Messages and the active study are sent to the provider you choose when you send a
+                  message.
+                </p>
+                {connection && (
                   <button
                     type="button"
-                    className="assistant-connection-model"
-                    key={model.id}
-                    aria-pressed={settings.model === model.id}
-                    disabled={busy || model.available === false}
-                    title={model.id}
+                    className="assistant-connection-disconnect"
+                    disabled={busy}
                     onClick={() => {
-                      setSettings({ ...settings, model: model.id });
+                      setRemoving(true);
+                      setError(null);
                       setNotice(null);
                     }}
                   >
-                    <span className="assistant-connection-model-title">
-                      <strong>{model.name}</strong>
-                      <span>{model.tag}</span>
-                    </span>
-                    <small>
-                      {model.available === false
-                        ? 'Not available on this connection'
-                        : model.detail}
-                    </small>
-                    <span className="assistant-connection-model-check" aria-hidden="true">
-                      {settings.model === model.id && <Check size={14} />}
-                    </span>
+                    <Unplug size={14} />
+                    Disconnect {providerNames[settings.provider]}
                   </button>
-                ))}
-              </div>
+                )}
+              </>
             )}
-            {additional.length > 0 && (
-              <label className="assistant-connection-field assistant-connection-more">
-                {featured.length ? 'More models' : 'Available models'}
-                <select
-                  aria-label="Assistant model"
-                  value={
-                    additional.some((model) => model.id === settings.model) ? settings.model : ''
-                  }
-                  disabled={busy}
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      setSettings({ ...settings, model: event.target.value });
-                      setNotice(null);
-                    }
-                  }}
-                >
-                  <option value="">Choose a model…</option>
-                  {additional.map((model) => (
-                    <option key={model.id} value={model.id} disabled={model.available === false}>
-                      {model.name}
-                      {model.available === false ? ' · Not available' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {featured.length === 0 && additional.length === 0 && (
-              <div className="assistant-connection-model-empty">
-                <RefreshCw size={18} />
-                <p>Load the models available from your endpoint.</p>
-                <small>
-                  {settings.local
-                    ? 'Start your local model server first.'
-                    : 'Enter an endpoint and key, then load models.'}
-                </small>
-              </div>
+            {(error || connection?.error) && (
+              <p className="assistant-connection-error" role="alert">
+                {error || connection?.error}
+              </p>
             )}
             {notice && (
               <p className="assistant-connection-notice" role="status">
+                <CheckCircle2 size={16} />
                 {notice}
               </p>
             )}
-            {error && (
-              <p className="assistant-connection-error" role="alert">
-                {error}
-              </p>
-            )}
-            {removing && (
-              <section
-                className="assistant-connection-removal"
-                aria-label="Confirm provider disconnection"
-              >
-                <strong>
-                  {removing.connection
-                    ? `Disconnect ${providerNames[removing.settings.provider]}?`
-                    : 'Remove saved key?'}
-                </strong>
-                <p>
-                  {removing.settings.local
-                    ? 'The local connection will be removed.'
-                    : 'The saved key will be removed from this device. It is not revoked at the provider.'}{' '}
-                  Your conversations and projects will be kept.
-                </p>
-                <div>
-                  <button type="button" disabled={busy} onClick={() => setRemoving(null)}>
-                    Cancel
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => void confirmRemoval()}>
-                    {busy ? 'Disconnecting…' : removing.connection ? 'Disconnect' : 'Remove key'}
-                  </button>
-                </div>
-              </section>
-            )}
-          </div>
-        </div>
-        <footer className="assistant-connections-footer">
-          <div>
-            {configuration?.settings.model && selectedCredentialIsActive ? (
+            <footer className="assistant-connections-footer">
               <button
                 type="button"
-                className="assistant-connection-disconnect"
                 disabled={busy}
-                onClick={() =>
-                  setRemoving({ settings: { ...configuration.settings }, connection: true })
+                onClick={() => (removing ? setRemoving(false) : onClose())}
+              >
+                {removing ? (
+                  <>
+                    <ArrowLeft size={14} />
+                    Keep connection
+                  </>
+                ) : (
+                  'Done'
+                )}
+              </button>
+              <button
+                type="submit"
+                className={
+                  removing ? 'assistant-disconnect-submit' : 'primary assistant-connection-submit'
                 }
+                disabled={busy || (!removing && !canConnect)}
               >
-                Disconnect {providerNames[configuration.settings.provider]}
+                {busy && <LoaderCircle size={15} className="assistant-connection-spinner" />}
+                {busy
+                  ? removing
+                    ? 'Disconnecting…'
+                    : 'Checking connection…'
+                  : removing
+                    ? 'Disconnect'
+                    : connected
+                      ? replaceKey
+                        ? 'Update connection'
+                        : 'Test connection'
+                      : 'Connect'}
               </button>
-            ) : (
-              <small>Connection stays saved when you close Phyra.</small>
-            )}
-            {credentialPresent && !selectedCredentialIsActive && !settings.local && (
-              <button
-                type="button"
-                className="assistant-connection-disconnect"
-                disabled={busy}
-                onClick={() => setRemoving({ settings: { ...settings }, connection: false })}
-              >
-                Remove saved key
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            className="primary assistant-connection-submit"
-            disabled={busy || !canConnect}
-            onClick={() => void connect()}
-          >
-            {busy ? (
-              <>
-                <LoaderCircle className="assistant-connection-spinner" size={15} />
-                Connecting…
-              </>
-            ) : (
-              <>
-                {!settings.model ? 'Load models' : active ? 'Use model' : 'Connect'}
-                <ArrowRight size={15} />
-              </>
-            )}
-          </button>
-        </footer>
+            </footer>
+          </form>
+        </div>
       </section>
     </div>
   );

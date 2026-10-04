@@ -227,7 +227,7 @@ export function assistantContext(
   ].join('\n\n');
   if (textBytes(text) > 120 * 1024)
     throw new Error(
-      'The context is too large. Use documentation-only context or simplify the definition before attaching it.',
+      'This study is too large to send. Simplify its definition before asking about it.',
     );
   return {
     kind: definition ? 'study' : 'help',

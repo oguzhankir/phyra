@@ -1,382 +1,342 @@
 .assistant-connections.modal {
-  width: min(780px, calc(100vw - 48px));
-  max-height: min(760px, calc(100vh - 56px));
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(680px, calc(100dvh - 56px));
   padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 24px 80px #10182830;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
 }
 .assistant-connections-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
-  padding: 24px 26px 22px;
+  padding: 24px;
   border-bottom: 1px solid var(--line);
 }
 .assistant-connections-header h2 {
   margin: 0;
   font-size: 19px;
-  letter-spacing: -0.35px;
+  letter-spacing: -0.4px;
 }
 .assistant-connections-header p {
   margin: 7px 0 0;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 .assistant-connections-close {
   display: grid;
   place-items: center;
-  flex-shrink: 0;
-  height: 28px;
-  width: 28px;
+  height: 30px;
+  width: 30px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
-}
-.assistant-connections-close:hover {
-  background: var(--surface-subtle);
-  color: var(--text);
+  border-radius: 8px;
 }
 .assistant-connections-layout {
   display: grid;
-  grid-template-columns: 205px minmax(0, 1fr);
+  grid-template-columns: 210px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
 .assistant-connections-providers {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 22px 12px;
+  gap: 5px;
+  padding: 20px 12px;
   background: var(--surface-subtle);
   border-right: 1px solid var(--line);
   overflow: auto;
 }
 .assistant-connections-section-label {
-  display: block;
-  padding: 0 11px 10px;
+  padding: 0 10px 9px;
   font-size: 10px;
-  letter-spacing: 0.65px;
   color: var(--muted);
-  text-transform: uppercase;
 }
 .assistant-connections-providers > button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 10px;
+  padding: 11px 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   text-align: left;
-  font-size: 12px;
 }
-.assistant-connections-providers > button > span:first-of-type {
+.assistant-connections-providers > button > span {
   flex: 1;
+  min-width: 0;
 }
-.assistant-connections-providers > button > svg:last-child {
+.assistant-connections-providers strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.assistant-connections-providers small {
+  display: block;
+  font-size: 10px;
   color: var(--muted);
-}
-.assistant-connections-providers > button:hover:not(:disabled) {
-  background: var(--surface);
+  margin-top: 4px;
 }
 .assistant-connections-providers > button[aria-pressed='true'] {
   background: var(--surface);
   border-color: var(--line);
-  box-shadow: 0 1px 2px #10182808;
-  font-weight: 600;
 }
-.assistant-connection-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success, #398270);
+.assistant-provider-connected {
+  color: var(--success);
   flex-shrink: 0;
 }
 .assistant-connections-security {
   display: flex;
   gap: 8px;
   margin-top: auto;
-  padding: 30px 11px 0;
+  padding: 35px 10px 0;
   color: var(--muted);
   font-size: 10px;
   line-height: 1.6;
 }
-.assistant-connections-security > svg {
+.assistant-connections-security svg {
   flex-shrink: 0;
   margin-top: 2px;
 }
 .assistant-connections-content {
-  padding: 23px 27px 27px;
+  padding: 24px;
   min-width: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 .assistant-connection-heading {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 22px;
+  margin-bottom: 12px;
 }
 .assistant-connection-heading h3 {
   font-size: 15px;
   font-weight: 600;
   margin: 0;
 }
-.assistant-connection-badge {
-  display: flex;
+.assistant-connection-status {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
-  color: var(--success, #398270);
   font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.assistant-connection-status.connected {
+  color: var(--success);
+}
+.assistant-provider-endpoint {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  margin-bottom: 20px;
 }
 .assistant-connection-field {
   display: grid;
   gap: 8px;
   font-size: 12px;
   font-weight: 500;
-  margin: 15px 0;
+  margin: 12px 0;
 }
-.assistant-connection-field input,
-.assistant-connection-field select {
+.assistant-connection-field input {
   width: 100%;
-  min-height: 38px;
-  padding: 9px 11px;
+  min-height: 40px;
+  padding: 10px 12px;
   font-size: 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-subtle);
   color: var(--text);
-  box-shadow: none;
 }
-.assistant-connection-field input:focus,
-.assistant-connection-field select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: none;
+.assistant-key-input {
+  display: flex;
+  position: relative;
 }
-.assistant-connection-field input:focus-visible,
-.assistant-connection-field select:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+.assistant-key-input input {
+  padding-right: 42px;
 }
-.assistant-connection-field > small {
-  font-size: 10px;
-  font-weight: 400;
+.assistant-key-input button {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  height: 30px;
+  width: 30px;
+  padding: 0;
   color: var(--muted);
 }
-.assistant-connection-local {
-  margin: 0 0 22px;
+.assistant-key-cancel {
+  justify-self: start;
+  padding: 4px 0;
+  font-size: 11px;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
 }
-.assistant-connection-saved-key {
+.assistant-connection-saved-key,
+.assistant-connection-info {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
+  gap: 11px;
+  padding: 16px;
+  background: var(--surface-subtle);
   border: 1px solid var(--line);
-  border-radius: 7px;
-  font-size: 11px;
-  margin-bottom: 25px;
-  color: var(--muted);
+  border-radius: 10px;
+  margin: 8px 0;
 }
-.assistant-connection-saved-key > span {
+.assistant-connection-saved-key > svg,
+.assistant-connection-info > svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.assistant-connection-saved-key div,
+.assistant-connection-info div {
   flex: 1;
 }
-.assistant-connection-saved-key > button {
-  border: 0;
-  background: transparent;
-  padding: 2px;
-  color: var(--text);
-  font-size: 11px;
-}
-.assistant-connection-model-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 26px 0 10px;
-}
-.assistant-connection-model-heading h4 {
-  margin: 0;
+.assistant-connection-saved-key strong,
+.assistant-connection-info strong {
+  display: block;
   font-size: 12px;
   font-weight: 500;
 }
-.assistant-connection-refresh {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 0;
-  border: 0;
-  background: transparent;
+.assistant-connection-saved-key span,
+.assistant-connection-info p {
+  display: block;
   color: var(--muted);
-  font-size: 10px;
-}
-.assistant-connection-models {
-  display: grid;
-  gap: 7px;
-}
-.assistant-connection-model {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  padding: 13px 34px 13px 13px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  text-align: left;
-}
-.assistant-connection-model:hover:not(:disabled) {
-  background: var(--surface-subtle);
-  border-color: var(--border-strong);
-}
-.assistant-connection-model[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
-}
-.assistant-connection-model-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.assistant-connection-model-title > strong {
-  font-size: 12px;
-  font-weight: 550;
-}
-.assistant-connection-model-title > span {
-  font-size: 9px;
-  color: var(--muted);
-  font-weight: 400;
-}
-.assistant-connection-model > small {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-.assistant-connection-model-check {
-  position: absolute;
-  right: 13px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--accent);
-}
-.assistant-connection-more {
-  margin-top: 15px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.assistant-connection-model-empty {
-  display: grid;
-  justify-items: center;
-  padding: 25px 18px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 8px;
-  color: var(--muted);
-  text-align: center;
-}
-.assistant-connection-model-empty p {
-  margin: 10px 0 5px;
-  font-size: 12px;
-}
-.assistant-connection-model-empty small {
-  font-size: 10px;
-  line-height: 1.5;
-}
-.assistant-connection-notice,
-.assistant-connection-error {
   font-size: 11px;
   line-height: 1.6;
-  padding: 10px 12px;
-  border-radius: 6px;
-  margin: 15px 0 0;
+  margin-top: 5px;
 }
-.assistant-connection-notice {
+.assistant-connection-saved-key button {
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 4px 5px;
+}
+.assistant-connection-consent {
+  font-size: 11px;
   color: var(--muted);
-  background: var(--surface-subtle);
+  line-height: 1.7;
+  margin: 16px 0 20px;
+}
+.assistant-connection-disconnect {
+  align-self: start;
+  padding: 5px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.assistant-connection-disconnect:hover {
+  color: var(--danger);
+  background: transparent;
+}
+.assistant-connection-error,
+.assistant-connection-notice {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 16px 0 0;
+  overflow-wrap: anywhere;
 }
 .assistant-connection-error {
   color: var(--danger);
   background: var(--danger-soft);
 }
-.assistant-connection-removal {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  margin-top: 20px;
-  background: var(--surface-subtle);
-}
-.assistant-connection-removal strong {
-  font-size: 12px;
-}
-.assistant-connection-removal p {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.6;
-  margin: 7px 0 12px;
-}
-.assistant-connection-removal > div {
+.assistant-connection-notice {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-start;
   gap: 8px;
+  color: var(--success);
+  background: var(--success-soft);
 }
-.assistant-connection-removal button {
-  font-size: 11px;
-  padding: 6px 10px;
-}
-.assistant-connection-removal button:last-child {
-  color: var(--danger);
-  border-color: var(--danger);
+.assistant-connection-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 .assistant-connections-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 16px 26px;
+  gap: 12px;
   border-top: 1px solid var(--line);
-  background: var(--surface);
+  padding-top: 18px;
+  margin-top: 28px;
 }
-.assistant-connections-footer > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.assistant-connections-footer small {
-  font-size: 10px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-.assistant-connection-disconnect {
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  padding: 4px 0;
-  font-size: 10px;
-}
-.assistant-connection-disconnect:hover {
-  color: var(--danger);
+.assistant-connections-footer button {
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 .assistant-connection-submit {
+  min-width: 100px;
+}
+.assistant-disconnect-view {
+  padding: 10px 0;
+}
+.assistant-disconnect-icon {
+  display: grid;
+  place-items: center;
+  height: 48px;
+  width: 48px;
+  background: var(--surface-subtle);
+  border-radius: 13px;
+  color: var(--muted);
+  margin-bottom: 22px;
+}
+.assistant-disconnect-view h3 {
+  font-size: 19px;
+  line-height: 1.4;
+  letter-spacing: -0.3px;
+}
+.assistant-disconnect-view p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 12px;
+}
+.assistant-disconnect-target {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-width: 118px;
-  padding: 9px 15px;
-  font-size: 12px;
-  flex-shrink: 0;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+  font-size: 11px;
+  margin-top: 20px;
+  overflow-wrap: anywhere;
+}
+.assistant-disconnect-submit {
+  background: var(--danger);
+  color: var(--surface);
+}
+.assistant-disconnect-submit:hover {
+  background: var(--danger);
+  color: var(--surface);
+}
+.assistant-endpoint-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 12px 0;
+}
+.assistant-endpoint-list button {
+  font-size: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.assistant-endpoint-list button[aria-pressed='true'] {
+  background: var(--accent-soft);
 }
 .assistant-connection-spinner {
   animation: assistant-connection-spin 1s linear infinite;
@@ -394,7 +354,7 @@
 @media (max-width: 650px) {
   .assistant-connections.modal {
     width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
   }
   .assistant-connections-layout {
     grid-template-columns: 1fr;
@@ -402,29 +362,22 @@
   }
   .assistant-connections-providers {
     flex-direction: row;
-    gap: 5px;
-    padding: 12px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
     flex-shrink: 0;
+    padding: 10px;
   }
   .assistant-connections-providers > button {
     white-space: nowrap;
-    padding: 9px;
+    padding: 8px;
   }
-  .assistant-connections-providers > button > svg:last-child,
   .assistant-connections-section-label,
-  .assistant-connections-security {
+  .assistant-connections-security,
+  .assistant-provider-connected {
     display: none;
   }
   .assistant-connections-content {
     overflow: visible;
     padding: 20px;
-  }
-  .assistant-connections-header {
-    padding: 20px;
-  }
-  .assistant-connections-footer {
-    padding: 14px 20px;
   }
 }

@@ -14,10 +14,15 @@ import {
   streamAssistant,
   writeAssistantConversation,
   deleteAssistantConversation,
+  saveAssistantSettings,
+  refreshAssistantConnection,
+  listAssistantModels,
 } from '../../../platform/desktop/assistant';
+import { assistantConnectionKey, assistantConnectionReady } from '../../../domain/assistant/models';
 import { ConversationRegistry } from '../../../domain/assistant/conversation';
 import { ASSISTANT_SYSTEM } from '../context';
 import { sessionRetirement } from './lifecycle';
+import { restoreConnectionCatalogs } from './providerCatalogs';
 
 import type { AssistantSessionHost, AssistantViewModel } from './contract';
 import {
@@ -49,6 +54,8 @@ export function useAssistantConversationSession({
   const requestRef = useRef<ConversationTurn | null>(null);
   const live = useRef(true);
   const settingsGeneration = useRef(0);
+  const catalogGeneration = useRef(0);
+  const configurationWrites = useRef(Promise.resolve());
   const historyGeneration = useRef(0);
   const retire = useRef<ReturnType<typeof sessionRetirement> | null>(null);
   if (!retire.current)
@@ -65,6 +72,14 @@ export function useAssistantConversationSession({
       setUnsaved(conversations.current.isUnsaved(visible.id));
     }
   }
+  function queueConfigurationWrite<T>(work: () => Promise<T>): Promise<T> {
+    const next = configurationWrites.current.then(work, work);
+    configurationWrites.current = next.then(
+      () => {},
+      () => {},
+    );
+    return next;
+  }
   async function refreshHistory() {
     if (!desktop || ownerRef.current !== owner) return;
     const generation = ++historyGeneration.current;
@@ -80,11 +95,25 @@ export function useAssistantConversationSession({
   useEffect(() => {
     live.current = true;
     const generation = ++settingsGeneration.current;
+    const discovery = ++catalogGeneration.current;
     const release = retire.current!();
     if (desktop)
       void getAssistantSettings()
-        .then((value) => {
-          if (live.current && generation === settingsGeneration.current) setConfiguration(value);
+        .then(async (value) => {
+          if (!live.current || generation !== settingsGeneration.current) return;
+          setConfiguration(value);
+          const current = () => live.current && discovery === catalogGeneration.current;
+          await restoreConnectionCatalogs(value, {
+            current,
+            listModels: listAssistantModels,
+            refresh: (settings, models) =>
+              queueConfigurationWrite(async () => {
+                if (!current()) return null;
+                return refreshAssistantConnection(settings, models);
+              }),
+            publish: setConfiguration,
+            error: setError,
+          });
         })
         .catch((failure) => {
           if (live.current && generation === settingsGeneration.current)
@@ -92,6 +121,7 @@ export function useAssistantConversationSession({
         });
     return () => {
       live.current = false;
+      ++catalogGeneration.current;
       if (desktop) release();
     };
   }, [desktop, sessionId]);
@@ -119,6 +149,12 @@ export function useAssistantConversationSession({
     if (
       !desktop ||
       !configuration ||
+      !configuration.connections.some(
+        (connection) =>
+          assistantConnectionReady(connection) &&
+          assistantConnectionKey(connection.settings) ===
+            assistantConnectionKey(configuration.settings),
+      ) ||
       ownerRef.current !== owner ||
       requestRef.current ||
       historyBusy ||
@@ -193,16 +229,19 @@ export function useAssistantConversationSession({
     setError(null);
   }
   async function openConversation(id: string) {
-    if (requestRef.current || historyBusy || unsaved) return;
+    if (requestRef.current || historyBusy || unsaved) return false;
     setHistoryBusy(true);
     const key = owner;
     try {
       const value = await readAssistantConversation(id);
       if (value.projectId !== projectId)
         throw new Error('This conversation belongs to another project.');
-      if (ownerRef.current === key) publish(key, conversations.current.bind(key, value));
+      if (ownerRef.current !== key || !live.current) return false;
+      publish(key, conversations.current.bind(key, value));
+      return true;
     } catch (failure) {
       if (live.current && ownerRef.current === key) setError(messageError(failure));
+      return false;
     } finally {
       if (live.current) setHistoryBusy(false);
     }
@@ -224,10 +263,46 @@ export function useAssistantConversationSession({
       if (live.current) setHistoryBusy(false);
     }
   }
-  function configured(settings: AssistantSettings, credentialPresent: boolean) {
+  function configured(value: AssistantConfiguration) {
     ++settingsGeneration.current;
-    setConfiguration({ settings, credentialPresent });
+    setConfiguration(value);
     setError(null);
+  }
+  async function selectModel(settings: AssistantSettings) {
+    if (!desktop || requestRef.current) return;
+    const generation = ++settingsGeneration.current;
+    try {
+      await queueConfigurationWrite(async () => {
+        if (!live.current || generation !== settingsGeneration.current) return;
+        const value = await saveAssistantSettings({ ...settings });
+        if (live.current && generation === settingsGeneration.current) {
+          setConfiguration(value);
+          setError(null);
+        }
+      });
+    } catch (failure) {
+      if (live.current && generation === settingsGeneration.current)
+        setError(messageError(failure));
+    }
+  }
+  async function refreshModels(settings: AssistantSettings) {
+    if (!desktop || requestRef.current) return;
+    const discovery = catalogGeneration.current;
+    try {
+      const models = await listAssistantModels({ ...settings });
+      if (!live.current || discovery !== catalogGeneration.current) return;
+      await queueConfigurationWrite(async () => {
+        if (!live.current || discovery !== catalogGeneration.current) return;
+        const value = await refreshAssistantConnection({ ...settings }, models);
+        if (live.current && discovery === catalogGeneration.current) {
+          setConfiguration(value);
+          setError(null);
+        }
+      });
+    } catch (failure) {
+      if (live.current && discovery === catalogGeneration.current)
+        setError(`${settings.provider}: ${messageError(failure)}`);
+    }
   }
   async function retrySave() {
     if (!desktop || requestRef.current || historyBusy || !unsaved) return;
@@ -270,6 +345,8 @@ export function useAssistantConversationSession({
     sessionId,
     configuration,
     configured,
+    selectModel,
+    refreshModels,
     conversation,
     history,
     error,

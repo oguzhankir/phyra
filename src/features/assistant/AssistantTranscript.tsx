@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { BookOpen, ChevronDown } from 'lucide-react';
+import { Copy, Sparkles } from 'lucide-react';
+import { modelLabel } from '../../domain/assistant/models';
+import { helpArticles } from '../help/content';
+import { ProviderLogo } from './providers';
 import type { AssistantConversation } from '../../domain/assistant/types';
 import AcademicMarkdown from '../../shared/FormattedText';
 import { openAssistantReference } from '../../platform/desktop/assistant';
@@ -71,11 +74,14 @@ export default function AssistantTranscript({
     >
       {!session.conversation.messages.length && (
         <div className="assistant-empty">
-          <BookOpen size={26} />
-          <h3>{study ? 'Understand your study' : 'Engineering help'}</h3>
+          <span className="assistant-welcome-mark">
+            <Sparkles size={27} />
+          </span>
+          <h3>{study ? 'Let’s explore your study' : 'Your engineering assistant'}</h3>
           <p>
-            Ask about the formulation, preparation or current result. Replies cite the offline help
-            and the study snapshot you attach.
+            {study
+              ? 'Ask about your setup, the governing equations or what your results mean.'
+              : 'Explore the mechanics, plan a study or find your way around Phyra.'}
           </p>
           <div>
             {(study
@@ -113,9 +119,19 @@ export default function AssistantTranscript({
           aria-label={message.role === 'user' ? 'Your message' : 'Assistant reply'}
         >
           <div className="assistant-message-heading">
-            <strong>{message.role === 'user' ? 'You' : 'Assistant'}</strong>
+            <strong>
+              {message.role === 'assistant' &&
+                (message.provider ? (
+                  <ProviderLogo provider={message.provider} />
+                ) : (
+                  <Sparkles size={13} />
+                ))}
+              {message.role === 'user' ? 'You' : 'Assistant'}
+            </strong>
             <small>
-              {message.role === 'assistant' && message.model}
+              {message.role === 'assistant' &&
+                message.model &&
+                (message.provider ? modelLabel(message.provider, message.model) : message.model)}
               {message.status !== 'complete' &&
                 ` · ${session.pending && message.id === session.conversation.messages.at(-1)?.id ? 'streaming' : message.status}`}
             </small>
@@ -144,31 +160,32 @@ export default function AssistantTranscript({
                   : 'No response text.'}
             </span>
           )}
-          {message.role === 'assistant' && message.context && (
-            <details className="assistant-message-provenance">
-              <summary>
-                Sources and snapshot <ChevronDown size={12} />
-              </summary>
-              <p>
-                {message.context.kind === 'study'
-                  ? `Study ${message.context.studyId} · revision ${message.context.revision}`
-                  : 'Product documentation only'}
-              </p>
-              <div>
-                {message.context.sourceIds.map((id) => (
-                  <button type="button" key={id} onClick={() => onSource(id)}>
-                    {id}
-                  </button>
-                ))}
+          {message.role === 'assistant' && message.content && (
+            <footer className="assistant-message-footer">
+              <button
+                type="button"
+                aria-label="Copy assistant reply"
+                title="Copy reply"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(message.content)
+                    .catch(() =>
+                      setUiError('The reply could not be copied. Try selecting its text.'),
+                    );
+                }}
+              >
+                <Copy size={13} />
+              </button>
+              <div className="assistant-message-sources" aria-label="Reply sources">
+                {message.context?.sourceIds
+                  .filter((id) => message.content.includes(`#help:${id})`))
+                  .map((id) => (
+                    <button type="button" key={id} onClick={() => onSource(id)}>
+                      {helpArticles.find((article) => article.id === id)?.title ?? id}
+                    </button>
+                  ))}
               </div>
-              {message.usage && (
-                <p>
-                  Tokens: {message.usage.inputTokens ?? 'unknown'} input ·{' '}
-                  {message.usage.outputTokens ?? 'unknown'} output · cost unknown
-                </p>
-              )}
-              <pre>{message.context.text}</pre>
-            </details>
+            </footer>
           )}
         </article>
       ))}
