@@ -105,7 +105,7 @@ pub struct ChatMessage {
     pub role: Role,
     pub content: String,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
     pub request_id: String,

@@ -463,13 +463,26 @@ fn vscode_installation_uri(command: &str, session: &str, token: &str) -> Result<
     }
     Ok(format!("vscode:mcp/install?{encoded}"))
 }
+fn live_vscode_installation_uri(
+    directory: &Path,
+    session: &str,
+    token: &str,
+) -> Result<String, String> {
+    // Revalidate the grant when queued work executes, rather than capturing a
+    // snapshot that could outlive revocation or a change to the enabled tools.
+    // No caller-supplied URI, path or executable is accepted.
+    consent(directory, session, token)?;
+    let command =
+        std::env::current_exe().map_err(|_| "The installed Phyra executable is unavailable")?;
+    vscode_installation_uri(&command.to_string_lossy(), session, token)
+}
 #[tauri::command]
 pub async fn assistant_open_mcp_client(
     state: tauri::State<'_, super::AssistantState>,
     session_id: String,
 ) -> Result<(), String> {
     uuid(&session_id)?;
-    let uri = {
+    let (directory, token) = {
         let snapshots = state
             .snapshots
             .lock()
@@ -477,13 +490,10 @@ pub async fn assistant_open_mcp_client(
         let published = snapshots
             .get(&session_id)
             .ok_or("Start Phyra MCP before connecting a client")?;
-        // Validate the live native grant; no caller-supplied URI, path or executable is accepted.
-        consent(&published.directory, &session_id, &published.token)?;
-        let command =
-            std::env::current_exe().map_err(|_| "The installed Phyra executable is unavailable")?;
-        vscode_installation_uri(&command.to_string_lossy(), &session_id, &published.token)?
+        (published.directory.clone(), published.token.clone())
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let uri = live_vscode_installation_uri(&directory, &session_id, &token)?;
         super::references::open_uri(
             &uri,
             "VS Code; install the app or copy the MCP configuration instead",
@@ -800,6 +810,33 @@ mod tests {
         assert!(!uri.contains(' '));
         assert!(vscode_installation_uri("phyra", "../session", &token).is_err());
         assert!(vscode_installation_uri(&"x".repeat(4097), &session, &token).is_err());
+    }
+    #[test]
+    fn queued_client_installation_revalidates_revocation_and_grant_rotation() {
+        let (directory, session, token) = setup();
+        let snapshot = consent(directory.path(), &session, &token)
+            .unwrap()
+            .snapshot;
+        let copied_directory = directory.path().to_path_buf();
+        let copied_token = token.clone();
+        assert!(live_vscode_installation_uri(&copied_directory, &session, &copied_token).is_ok());
+
+        revoke(directory.path(), &session).unwrap();
+        assert!(live_vscode_installation_uri(&copied_directory, &session, &copied_token).is_err());
+
+        let replacement = uuid::Uuid::new_v4().to_string();
+        write_consent(
+            directory.path(),
+            &snapshot,
+            &replacement,
+            &[McpTool::Capabilities],
+        )
+        .unwrap();
+        assert!(live_vscode_installation_uri(&copied_directory, &session, &copied_token).is_err());
+        let current =
+            live_vscode_installation_uri(&copied_directory, &session, &replacement).unwrap();
+        assert!(current.contains(&replacement));
+        assert!(!current.contains(&copied_token));
     }
     #[test]
     fn stdio_frames_are_real_pinned_json_rpc_and_bounded() {
