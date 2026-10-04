@@ -113,9 +113,9 @@ export const helpArticles: readonly HelpArticle[] = [
         screenshots: [
           {
             src: '/help/preparation-workbench.jpg',
-            alt: 'Preceding workbench with a saved boundary set, standard camera tools and an undeformed node-distance measurement.',
+            alt: 'Phyra v0.3.0 preparation workspace with copied boundary sets and model view tools.',
             caption:
-              'Preceding interface showing saved boundary groups and preparation tools. Measurement uses undeformed SI node or preview-vertex coordinates; it is not a CAD sketch dimension.',
+              'Current preparation workspace with copied boundary groups and a recorded CPU cantilever field. Measurement uses undeformed SI node or preview-vertex coordinates; it is not a CAD sketch dimension.',
           },
         ],
       },
@@ -163,9 +163,9 @@ export const helpArticles: readonly HelpArticle[] = [
         screenshots: [
           {
             src: '/help/solid-workbench.jpg',
-            alt: 'Preceding light workbench displaying a saved CPU cantilever FEM solution.',
+            alt: 'Phyra v0.3.0 workbench displaying a saved CPU cantilever FEM solution.',
             caption:
-              'Preceding workspace layout with a recorded CPU FEM reference. Deformation is amplified; computing new fields requires the desktop app.',
+              'Current workspace with a recorded CPU FEM reference and independent project tabs. Deformation is amplified; computing new fields requires the desktop app.',
           },
         ],
       },
@@ -199,9 +199,9 @@ export const helpArticles: readonly HelpArticle[] = [
         screenshots: [
           {
             src: '/help/dark-workbench.jpg',
-            alt: 'Preceding dark workbench displaying saved CPU plane-stress fields and stored training history.',
+            alt: 'Phyra v0.3.0 dark workbench displaying saved CPU plane-stress displacement fields.',
             caption:
-              'Preceding dark workspace layout with a saved CPU comparison. The history is recorded; no training is running in this browser view.',
+              'Current dark workspace with a saved CPU comparison and shared field controls. No training is running in this browser view.',
           },
         ],
       },
@@ -1004,7 +1004,7 @@ The reported normalized potential is strain energy minus external work. It may b
         screenshots: [
           {
             src: '/help/comparison-workbench.jpg',
-            alt: 'Preceding plane-stress comparison showing shared FEM fields and recorded FEM/PINN difference metrics.',
+            alt: 'Phyra v0.3.0 plane-stress comparison showing shared FEM fields and recorded FEM/PINN difference metrics.',
             caption:
               'Saved CPU plane-stress comparison with FEM selected. Switch sources to inspect PINN and differences; these are recorded measurements.',
           },
@@ -1280,9 +1280,9 @@ The reported normalized potential is strain energy minus external work. It may b
         screenshots: [
           {
             src: '/help/problems-workbench.jpg',
-            alt: 'An incomplete length draft marked invalid, with a Problems entry linking back to the input.',
+            alt: 'Phyra v0.3.0 Problems panel showing recorded cantilever result-interpretation warnings.',
             caption:
-              'The incomplete 1e draft is rejected before becoming a physical input. Complete it or press Escape to revert; retained fields belong to the last valid definition.',
+              "The Problems panel keeps the saved cantilever reference's bending-stiffness and unsmoothed-stress warnings visible alongside its physical fields.",
           },
         ],
       },
@@ -1471,7 +1471,7 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Evidence and media',
         paragraphs: [
-          'The help screenshots and promotional video record a preceding interface iteration using genuine saved CPU references. They do not show the new tab, sketch or assistant workflows. Packaged checks, actual device tests and clean-machine installation are distinct evidence; a configured adapter or test fixture does not establish live provider or platform verification.',
+          'The help screenshots and promotional video show the v0.3.0 interface using genuine saved CPU references. Browser reference views do not run numerical workers, and the video labels future direction separately. Packaged checks, actual device tests and clean-machine installation are distinct evidence; a configured adapter or test fixture does not establish live provider or platform verification.',
         ],
       },
     ],
@@ -1564,9 +1564,9 @@ The reported normalized potential is strain energy minus external work. It may b
         screenshots: [
           {
             src: '/help/training-workbench.jpg',
-            alt: 'Stored total, PDE and boundary loss history from a completed CPU plane-stress training reference.',
+            alt: 'Independent-point PDE and boundary residual measurements from a completed CPU plane-stress training reference.',
             caption:
-              'Recorded CPU training history and independent-point residual measurements from the saved plane-stress reference. Residuals measure this trained problem and do not establish field-error bounds.',
+              'Independent-point residual measurements in the stored training view of the saved CPU plane-stress reference. Residuals measure this trained problem and do not establish field-error bounds.',
           },
         ],
         note: {

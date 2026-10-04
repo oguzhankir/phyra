@@ -4,6 +4,10 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+### Changed
+
+- Refreshed the README launch video and workbench, sketch and diagnostic screenshots for v0.3.0, including offline help captions that identify recorded CPU references.
+
 ## 0.3.0
 
 ### Added

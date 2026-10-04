@@ -9,13 +9,13 @@
 
 Phyra is an open-source engineering analysis desktop workbench combining classical finite element analysis with experimental Physics ML. **v0.3.0** brings interactive 2D sketch drafting, experimental potential-energy PINNs, independent project tabs and an optional AI assistant to local linear static elasticity workflows.
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/c47e6fcf-36c7-40b5-82f3-3d48e4d9600a" controls="controls" width="100%" aria-label="Phyra product walkthrough"></video>
-</p>
+[![Watch the Phyra v0.3.0 launch video](assets/media/phyra-introduction-poster.jpg)](https://github.com/oguzhankir/phyra/raw/refs/heads/main/assets/media/phyra-introduction.mp4)
+
+[Watch or download the 48-second launch video](https://github.com/oguzhankir/phyra/raw/refs/heads/main/assets/media/phyra-introduction.mp4) · English narration and captions · 1080p
 
 **Explore:** [source repository](https://github.com/oguzhankir/phyra) · [the roadmap](ROADMAP.md) · [built-in examples](examples) · [offline method guide](#learn-the-implemented-method)
 
-The checked-in video and screenshots show a preceding interface iteration inspecting genuine saved CPU results. The current workspace groups tasks into Prepare → Solve → Inspect, with contextual actions and searchable commands; final media recapture is deferred. Deformation playback visualizes a static field, not a dynamic simulation. Computing a new solution requires the desktop app.
+The video and screenshots show the v0.3.0 interface and genuine saved CPU references. The video introduces implemented methods and labels v0.4.0 ideas as planned direction. Deformation display amplifies a static field, not a dynamic simulation. Computing a new solution requires the desktop app.
 
 ## What you can do today
 
@@ -28,17 +28,21 @@ The checked-in video and screenshots show a preceding interface iteration inspec
 
 Undo/redo preserves up to 80 definition edits within a 16 MiB session budget. Physical undo restores the inputs and requires a new analysis; it cannot reactivate earlier fields. Project names, display units and named-set metadata leave physical results current. Opening or restoring a project starts a fresh edit history.
 
-![Preceding Phyra primitive preparation and named boundary sets](public/help/preparation-workbench.jpg)
+![Phyra v0.3.0 preparation workspace with named boundary sets](public/help/preparation-workbench.jpg)
 
-Preceding interface layout · primitive preparation and copied boundary sets; constrained sketching and CAD import remain future work.
+Preparation tools and copied boundary sets in the current workbench; constrained sketching and CAD import remain future work.
 
-![Preceding Phyra light workspace inspecting a saved CPU structural solution](public/help/solid-workbench.jpg)
+![Phyra v0.3.0 interactive line and circular-arc profile sketch](public/help/profile-sketch.jpg)
 
-Preceding interface layout · saved CPU 3D FEM reference · amplified static deformation.
+Editable line/arc profile in the expanded 2D sketch editor; the circular cutout is an exact outer arc.
 
-![Preceding Phyra plane-stress interface inspecting recorded FEM/PINN comparison](public/help/comparison-workbench.jpg)
+![Phyra v0.3.0 workspace inspecting a saved CPU cantilever FEM solution](public/help/solid-workbench.jpg)
 
-Preceding interface layout · saved CPU FEM/PINN comparison · recorded measurements, not live training.
+Saved CPU 3D FEM reference · amplified static deformation · independent project tabs.
+
+![Phyra v0.3.0 plane-stress FEM/PINN comparison and measured field differences](public/help/comparison-workbench.jpg)
+
+Saved CPU FEM/PINN comparison · matching physical locations · recorded measurements, not live training.
 
 ## Run locally
 
