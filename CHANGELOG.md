@@ -4,9 +4,23 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+## 0.4.0
+
 ### Changed
 
 - Refreshed the README launch video and workbench, sketch and diagnostic screenshots for v0.3.0, including offline help captions that identify recorded CPU references.
+
+### Fixed
+
+- Opening a cached project releases document ownership locks during validation and rejects late association changes, preventing hangs during recovery and replacement of a newer tab state. Migration notices identify the actual schema and only claim cache reuse after validation.
+- Recovery checkpoints and cleanup can retry a temporary initialization failure without reloading the document or changing its journal identity. A session-limit close failure preserves the active recovery copy and client before any discard or cleanup.
+- Completed worker results remain pending until their document receives and accepts the buffer; failed transfers preserve the previous result for saving and export. Cancellation follows the matching request through preparation and completion.
+- New profile boundaries reserve identifiers referenced by named boundary sets, so deleting and recreating geometry cannot silently reassign an incompatible set.
+- PINN cache reuse rejects fields that violate prescribed supports or whose reported strain energy disagrees with their stress fields, accounting for the recorded training precision.
+
+### Security
+
+- Provider streams and model catalogs protect saved keys from every connection, including fragmented responses and cancellation. Denied MCP requests record canonical operation labels instead of private client-supplied names.
 
 ## 0.3.0
 
