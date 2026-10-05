@@ -271,47 +271,88 @@ pub fn merge_usage(current: &mut Usage, next: Usage) {
         }
     }
 }
-// Hold a suffix until enough subsequent characters arrive, preventing a key
-// split across arbitrary text/network events from reaching the renderer.
+// Hold exact-key suffixes and unfinished credential-like tokens. Generic checks
+// must see entire sk-/AIza/AQ. tokens before any text crosses native IPC.
+fn credential_prefix_start(text: &str) -> Option<usize> {
+    let token_byte = |byte: u8| byte.is_ascii_alphanumeric() || b"-_".contains(&byte);
+    let start = text
+        .bytes()
+        .rposition(|byte| !token_byte(byte))
+        .map_or(0, |index| index + 1);
+    let tail = &text[start..];
+    if !tail.is_empty()
+        && ["sk-", "AIza", "AQ."]
+            .iter()
+            .any(|prefix| prefix.starts_with(tail) || tail.starts_with(prefix))
+    {
+        return Some(start);
+    }
+    // AQ.'s dot separates generic tokens, but belongs to this credential prefix.
+    if start >= 3
+        && &text.as_bytes()[start - 3..start] == b"AQ."
+        && (start == 3 || !token_byte(text.as_bytes()[start - 4]))
+    {
+        return Some(start - 3);
+    }
+    None
+}
 pub struct Redactor {
-    secret: String,
+    secrets: Vec<String>,
     pending: String,
 }
 impl Redactor {
-    pub fn new(secret: Option<&str>) -> Self {
+    pub fn new<'a>(secrets: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut secrets: Vec<String> = secrets
+            .into_iter()
+            .filter(|secret| !secret.is_empty())
+            .map(str::to_string)
+            .collect();
+        secrets.sort_by_key(|secret| std::cmp::Reverse(secret.len()));
+        secrets.dedup();
         Self {
-            secret: secret.unwrap_or_default().into(),
+            secrets,
             pending: String::new(),
         }
     }
     pub fn push(&mut self, text: &str) -> String {
         self.pending.push_str(text);
-        if !self.secret.is_empty() {
-            self.pending = self.pending.replace(&self.secret, "[credential redacted]");
+        for secret in &self.secrets {
+            // The marker is shorter than the minimum stored credential length.
+            self.pending = self.pending.replace(secret, "[key]");
         }
-        let mut split = self
-            .pending
-            .len()
-            .saturating_sub(self.secret.len().saturating_sub(1));
+        let mut split = self.pending.len().saturating_sub(
+            self.secrets
+                .first()
+                .map_or(0, |secret| secret.len().saturating_sub(1)),
+        );
         while !self.pending.is_char_boundary(split) {
             split = split.saturating_sub(1);
+        }
+        // Protect both an unfinished final token and a completed token bisected
+        // by an exact-key suffix. Neither may leak a too-short generic fragment.
+        for end in [self.pending.len(), split] {
+            if let Some(start) = credential_prefix_start(&self.pending[..end]) {
+                split = split.min(start);
+            }
         }
         let rest = self.pending.split_off(split);
         std::mem::replace(&mut self.pending, rest)
     }
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
     pub fn finish(&mut self) -> String {
-        let pending = std::mem::take(&mut self.pending);
-        if self.secret.is_empty() {
-            pending
-        } else {
-            pending.replace(&self.secret, "[credential redacted]")
+        let mut pending = std::mem::take(&mut self.pending);
+        for secret in &self.secrets {
+            pending = pending.replace(secret, "[key]");
         }
+        pending
     }
 }
 impl Drop for Redactor {
     fn drop(&mut self) {
         use zeroize::Zeroize;
-        self.secret.zeroize();
+        self.secrets.zeroize();
         self.pending.zeroize();
     }
 }
@@ -377,19 +418,86 @@ mod tests {
     }
     #[test]
     fn key_redaction_spans_every_text_boundary() {
-        let secret = "fixture-secret-only";
-        let input = format!("α {secret} ω");
-        for boundary in input
-            .char_indices()
-            .map(|(i, _)| i)
-            .chain(std::iter::once(input.len()))
-        {
-            let mut redactor = Redactor::new(Some(secret));
-            let result = redactor.push(&input[..boundary])
-                + &redactor.push(&input[boundary..])
-                + &redactor.finish();
-            assert!(!result.contains(secret));
-            assert!(result.contains("[credential redacted]"));
+        for secret in [
+            "fixture-secret-only",
+            "credential",
+            "redacted",
+            "sk-fixture-credential-1234567890",
+            "AIza123456789012345678901234",
+            "AQ.123456789012345678901234",
+        ] {
+            let input = format!("α {secret} ω");
+            for boundary in input
+                .char_indices()
+                .map(|(i, _)| i)
+                .chain(std::iter::once(input.len()))
+            {
+                let mut redactor = Redactor::new(Some(secret));
+                let first = redactor.push(&input[..boundary]);
+                let second = redactor.push(&input[boundary..]);
+                let tail = redactor.finish();
+                for output in [&first, &second, &tail] {
+                    super::super::storage::reject_credentials(output, None).unwrap();
+                }
+                let result = first + &second + &tail;
+                assert!(!result.contains(secret));
+                assert!(result.contains("[key]"));
+            }
         }
+    }
+    #[test]
+    fn generic_credential_checks_see_whole_tokens_before_any_fragment_is_published() {
+        for secret in [
+            "sk-fixture-credential-1234567890".to_string(),
+            format!("AIza{}", "x".repeat(24)),
+            format!("AQ.{}", "x".repeat(24)),
+        ] {
+            let input = format!("Safe text. {secret} next");
+            // Local endpoints have no selected credential, and unrelated token
+            // formats must still be checked before crossing native IPC.
+            for (boundary, selected) in (0..=input.len()).flat_map(|boundary| {
+                [
+                    None,
+                    Some("unrelated-selected-credential-for-this-provider"),
+                ]
+                .into_iter()
+                .map(move |selected| (boundary, selected))
+            }) {
+                let mut redactor = Redactor::new(selected);
+                let mut published = String::new();
+                let mut rejected = false;
+                for chunk in [&input[..boundary], &input[boundary..]] {
+                    let output = redactor.push(chunk);
+                    if super::super::storage::reject_credentials(&output, None).is_err() {
+                        rejected = true;
+                        break;
+                    }
+                    published.push_str(&output);
+                }
+                if !rejected {
+                    let output = redactor.finish();
+                    rejected = super::super::storage::reject_credentials(&output, None).is_err();
+                    if !rejected {
+                        published.push_str(&output);
+                    }
+                }
+                assert!(rejected);
+                assert!(!published.contains("sk-"));
+                assert!(!published.contains("AIza"));
+                assert!(!published.contains("AQ."));
+            }
+        }
+    }
+    #[test]
+    fn unfinished_credential_prefixes_report_buffer_bytes_without_delaying_normal_text() {
+        let mut redactor = Redactor::new(None);
+        assert_eq!(redactor.push("σ finite "), "σ finite ");
+        assert_eq!(redactor.push("sk"), "");
+        assert_eq!(redactor.pending_len(), 2);
+        assert_eq!(redactor.push("etch"), "sketch");
+        assert_eq!(redactor.push(" segment."), " segment.");
+        assert_eq!(redactor.push(" Complete"), " Complete");
+        assert_eq!(redactor.push("🙂x"), "🙂x");
+        assert_eq!(redactor.finish(), "");
     }
 }

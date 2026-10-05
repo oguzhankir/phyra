@@ -389,7 +389,13 @@ impl Server {
                 let allowed = enabled && valid;
                 let audit = Audit {
                     time: now(),
-                    tool: tool.chars().take(100).collect(),
+                    // Unknown client names/URI suffixes can contain credentials
+                    // or arbitrary private text. Audit only canonical names.
+                    tool: if !matches!(scope, "help" | "project" | "run" | "capabilities") {
+                        format!("{method}:unknown")
+                    } else {
+                        tool
+                    },
                     scope: match scope {
                         "help" | "project" | "run" | "capabilities" => scope,
                         _ => "capabilities",
@@ -658,6 +664,39 @@ mod tests {
         assert_eq!(history.len(), 7);
         assert!(history.last().unwrap().allowed);
         assert_eq!(history.last().unwrap().scope, "help");
+    }
+    #[test]
+    fn denied_tool_and_resource_names_cannot_copy_client_secrets_into_audits() {
+        let (directory, session, token) = setup();
+        let mut server = Server::new();
+        initialize(&mut server, directory.path(), &session, &token);
+        let secret = "opaque-fixture-credential-not-to-log";
+        for (method, params) in [
+            ("tools/call", json!({"name":secret,"arguments":{}})),
+            (
+                "resources/read",
+                json!({"uri":format!("phyra://{session}/{secret}")}),
+            ),
+        ] {
+            let response = server
+                .handle(
+                    directory.path(),
+                    &session,
+                    &token,
+                    json!({"jsonrpc":"2.0","id":2,"method":method,"params":params}),
+                )
+                .unwrap();
+            assert!(response.get("error").is_some());
+            assert!(!response.to_string().contains(secret));
+        }
+        let history = audits(directory.path(), &session).unwrap();
+        assert_eq!(history[0].tool, "tools/call:unknown");
+        assert_eq!(history[1].tool, "resources/read:unknown");
+        assert!(history.iter().all(|entry| !entry.allowed));
+        let bytes =
+            storage::read_owned_bytes(&audit_path(directory.path(), &session).unwrap(), 130 * 1024)
+                .unwrap();
+        assert!(!String::from_utf8(bytes).unwrap().contains(secret));
     }
     #[test]
     fn every_tool_and_resource_obeys_the_selected_allowlist() {

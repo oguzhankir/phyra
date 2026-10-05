@@ -771,15 +771,17 @@ fn scan_json_credentials_with(
     value: &serde_json::Value,
     settings: Vec<Settings>,
     mut lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
-) -> Result<(), String> {
+) -> Result<Vec<Zeroizing<String>>, String> {
+    let mut secrets = Vec::new();
     for connection in settings {
         if let Some(secret) = lookup(&connection).map_err(|_| CREDENTIAL_ACCESS_ERROR)? {
             // Scan decoded strings, including object keys, so JSON escaping cannot
             // hide opaque compatible-provider credentials. Secrets never enter errors.
             reject_json_credentials(value, Some(&secret))?;
+            secrets.push(secret);
         }
     }
-    Ok(())
+    Ok(secrets)
 }
 /// Call inside the native blocking storage transaction before publication or transport.
 pub fn reject_saved_json_credentials(
@@ -788,11 +790,25 @@ pub fn reject_saved_json_credentials(
 ) -> Result<(), String> {
     reject_saved_json_credentials_with(directory, value, credential)
 }
+/// Native-only secrets retained by the request transaction for streamed redaction.
+pub fn checked_saved_credentials(
+    directory: &Path,
+    value: &serde_json::Value,
+) -> Result<Vec<Zeroizing<String>>, String> {
+    checked_saved_credentials_with(directory, value, credential)
+}
 fn reject_saved_json_credentials_with(
     directory: &Path,
     value: &serde_json::Value,
     lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
 ) -> Result<(), String> {
+    checked_saved_credentials_with(directory, value, lookup).map(|_| ())
+}
+fn checked_saved_credentials_with(
+    directory: &Path,
+    value: &serde_json::Value,
+    lookup: impl FnMut(&Settings) -> Result<Option<Zeroizing<String>>, String>,
+) -> Result<Vec<Zeroizing<String>>, String> {
     // Generic tokens and the complete registry/resource bounds are checked before
     // any secret lookup. Registry reads never rewrite legacy settings.
     reject_json_credentials(value, None)?;
@@ -1050,6 +1066,51 @@ mod tests {
                 "compatible:https://api.openai.com",
             ]
         );
+    }
+    #[test]
+    fn request_redaction_retains_only_checked_native_saved_namespace_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture_inactive_connections(directory.path());
+        let secrets = checked_saved_credentials_with(
+            directory.path(),
+            &serde_json::json!({"messages":[{"content":"Explain SI units"}]}),
+            |settings| {
+                Ok(Some(Zeroizing::new(format!(
+                    "opaque-key-for-{}",
+                    credential_account(settings)?
+                ))))
+            },
+        )
+        .unwrap();
+        assert_eq!(secrets.len(), 4);
+        assert!(secrets
+            .iter()
+            .any(|secret| secret.as_str() == "opaque-key-for-compatible:https://inactive.example"));
+        assert!(secrets
+            .iter()
+            .any(|secret| secret.as_str() == "opaque-key-for-openai:https://api.openai.com"));
+        assert!(checked_saved_credentials_with(
+            directory.path(),
+            &serde_json::json!({"messages":[{"content":secrets[0].as_str()}]}),
+            |_| Ok(Some(Zeroizing::new(secrets[0].to_string()))),
+        )
+        .is_err());
+    }
+    #[test]
+    fn inactive_opaque_keys_cannot_return_in_discovered_model_catalog_strings() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture_inactive_connections(directory.path());
+        let secret = "opaque-fixture-provider-key";
+        for value in [
+            serde_json::json!([{"id":secret,"name":"Benign model name","streaming":"unknown"}]),
+            serde_json::json!([{"id":"fixture-model","name":secret,"streaming":"unknown"}]),
+        ] {
+            let error = reject_saved_json_credentials_with(directory.path(), &value, |_| {
+                Ok(Some(Zeroizing::new(secret.to_string())))
+            })
+            .unwrap_err();
+            assert!(!error.contains(secret));
+        }
     }
     #[test]
     fn inactive_opaque_credentials_cannot_enter_snapshot_or_outbound_request_strings() {
