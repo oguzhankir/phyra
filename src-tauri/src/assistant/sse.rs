@@ -351,7 +351,7 @@ impl Redactor {
     /// Return buffered text that cannot still become a saved credential.
     /// The remaining suffix is deliberately retained and zeroized on drop.
     pub fn finish_cancelled(&mut self) -> String {
-        let keep = self
+        let saved_prefix = self
             .secrets
             .iter()
             .map(|secret| {
@@ -365,6 +365,10 @@ impl Redactor {
             })
             .max()
             .unwrap_or(0);
+        let generic_prefix = credential_prefix_start(&self.pending)
+            .map(|start| self.pending.len() - start)
+            .unwrap_or(0);
+        let keep = saved_prefix.max(generic_prefix);
         let split = self.pending.len().saturating_sub(keep);
         let rest = self.pending.split_off(split);
         std::mem::replace(&mut self.pending, rest)
@@ -533,5 +537,15 @@ mod tests {
         assert_eq!(redactor.push(&format!("safe text {prefix}")), "");
         assert_eq!(redactor.finish_cancelled(), "safe text ");
         assert_eq!(redactor.pending_len(), prefix.len());
+    }
+    #[test]
+    fn cancellation_keeps_generic_credential_prefixes() {
+        for token in ["sk-", "AIza", "AQ.", "sk-fixture-credential-1234567890"] {
+            let mut redactor = Redactor::new(None);
+            let output = redactor.push(&format!("safe buffered text {token}"));
+            assert_eq!(output, "safe buffered text ");
+            assert_eq!(redactor.finish_cancelled(), "");
+            assert_eq!(redactor.pending_len(), token.len());
+        }
     }
 }
