@@ -363,7 +363,9 @@ export function freshBoundaryId(
   const profile = project.geometry.profile;
   const used = new Set([
     ...[...(profile?.outer ?? []), ...(profile?.holes ?? [])].map((item) => item.id),
-    ...[...project.study.constraints, ...project.study.loads].flatMap((item) => item.regions),
+    ...[...project.study.constraints, ...project.study.loads, ...project.namedSelections].flatMap(
+      (item) => item.regions,
+    ),
   ]);
   let number = 1;
   while (used.has(`${prefix}-${number}`)) number++;

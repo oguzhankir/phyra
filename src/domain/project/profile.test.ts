@@ -12,6 +12,7 @@ import {
   changeGeometryKind,
 } from './profile';
 import { regionNames } from './regions';
+import { selectionIsCompatible } from './namedSelections';
 import { inputError } from './validation';
 import { resultIsCurrent } from '../execution/presentation';
 import type { ResultData } from '../results/fields';
@@ -167,6 +168,31 @@ describe('exact plane-stress profiles', () => {
     expect(freshBoundaryId(project, 'hole')).toBe('hole-2');
     expect(project.study.loads[0].regions).toEqual(['hole-1']);
     expect(inputError(project)).toMatch(/deleted or renamed/);
+  });
+  it('does not reattach a retired named boundary set when a new boundary is allocated', () => {
+    const project = makeProject('kirsch-quarter');
+    const profile = project.geometry.profile!;
+    profile.holes = [{ id: 'hole-1', name: 'Original hole', center: [-2, 2], radius: 0.1 }];
+    const selection = {
+      id: 'retired-hole',
+      name: 'Original hole boundary',
+      geometryKind: 'profile' as const,
+      dimension: '2d' as const,
+      regions: ['hole-1'] as [string],
+    };
+    project.namedSelections = [selection];
+    expect(selectionIsCompatible(project, selection)).toBe(true);
+    profile.holes = [];
+    expect(selectionIsCompatible(project, selection)).toBe(false);
+    profile.holes.push({
+      id: freshBoundaryId(project, 'hole'),
+      name: 'Different hole',
+      center: [-3, 2],
+      radius: 0.1,
+    });
+    expect(profile.holes[0].id).toBe('hole-2');
+    expect(selection.regions).toEqual(['hole-1']);
+    expect(selectionIsCompatible(project, selection)).toBe(false);
   });
   it('rejects unsupported neural workflows and invalid typed traction before execution', () => {
     const project = makeProject('kirsch-quarter');
