@@ -35,8 +35,17 @@ export async function runJob(
     documentId: documentId ?? null,
     ownerId: recoveryOwnerId,
   });
-  assertTrainingMetadata(manifest);
-  assertReferenceMetadata(manifest);
+  try {
+    assertTrainingMetadata(manifest);
+    assertReferenceMetadata(manifest);
+  } catch (cause) {
+    try {
+      await finishResult(manifest.jobId, documentId, false);
+    } catch (cleanup) {
+      throw new Error(`${String(cause)} Result cleanup failed: ${String(cleanup)}`);
+    }
+    throw cause;
+  }
   return manifest;
 }
 export async function getDevices(project: Project): Promise<Devices> {
@@ -59,8 +68,20 @@ export async function readBuffer(jobId: string, documentId?: string): Promise<Ar
   });
   return value instanceof ArrayBuffer ? value : new Uint8Array(value).buffer;
 }
-export function cancelJob(): Promise<void> {
-  return invoke('cancel_job');
+export function cancelJob(requestId: string): Promise<boolean> {
+  return invoke('cancel_job', { requestId });
+}
+export function finishResult(
+  jobId: string,
+  documentId: string | undefined,
+  accept: boolean,
+): Promise<void> {
+  return invoke('finish_result', {
+    jobId,
+    documentId: documentId ?? null,
+    ownerId: recoveryOwnerId,
+    accept,
+  });
 }
 export type OpenedProject = {
   project: Project;

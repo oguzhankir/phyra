@@ -4,6 +4,8 @@ import type { Manifest } from '../../domain/contracts/types';
 import { makeProject } from '../../features/examples/projects';
 import {
   closeProject,
+  cancelJob,
+  finishResult,
   exportResults,
   openProject,
   readBuffer,
@@ -92,5 +94,49 @@ describe('document-owned native archive and result commands', () => {
       'read_buffer',
       { jobId: 'copied-id', documentId: b, ownerId: recoveryOwnerId },
     ]);
+  });
+
+  it('correlates cancellation with the run and finishes only the document-owned candidate', async () => {
+    const documentId = crypto.randomUUID();
+    const requestId = crypto.randomUUID();
+    vi.mocked(invoke).mockResolvedValueOnce(false).mockResolvedValueOnce(undefined);
+    expect(await cancelJob(requestId)).toBe(false);
+    await finishResult('pending-job', documentId, false);
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['cancel_job', { requestId }],
+      [
+        'finish_result',
+        { jobId: 'pending-job', documentId, ownerId: recoveryOwnerId, accept: false },
+      ],
+    ]);
+  });
+
+  it('discards native pending fields when frontend provenance metadata rejects the manifest', async () => {
+    const documentId = crypto.randomUUID();
+    const project = makeProject('cantilever');
+    const manifest = {
+      jobId: 'invalid-metadata-fixture',
+      operation: 'train',
+      training: { configuration: { formulation: 'potential-energy' } },
+    } as Manifest;
+    vi.mocked(invoke).mockResolvedValueOnce(manifest).mockResolvedValueOnce(undefined);
+    await expect(runJob('train', project, crypto.randomUUID(), documentId)).rejects.toThrow(
+      'potential-energy training metadata',
+    );
+    expect(vi.mocked(invoke).mock.calls[1]).toEqual([
+      'finish_result',
+      { jobId: manifest.jobId, documentId, ownerId: recoveryOwnerId, accept: false },
+    ]);
+  });
+
+  it('preserves legacy document normalization for candidate cleanup', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    await finishResult('legacy-pending-fixture', undefined, false);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('finish_result', {
+      jobId: 'legacy-pending-fixture',
+      documentId: null,
+      ownerId: recoveryOwnerId,
+      accept: false,
+    });
   });
 });

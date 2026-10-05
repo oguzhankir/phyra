@@ -1,6 +1,6 @@
 use super::{
     events::RunRequestId,
-    state::{Active, EngineState},
+    state::{finish_run, run_cancellation, Active, EngineState},
     validation::{validate_capabilities, validate_devices, validate_metrics, MAX_METRICS},
 };
 use crate::{
@@ -70,6 +70,45 @@ pub(crate) fn worker(
     job_id: &str,
     request_id: Option<&RunRequestId>,
 ) -> Result<Value, String> {
+    worker_with_publication(
+        app,
+        state,
+        WorkerInput {
+            operation,
+            project,
+            directory,
+            job_id,
+            request_id,
+        },
+        Ok,
+    )
+}
+
+pub(crate) struct WorkerInput<'a> {
+    pub(crate) operation: &'a str,
+    pub(crate) project: &'a Value,
+    pub(crate) directory: &'a Path,
+    pub(crate) job_id: &'a str,
+    pub(crate) request_id: Option<&'a RunRequestId>,
+}
+
+pub(crate) fn worker_with_publication(
+    app: &tauri::AppHandle,
+    state: &EngineState,
+    input: WorkerInput<'_>,
+    publish: impl FnOnce(Value) -> Result<Value, String>,
+) -> Result<Value, String> {
+    let WorkerInput {
+        operation,
+        project,
+        directory,
+        job_id,
+        request_id,
+    } = input;
+    let cancelled = run_cancellation(state, request_id)?;
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("Analysis cancelled".into());
+    }
     trace_verification(&format!("worker-request:{operation}"));
     validate_project(project)?;
     if state.shutting_down.load(Ordering::SeqCst) {
@@ -82,6 +121,9 @@ pub(crate) fn worker(
     }
     if state.shutting_down.load(Ordering::SeqCst) {
         return Err("Application is closing".into());
+    }
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("Analysis cancelled".into());
     }
     let request = serde_json::to_vec(&json!({"protocolVersion":1,"operation":operation,
         "jobId":job_id,"project":project}))
@@ -113,12 +155,12 @@ pub(crate) fn worker(
     let stdout = process.stdout.take().ok_or("Missing engine output")?;
     let mut stdin = process.stdin.take().ok_or("Missing engine input")?;
     let child = Arc::new(Mutex::new(process));
-    let cancelled = Arc::new(AtomicBool::new(false));
     let training_started = Arc::new(AtomicBool::new(false));
     *active = Some(Active {
         child: child.clone(),
         cancelled: cancelled.clone(),
         training_started: training_started.clone(),
+        request_id: request_id.cloned(),
     });
     drop(active);
     let execution = (|| -> Result<Value, String> {
@@ -272,13 +314,28 @@ pub(crate) fn worker(
         }
         Ok(manifest)
     })();
+    // Cancellation and candidate staging have one terminal transition. A
+    // cancel acknowledgment cannot race a successful retained result, and the
+    // frontend can distinguish a completed request from a stopped worker.
+    let mut active = state.active.lock().map_err(|e| e.to_string())?;
+    let execution = execution.and_then(|manifest| {
+        if cancelled.load(Ordering::SeqCst) {
+            Err("Analysis cancelled".into())
+        } else {
+            publish(manifest)
+        }
+    });
+    if let Some(request) = request_id {
+        finish_run(state, request)?;
+    }
     if execution.is_err() {
         if let Ok(mut process) = child.lock() {
             let _ = process.kill();
             let _ = process.wait();
         }
     }
-    state.active.lock().map_err(|e| e.to_string())?.take();
+    active.take();
+    drop(active);
     trace_verification(&format!(
         "worker-finished:{operation}:{}",
         if execution.is_ok() {

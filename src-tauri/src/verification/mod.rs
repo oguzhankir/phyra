@@ -261,7 +261,7 @@ pub(crate) fn verify_owned_runs(
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
     trace_verification("verification-cancel-request");
-    let acknowledgement = cancel_job(app.state::<EngineState>());
+    let acknowledgement = cancel_job(app.state::<EngineState>(), None);
     let outcome = task
         .join()
         .map_err(|_| "Cancellation worker thread panicked".to_string())?;

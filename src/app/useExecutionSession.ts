@@ -19,6 +19,7 @@ import type { ResultData } from '../domain/results/fields';
 import type { RunTab } from '../features/runs/RunWorkspace';
 import {
   cancelJob,
+  finishResult,
   getDevices,
   readBuffer,
   runJob,
@@ -27,6 +28,7 @@ import {
 } from '../platform/desktop/bridge';
 import { invokeVerification as invoke } from '../platform/desktop/verification';
 import { ExecutionOwnership } from './executionOwnership';
+import { receiveExecutionResult } from './executionPublication';
 import type { WorkbenchActivity } from './workbenchActivity';
 
 interface Props {
@@ -142,15 +144,24 @@ export function useExecutionSession(props: Props) {
       const manifest = await runJob(operation, snapshot, job.requestId, props.documentId);
       if (verificationRef.current)
         void invoke('verification_trace', { message: 'frontend manifest received' });
-      if (!ownership.current.bind(job, manifest.jobId)) return;
-      setRunExecution((previous) => (previous ? { ...previous, jobId: manifest.jobId } : previous));
-      const buffer = await readBuffer(manifest.jobId, props.documentId);
+      const received = await receiveExecutionResult(
+        ownership.current,
+        job,
+        () => projectRef.current,
+        manifest,
+        {
+          read: () => readBuffer(manifest.jobId, props.documentId),
+          finish: (accept) => finishResult(manifest.jobId, props.documentId, accept),
+          cleanupFailed: (cause) =>
+            callbacks.current.onError(`Result cleanup failed: ${String(cause)}`),
+        },
+      );
+      if (!received) return;
       if (verificationRef.current)
         void invoke('verification_trace', {
-          message: `frontend buffer received ${buffer.byteLength}`,
+          message: `frontend buffer received ${received.buffer.byteLength}`,
         });
-      if (!ownership.current.canPublish(job, projectRef.current, manifest)) return;
-      setData({ manifest, buffer });
+      setData(received);
       setRunExecution({ project: snapshot, operation, jobId: manifest.jobId, manifest });
       if (verificationRef.current)
         void invoke('verification_trace', { message: 'frontend result set' });
@@ -170,6 +181,7 @@ export function useExecutionSession(props: Props) {
               : 'Mesh generated',
       );
     } catch (cause) {
+      await ownership.current.settleCancellation(job);
       if (!ownership.current.owns(job)) return;
       if (!job.cancelled) {
         setRunStatus('failed');
@@ -181,6 +193,7 @@ export function useExecutionSession(props: Props) {
         callbacks.current.onNotice('Job cancelled; worker stopped');
       }
     } finally {
+      await ownership.current.settleCancellation(job);
       if (ownership.current.finish(job)) {
         setBusy(null);
         busyRef.current = null;
@@ -193,14 +206,21 @@ export function useExecutionSession(props: Props) {
   };
   const cancel = async () => {
     if (cancelling) return;
-    const job = ownership.current.cancel();
+    const job = ownership.current.activeLease();
     if (!job) return;
     setCancelling(true);
     try {
-      await cancelJob();
+      const stopped = await ownership.current.requestCancellation(job, () =>
+        cancelJob(job.requestId),
+      );
       if (!ownership.current.owns(job)) return;
-      setRunStatus('cancelled');
-      callbacks.current.onNotice('Cancellation acknowledged; worker stopped');
+      if (stopped) {
+        setRunStatus('cancelled');
+        callbacks.current.onNotice('Cancellation acknowledged; worker stopped');
+      } else {
+        setCancelling(false);
+        callbacks.current.onNotice('The worker has finished; loading its completed result.');
+      }
     } catch (cause) {
       if (!ownership.current.owns(job)) return;
       callbacks.current.onError(`Cancellation failed: ${String(cause)}`);

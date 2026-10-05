@@ -1,10 +1,10 @@
 use super::{
     events::RunRequestId,
     state::{
-        activate_result_owner, cancel_child, owned_document_directory, retain_document_job,
-        EngineState,
+        activate_result_owner, cancel_owned_request, commit_document_job, discard_document_job,
+        finish_run, owned_document_directory, register_run, stage_document_job, EngineState,
     },
-    worker::{job_directory, remember_failure, worker},
+    worker::{job_directory, remember_failure, worker, worker_with_publication, WorkerInput},
 };
 use crate::{
     platform::files::{read_bounded, MAX_BLOB},
@@ -12,7 +12,7 @@ use crate::{
     verification::trace_verification,
 };
 use serde_json::Value;
-use std::{fs, sync::atomic::Ordering};
+use std::fs;
 use tauri::{Manager, State};
 #[tauri::command]
 pub(crate) async fn run_job(
@@ -27,49 +27,58 @@ pub(crate) async fn run_job(
         return Err("Unsupported analysis operation".into());
     }
     let request_id = RunRequestId::parse(request_id)?;
+    register_run(&app.state::<EngineState>(), &request_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<EngineState>();
-        let document = document_identity(document_id.as_deref())?;
-        let project_state = app.state::<ProjectState>();
-        {
-            let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
-            documents.activate_owner(owner_id.as_deref())?;
-            documents.require_open(document)?;
-            activate_result_owner(&state, owner_id.as_deref())?;
-        }
-        let directory = job_directory(&app)?;
-        let id = uuid::Uuid::new_v4().to_string();
-        let result = worker(
-            &app,
-            &state,
-            &operation,
-            &project,
-            &directory,
-            &id,
-            Some(&request_id),
-        );
-        match result {
-            Ok(manifest) => {
-                trace_verification("run-job-retaining-result");
-                let publication = (|| {
-                    let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
-                    documents.require_owner(owner_id.as_deref())?;
-                    documents.require_open(document)?;
-                    retain_document_job(&state, document, id, directory.clone())
-                })();
-                if let Err(error) = publication {
+        let result = (|| {
+            let document = document_identity(document_id.as_deref())?;
+            let project_state = app.state::<ProjectState>();
+            {
+                let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+                documents.activate_owner(owner_id.as_deref())?;
+                documents.require_open(document)?;
+                activate_result_owner(&state, owner_id.as_deref())?;
+            }
+            let directory = job_directory(&app)?;
+            let id = uuid::Uuid::new_v4().to_string();
+            let result = worker_with_publication(
+                &app,
+                &state,
+                WorkerInput {
+                    operation: &operation,
+                    project: &project,
+                    directory: &directory,
+                    job_id: &id,
+                    request_id: Some(&request_id),
+                },
+                |manifest| {
+                    trace_verification("run-job-retaining-result");
+                    let publication = (|| {
+                        let documents =
+                            project_state.documents.lock().map_err(|e| e.to_string())?;
+                        documents.require_owner(owner_id.as_deref())?;
+                        documents.require_open(document)?;
+                        stage_document_job(&state, document, id.clone(), directory.clone())
+                    })();
+                    if let Err(error) = publication {
+                        let _ = fs::remove_dir_all(&directory);
+                        return Err(error);
+                    }
+                    trace_verification("run-job-returned");
+                    Ok(manifest)
+                },
+            );
+            match result {
+                Ok(manifest) => Ok(manifest),
+                Err(error) => {
+                    remember_failure(&app, &directory, &error);
                     let _ = fs::remove_dir_all(directory);
-                    return Err(error);
+                    Err(error)
                 }
-                trace_verification("run-job-returned");
-                Ok(manifest)
             }
-            Err(error) => {
-                remember_failure(&app, &directory, &error);
-                let _ = fs::remove_dir_all(directory);
-                Err(error)
-            }
-        }
+        })();
+        finish_run(&state, &request_id)?;
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -100,13 +109,37 @@ pub(crate) async fn get_devices(app: tauri::AppHandle, project: Value) -> Result
 }
 
 #[tauri::command]
-pub(crate) fn cancel_job(state: State<EngineState>) -> Result<(), String> {
-    if let Some(active) = state.active.lock().map_err(|e| e.to_string())?.as_ref() {
-        active.cancelled.store(true, Ordering::SeqCst);
-        let mut child = active.child.lock().map_err(|e| e.to_string())?;
-        cancel_child(&mut child)?;
-    }
-    Ok(())
+pub(crate) fn cancel_job(
+    state: State<EngineState>,
+    request_id: Option<String>,
+) -> Result<bool, String> {
+    let request = request_id.map(RunRequestId::parse).transpose()?;
+    cancel_owned_request(&state, request.as_ref())
+}
+
+#[tauri::command]
+pub(crate) async fn finish_result(
+    app: tauri::AppHandle,
+    job_id: String,
+    document_id: Option<String>,
+    owner_id: String,
+    accept: bool,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let project_state = app.state::<ProjectState>();
+        let document = document_identity(document_id.as_deref())?;
+        let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+        documents.require_owner(Some(&owner_id))?;
+        documents.require_open(document)?;
+        let state = app.state::<EngineState>();
+        if accept {
+            commit_document_job(&state, document, &job_id)
+        } else {
+            discard_document_job(&state, document, &job_id)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

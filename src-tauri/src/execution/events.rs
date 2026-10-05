@@ -3,6 +3,7 @@ use serde_json::Value;
 
 /// Caller identity for one UI run request, separate from the native worker job.
 /// This identity is never sent to Python or stored in numerical artifacts.
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct RunRequestId(String);
 
 impl RunRequestId {
