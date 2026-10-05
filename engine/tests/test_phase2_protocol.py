@@ -319,6 +319,8 @@ def test_neural_cache_rejects_displacement_that_violates_prescribed_supports(mea
     # both the hash and all displacement-derived summary/comparison values makes
     # this an internally consistent cache, except for its physical support.
     displacement[0, 0] = 1
+    # An unconstrained outlier must not inflate the support roundoff bound.
+    displacement[-1, 1] = 1e20
     manifest["pinnSummary" if comparing else "summary"]["maxDisplacement"] = float(
         np.linalg.norm(displacement, axis=1).max()
     )

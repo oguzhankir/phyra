@@ -398,7 +398,6 @@ def validate_result(
         # independently of the optimizer's residual losses or field accuracy.
         displacement_scale = max(
             training["normalization"]["displacement"],
-            float(np.max(np.abs(flat))),
             float(np.max(np.abs(targets))),
         )
         if np.any(np.abs(flat[fixed] - targets) > 64 * epsilon * displacement_scale):
