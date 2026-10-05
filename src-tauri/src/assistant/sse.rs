@@ -367,8 +367,7 @@ impl Redactor {
             .unwrap_or(0);
         let split = self.pending.len().saturating_sub(keep);
         let rest = self.pending.split_off(split);
-        let safe = std::mem::replace(&mut self.pending, rest);
-        safe
+        std::mem::replace(&mut self.pending, rest)
     }
 }
 impl Drop for Redactor {
