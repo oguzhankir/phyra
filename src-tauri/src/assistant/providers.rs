@@ -483,8 +483,17 @@ pub async fn stream(
         return Err("Provider stream ended before its completion event".into());
     }
     if cancelled {
-        // Pending suffixes have not been published. Do not flush a credential
-        // prefix merely because cancellation interrupted its remaining bytes.
+        // Flush buffered bytes that cannot become a credential, retaining only
+        // an ambiguous saved-key suffix when cancellation interrupts the stream.
+        let tail = redactor.finish_cancelled();
+        if output.len() + tail.len() > MAX_RESPONSE {
+            return Err("Provider response exceeds its text limit".into());
+        }
+        storage::reject_credentials(&tail, None)?;
+        if !tail.is_empty() {
+            output.push_str(&tail);
+            emit(&tail, None)?;
+        }
         return Ok((output, usage, true));
     }
     let tail = redactor.finish();
