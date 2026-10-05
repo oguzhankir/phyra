@@ -362,6 +362,7 @@ impl Cancellation {
 pub async fn stream(
     request: &Request,
     cancel: Arc<Cancellation>,
+    saved_credentials: &[Zeroizing<String>],
     mut emit: impl FnMut(&str, Option<&Usage>) -> Result<(), String>,
 ) -> Result<(String, Usage, bool), String> {
     request.validate()?;
@@ -434,7 +435,11 @@ pub async fn stream(
     }
     let mut network = response.bytes_stream();
     let mut decoder = sse::Decoder::default();
-    let mut redactor = sse::Redactor::new(credential);
+    let mut redactor = sse::Redactor::new(
+        credential
+            .into_iter()
+            .chain(saved_credentials.iter().map(|secret| secret.as_str())),
+    );
     let mut output = String::new();
     let mut usage = Usage::default();
     let mut done = false;
@@ -456,7 +461,7 @@ pub async fn stream(
                 emit("", Some(&usage))?;
             }
             let text = redactor.push(&delta.text);
-            if output.len() + text.len() > MAX_RESPONSE {
+            if output.len() + text.len() + redactor.pending_len() > MAX_RESPONSE {
                 return Err("Provider response exceeds its text limit".into());
             }
             if !text.is_empty() {
@@ -476,6 +481,11 @@ pub async fn stream(
     if !cancelled && !done {
         decoder.finish()?;
         return Err("Provider stream ended before its completion event".into());
+    }
+    if cancelled {
+        // Pending suffixes have not been published. Do not flush a credential
+        // prefix merely because cancellation interrupted its remaining bytes.
+        return Ok((output, usage, true));
     }
     let tail = redactor.finish();
     if output.len() + tail.len() > MAX_RESPONSE {
@@ -612,6 +622,7 @@ mod transport_tests {
         let (output, usage, cancelled) = stream(
             &request(settings),
             Arc::new(Cancellation::default()),
+            &[],
             |text, _| {
                 displayed.push_str(text);
                 Ok(())
@@ -629,6 +640,96 @@ mod transport_tests {
         assert!(outbound.contains("Pa is an SI pressure unit."));
     }
     #[tokio::test(flavor = "current_thread")]
+    async fn native_transport_rejects_credential_like_text_split_across_single_character_deltas() {
+        for secret in [
+            "sk-fixture-credential-1234567890".to_string(),
+            format!("AIza{}", "x".repeat(24)),
+            format!("AQ.{}", "x".repeat(24)),
+        ] {
+            let input = format!("Safe text. {secret}");
+            let mut body = String::new();
+            for character in input.chars() {
+                let event = json!({"choices":[{"delta":{"content":character.to_string()},"finish_reason":null}]});
+                body.push_str(&format!("data: {event}\n\n"));
+            }
+            body.push_str("data: [DONE]\n\n");
+            let (settings, server) = fixture(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
+            let mut displayed = String::new();
+            let error = stream(
+                &request(settings),
+                Arc::new(Cancellation::default()),
+                &[],
+                |text, _| {
+                    displayed.push_str(text);
+                    Ok(())
+                },
+            )
+            .await
+            .err()
+            .expect("Credential-like text must fail before publication");
+            assert_eq!(displayed, "Safe text. ");
+            assert!(!error.contains(&secret));
+            assert!(error.contains("Credential-like text"));
+            server.join().unwrap();
+        }
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn native_transport_redacts_inactive_opaque_credentials_before_publication() {
+        let secret = "opaque-fixture-key-from-an-inactive-provider";
+        let mut body = String::new();
+        for character in format!("Safe text. {secret} complete").chars() {
+            let event = json!({"choices":[{"delta":{"content":character.to_string()},"finish_reason":null}]});
+            body.push_str(&format!("data: {event}\n\n"));
+        }
+        body.push_str("data: [DONE]\n\n");
+        let (settings, server) = fixture(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
+        let credentials = vec![Zeroizing::new(secret.to_string())];
+        let mut displayed = String::new();
+        let (text, _, cancelled) = stream(
+            &request(settings),
+            Arc::new(Cancellation::default()),
+            &credentials,
+            |text, _| {
+                displayed.push_str(text);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!cancelled);
+        assert_eq!(text, "Safe text. [key] complete");
+        assert_eq!(displayed, text);
+        assert!(!displayed.contains(secret));
+        server.join().unwrap();
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_does_not_flush_a_buffered_inactive_credential_prefix() {
+        let secret = "opaque-fixture-key-from-an-inactive-provider";
+        let prefix = &secret[..20];
+        let content = format!("{}{prefix}", "Safe output. ".repeat(8));
+        let event = json!({"choices":[{"delta":{"content":content},"finish_reason":null}]});
+        let body = format!("data: {event}\n\n");
+        let (settings, server) = fixture(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
+        let credentials = vec![Zeroizing::new(secret.to_string())];
+        let cancel = Arc::new(Cancellation::default());
+        let cancellation = cancel.clone();
+        let mut displayed = String::new();
+        let (text, _, cancelled) = stream(&request(settings), cancel, &credentials, |text, _| {
+            displayed.push_str(text);
+            if !text.is_empty() {
+                cancellation.cancel();
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+        assert!(cancelled);
+        assert!(!text.is_empty());
+        assert_eq!(text, displayed);
+        assert!(!displayed.contains(prefix));
+        server.join().unwrap();
+    }
+    #[tokio::test(flavor = "current_thread")]
     async fn model_discovery_and_http_error_redaction_use_actual_native_transport() {
         let body = r#"{"data":[{"id":"fixture-model"}]}"#;
         let (settings,server)=fixture(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()));
@@ -641,6 +742,7 @@ mod transport_tests {
         let error = stream(
             &request(settings),
             Arc::new(Cancellation::default()),
+            &[],
             |_, _| Ok(()),
         )
         .await
@@ -680,7 +782,7 @@ mod transport_tests {
         let (settings,server)=fixture(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()));
         let cancel = Arc::new(Cancellation::default());
         let cancellation = cancel.clone();
-        let (text, _, cancelled) = stream(&request(settings), cancel, |text, _| {
+        let (text, _, cancelled) = stream(&request(settings), cancel, &[], |text, _| {
             if !text.is_empty() {
                 cancellation.cancel();
             }

@@ -122,6 +122,7 @@ pub async fn assistant_credential_present(
 }
 #[tauri::command]
 pub async fn assistant_list_models(
+    app: tauri::AppHandle,
     state: State<'_, AssistantState>,
     settings: Settings,
 ) -> Result<Vec<Model>, String> {
@@ -129,12 +130,18 @@ pub async fn assistant_list_models(
         .network
         .try_acquire()
         .map_err(|_| "Assistant connections are busy; cancel a request before connecting again")?;
-    tokio::time::timeout(
+    let models = tokio::time::timeout(
         std::time::Duration::from_secs(60),
         providers::list_models(&settings),
     )
     .await
-    .map_err(|_| "Provider model discovery timed out")?
+    .map_err(|_| "Provider model discovery timed out")??;
+    let content = serde_json::to_value(&models).map_err(|_| "Invalid provider model list")?;
+    blocking_storage(Arc::clone(&state.storage_lock), move || {
+        storage::reject_saved_json_credentials(&storage::directory(&app)?, &content)?;
+        Ok(models)
+    })
+    .await
 }
 #[tauri::command]
 pub async fn assistant_stream(
@@ -151,10 +158,10 @@ pub async fn assistant_stream(
     providers::validate_settings(&request.settings, true)?;
     let selected = request.settings.clone();
     let content = serde_json::to_value(&request).map_err(|_| "Invalid assistant request")?;
-    blocking_storage(Arc::clone(&state.storage_lock), move || {
+    let secrets = blocking_storage(Arc::clone(&state.storage_lock), move || {
         let directory = storage::directory(&app)?;
         storage::require_connection(&directory, &selected)?;
-        storage::reject_saved_json_credentials(&directory, &content)
+        storage::checked_saved_credentials(&directory, &content)
     })
     .await?;
     let cancel = state
@@ -183,7 +190,7 @@ pub async fn assistant_stream(
     };
     let outcome = match send("started", None, None, None) {
         Ok(()) => {
-            providers::stream(&request, cancel, |text, usage| {
+            providers::stream(&request, cancel, &secrets, |text, usage| {
                 if !text.is_empty() {
                     send("text", Some(text.into()), None, None)?;
                 }
