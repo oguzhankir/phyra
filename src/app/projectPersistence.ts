@@ -54,10 +54,12 @@ export async function persistProjectSnapshot(
 }
 
 export async function closeProjectDocument(ports: {
+  prepareClose?: () => Promise<void>;
   canReplace: () => Promise<boolean>;
   clearRecovery: () => Promise<void>;
   close: () => void;
 }): Promise<boolean> {
+  await ports.prepareClose?.();
   if (!(await ports.canReplace())) return false;
   // Cleanup must finish before the active definition and fields disappear.
   await ports.clearRecovery();

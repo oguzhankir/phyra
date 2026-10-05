@@ -213,10 +213,32 @@ describe('archive autosave scheduling', () => {
 });
 
 describe('closing a project document', () => {
+  it('preserves unsaved definition, copy and client when native close admission fails before confirmation', async () => {
+    const canReplace = vi.fn(async () => true);
+    const clearRecovery = vi.fn(async () => {});
+    const close = vi.fn();
+    await expect(
+      closeProjectDocument({
+        prepareClose: async () => {
+          throw new Error('Document session limit reached');
+        },
+        canReplace,
+        clearRecovery,
+        close,
+      }),
+    ).rejects.toThrow('session limit');
+    expect(canReplace).not.toHaveBeenCalled();
+    expect(clearRecovery).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('closes a saved project only after recovery cleanup finishes', async () => {
     const order: string[] = [];
     expect(
       await closeProjectDocument({
+        prepareClose: async () => {
+          order.push('native admission');
+        },
         canReplace: async () => {
           order.push('confirmed');
           return true;
@@ -230,6 +252,7 @@ describe('closing a project document', () => {
       }),
     ).toBe(true);
     expect(order).toEqual([
+      'native admission',
       'confirmed',
       'cleanup',
       'reset definition, history, results and file association',

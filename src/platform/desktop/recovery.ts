@@ -17,7 +17,16 @@ export function createRecoveryClient(documentId: string) {
   };
   const initialize = () => {
     requireActive();
-    return (handshake ??= invoke<RecoveryInventory>('get_recovery', identity));
+    if (!handshake) {
+      const attempt = invoke<RecoveryInventory>('get_recovery', identity);
+      handshake = attempt;
+      void attempt.catch(() => {
+        // A transient storage/inventory failure must not poison this document's
+        // checkpoint, cleanup and explicit retry operations for its lifetime.
+        if (handshake === attempt) handshake = undefined;
+      });
+    }
+    return handshake;
   };
   const nextSequence = () => ++sequence;
   return {
@@ -52,6 +61,11 @@ export function createRecoveryClient(documentId: string) {
       await initialize();
       requireActive();
       return invoke<void>('clear_recovery', { ...identity, sequence: ownSequence, recoveryId });
+    },
+    prepareClose: async () => {
+      await initialize();
+      requireActive();
+      return invoke<void>('preflight_close_project', identity);
     },
     release: async () => {
       if (released) return;

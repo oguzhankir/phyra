@@ -54,6 +54,7 @@ export function useWorkbench({
   const verificationRef = useRef(false);
   const clearRecoveryRef = useRef<() => Promise<void>>(async () => {});
   const releaseRecoveryRef = useRef<() => Promise<void>>(async () => {});
+  const prepareCloseRef = useRef<() => Promise<void>>(async () => {});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(seed.notice ?? null);
 
@@ -67,6 +68,7 @@ export function useWorkbench({
     activity,
     currentResult: () => executionRef.current?.data ?? null,
     clearRecovery: () => clearRecoveryRef.current(),
+    prepareDocumentClose: () => prepareCloseRef.current(),
     retireDocument: async () => {
       if (desktop) {
         await releaseRecoveryRef.current();
@@ -236,6 +238,7 @@ export function useWorkbench({
   activity.recovery.current = recovery.pending || recovery.prompt || !recovery.ready;
   clearRecoveryRef.current = recovery.clearOwn;
   releaseRecoveryRef.current = recovery.release;
+  prepareCloseRef.current = recovery.prepareClose;
   const locked =
     !!execution.busy ||
     !!session.fileBusy ||

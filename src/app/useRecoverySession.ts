@@ -122,6 +122,7 @@ export function useRecoverySession({
     if (!enabled) return;
     const ownSequence = client.nextSequence();
     await enqueue(() => client.clearRecovery(ownSequence));
+    setFailed(false);
     setSavedAt(null);
     setCheckpointRevision(null);
   }, [enabled, enqueue]);
@@ -206,5 +207,6 @@ export function useRecoverySession({
       return inventory;
     },
     release: () => enqueue(() => client.release()),
+    prepareClose: () => (enabled ? enqueue(() => client.prepareClose()) : Promise.resolve()),
   };
 }

@@ -195,6 +195,34 @@ fn clear_document_checkpoint(
     Ok(())
 }
 
+// Close admission is checked before the frontend can save/discard a journal.
+// The application serializes document closes; final release/close still enforce
+// these limits and identities when mutating their respective ownership state.
+pub(crate) fn preflight_document_close(
+    state: &RecoveryState,
+    project: &ProjectState,
+    owner: &str,
+    document: &str,
+    client: &str,
+) -> Result<(), String> {
+    let recovery = state.documents.lock().map_err(|e| e.to_string())?;
+    if recovery.owner.as_deref() != Some(owner) {
+        return Err("Recovery request belongs to a superseded workbench session".into());
+    }
+    if recovery.retired_clients.len() >= MAX_CLIENT_GENERATIONS {
+        return Err("Recovery session limit reached. Save projects and restart Phyra.".into());
+    }
+    let session = recovery
+        .sessions
+        .get(document)
+        .ok_or("Recovery request belongs to a closed project document")?;
+    require_client(session, client)?;
+    let documents = project.documents.lock().map_err(|e| e.to_string())?;
+    documents.require_owner(Some(owner))?;
+    documents.require_open(document)?;
+    documents.require_close(document)
+}
+
 fn commit_document_checkpoint(
     root: &Path,
     state: &RecoveryState,
@@ -214,11 +242,12 @@ fn commit_document_checkpoint(
                 .transpose()?;
             if let Some(documents) = association.as_ref() {
                 documents.require_owner(Some(identity.owner))?;
+                documents.require_open(identity.document)?;
             }
             let receipt = write_session_checkpoint(root, session, project, sequence)?;
             if receipt["accepted"] == true {
                 if let Some(documents) = association.as_mut() {
-                    documents.forget(identity.document);
+                    documents.forget(identity.document)?;
                 }
             }
             Ok(receipt)
@@ -565,16 +594,18 @@ fn commit_client_checkpoint(
 ) -> Result<Value, String> {
     let mut session = state.session.lock().map_err(|e| e.to_string())?;
     require_client(&session, client)?;
+    let mut association = restored_project
+        .map(|state| state.documents.lock().map_err(|e| e.to_string()))
+        .transpose()?;
+    if let Some(documents) = association.as_ref() {
+        documents.require_open(LEGACY_DOCUMENT_ID)?;
+    }
     let receipt = write_session_checkpoint(directory, &mut session, project, sequence)?;
     if receipt["accepted"] == true {
-        if let Some(project_state) = restored_project {
+        if let Some(documents) = association.as_mut() {
             // Keep generation ownership through association adoption; a reload
             // cannot interleave and let an old restore clear a new file path.
-            project_state
-                .documents
-                .lock()
-                .map_err(|e| e.to_string())?
-                .forget(LEGACY_DOCUMENT_ID);
+            documents.forget(LEGACY_DOCUMENT_ID)?;
         }
     }
     Ok(receipt)
@@ -1581,5 +1612,154 @@ mod tests {
             archives.documents.lock().unwrap().path(&b, project_id),
             Some(temp.path().join("b.phyra"))
         );
+    }
+
+    #[test]
+    fn restored_checkpoint_preserves_own_journal_when_document_admission_is_denied() {
+        for closed in [false, true] {
+            let temporary = tempfile::tempdir().unwrap();
+            let recovery = RecoveryState::default();
+            let archives = ProjectState::default();
+            let owner = uuid::Uuid::new_v4().to_string();
+            let document = uuid::Uuid::new_v4().to_string();
+            let client = uuid::Uuid::new_v4().to_string();
+            activate_document(&recovery, &owner, &document, &client).unwrap();
+            let identity = || DocumentClient {
+                owner: &owner,
+                document: &document,
+                client: &client,
+            };
+            commit_document_checkpoint(
+                temporary.path(),
+                &recovery,
+                identity(),
+                &project(1),
+                1,
+                None,
+            )
+            .unwrap();
+            let journal = with_document(&recovery, &owner, &document, &client, |session| {
+                record_path(temporary.path(), &session.id)
+            })
+            .unwrap();
+            let original = fs::read(&journal).unwrap();
+            {
+                let mut documents = archives.documents.lock().unwrap();
+                documents.activate_owner(Some(&owner)).unwrap();
+                if closed {
+                    documents.close(&document).unwrap();
+                } else {
+                    for _ in 0..64 {
+                        documents.forget(&uuid::Uuid::new_v4().to_string()).unwrap();
+                    }
+                }
+            }
+            assert!(commit_document_checkpoint(
+                temporary.path(),
+                &recovery,
+                identity(),
+                &project(2),
+                2,
+                Some(&archives)
+            )
+            .is_err());
+            assert_eq!(fs::read(journal).unwrap(), original);
+            assert_eq!(
+                with_document(&recovery, &owner, &document, &client, |session| Ok(
+                    session.sequence
+                ))
+                .unwrap(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn close_preflight_limits_preserve_journal_and_allow_current_client_to_keep_checkpointing() {
+        for recovery_limit in [false, true] {
+            let temporary = tempfile::tempdir().unwrap();
+            let recovery = RecoveryState::default();
+            let archives = ProjectState::default();
+            let owner = uuid::Uuid::new_v4().to_string();
+            let document = uuid::Uuid::new_v4().to_string();
+            let client = uuid::Uuid::new_v4().to_string();
+            activate_document(&recovery, &owner, &document, &client).unwrap();
+            archives
+                .documents
+                .lock()
+                .unwrap()
+                .activate_owner(Some(&owner))
+                .unwrap();
+            let identity = || DocumentClient {
+                owner: &owner,
+                document: &document,
+                client: &client,
+            };
+            commit_document_checkpoint(
+                temporary.path(),
+                &recovery,
+                identity(),
+                &project(1),
+                1,
+                None,
+            )
+            .unwrap();
+            let journal = with_document(&recovery, &owner, &document, &client, |session| {
+                record_path(temporary.path(), &session.id)
+            })
+            .unwrap();
+            let original = fs::read(&journal).unwrap();
+            preflight_document_close(&recovery, &archives, &owner, &document, &client).unwrap();
+            for _ in 0..MAX_CLIENT_GENERATIONS {
+                let prior_document = uuid::Uuid::new_v4().to_string();
+                if recovery_limit {
+                    let prior_client = uuid::Uuid::new_v4().to_string();
+                    activate_document(&recovery, &owner, &prior_document, &prior_client).unwrap();
+                    clear_document_checkpoint(
+                        temporary.path(),
+                        &recovery,
+                        DocumentClient {
+                            owner: &owner,
+                            document: &prior_document,
+                            client: &prior_client,
+                        },
+                        1,
+                        None,
+                        true,
+                    )
+                    .unwrap();
+                } else {
+                    archives
+                        .documents
+                        .lock()
+                        .unwrap()
+                        .close(&prior_document)
+                        .unwrap();
+                }
+            }
+            assert!(
+                preflight_document_close(&recovery, &archives, &owner, &document, &client).is_err()
+            );
+            assert_eq!(fs::read(&journal).unwrap(), original);
+            assert_eq!(
+                with_document(&recovery, &owner, &document, &client, |session| Ok(
+                    session.sequence
+                ))
+                .unwrap(),
+                1
+            );
+            // A denied close did not retire the live client or erase its copy.
+            let receipt = commit_document_checkpoint(
+                temporary.path(),
+                &recovery,
+                identity(),
+                &project(2),
+                2,
+                None,
+            )
+            .unwrap();
+            assert_eq!(receipt["accepted"], true);
+            assert_eq!(read_record(&journal).unwrap().project["revision"], 2);
+        }
     }
 }
