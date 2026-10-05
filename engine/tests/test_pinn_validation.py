@@ -19,7 +19,12 @@ from phyra_engine.meshing.plane_stress import generate_rectangle
 from phyra_engine.methods.physicsml import plane_stress as method
 from phyra_engine.methods.physicsml import training, validation
 from phyra_engine.methods.physicsml.configuration import TrainingConfiguration
+from phyra_engine.methods.physicsml.evaluation import evaluate_fields, support_reactions
 from phyra_engine.methods.physicsml.normalization import normalization
+from phyra_engine.physics.elasticity.plane_stress import integrate_edge_loads
+from phyra_engine.results.diagnostics import summary
+from phyra_engine.results.fields import pack_stress, von_mises
+from phyra_engine.results.plane_stress_validation import validate_result
 
 
 def configuration(**overrides):
@@ -132,6 +137,52 @@ def test_nonfinite_held_out_fields_are_rejected():
     with pytest.raises(EngineError) as error:
         evaluate(AxialField(factor=float("nan")))
     assert error.value.code == "nonfinite-validation"
+
+
+@pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
+@pytest.mark.parametrize("prescribed", [0.0, 1e-5])
+def test_neural_cache_validation_preserves_exact_axial_fields_and_declared_roundoff(
+    dtype, prescribed
+):
+    mesh = generate_rectangle(0.4, 0.1, 0.02, 0.05)
+    physics = study()
+    physics["constraints"][0]["components"][0] = prescribed
+    physics["constraints"][1]["components"][1] = -prescribed
+    scales = normalization(mesh, physics)
+    young, poisson = physics["material"]["young"], physics["material"]["poisson"]
+    material = torch.tensor(plane_stress_matrix(young, poisson) / young, dtype=dtype)
+    axial_stress = 100 / (0.1 * 0.02)
+
+    class TranslatedAxialField(AxialField):
+        def forward(self, coordinates):
+            return super().forward(coordinates) + coordinates.new_tensor(
+                [prescribed / scales.displacement, -prescribed / scales.displacement]
+            )
+
+    model = TranslatedAxialField(factor=axial_stress / scales.stress)
+    nodal = evaluate_fields(model, mesh.positions[:, :2], scales, material, "cpu", dtype)
+    cell = evaluate_fields(
+        model, mesh.positions[mesh.cells, :2].mean(axis=1), scales, material, "cpu", dtype
+    )
+    reactions = support_reactions(model, mesh, physics, scales, material, "cpu", dtype)
+    force = integrate_edge_loads(mesh, physics["loads"])
+    # Independent continuum energy S²*area*thickness/(2E), unchanged by the
+    # imposed rigid translation. Float32 autograd runs here on CPU; this tests
+    # representation validation without claiming an available MPS device.
+    energy = axial_stress**2 * 0.4 * 0.1 * mesh.thickness / (2 * young)
+    diagnostic = summary(mesh, nodal.displacement, cell.stress, reactions, force, energy, 0, 0)
+    arrays = {
+        "displacement": np.column_stack((nodal.displacement, np.zeros(len(mesh.positions)))),
+        "stress": pack_stress(cell.stress),
+        "vonMises": von_mises(cell.stress),
+        "reactions": np.column_stack((reactions, np.zeros(len(mesh.positions)))),
+    }
+    training = {
+        "precision": "float32" if dtype == torch.float32 else "float64",
+        "normalization": {"displacement": scales.displacement},
+        "history": [{"pde": 0}],
+    }
+    validate_result(mesh, physics, arrays, diagnostic, training)
 
 
 def test_held_out_points_never_supply_optimizer_gradients(monkeypatch):

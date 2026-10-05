@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from phyra_engine.errors import EngineError
+from phyra_engine.meshing.plane_stress import cell_areas
 from phyra_engine.meshing.types import Mesh2D
 from phyra_engine.methods.classical.plane_stress import assemble
 from phyra_engine.physics.elasticity.plane_stress import (
@@ -385,6 +386,46 @@ def validate_result(
         if not np.isclose(diagnostic["strainEnergy"], energy, rtol=1e-12, atol=0):
             raise EngineError("invalid-cache", "FEM strain energy disagrees with physical fields.")
     else:
+        flat = arrays["displacement"][:, :2].reshape(-1)
+        prescribed = constraint_dofs(mesh, study["constraints"])
+        fixed = np.array(sorted(prescribed), dtype=np.int64)
+        targets = np.array([prescribed[int(dof)] for dof in fixed])
+        epsilon = float(
+            np.finfo(np.float32 if training["precision"] == "float32" else np.float64).eps
+        )
+        # Exact neural lifting is rounded in the declared training precision
+        # before physical float64 transport. This bounds representation error,
+        # independently of the optimizer's residual losses or field accuracy.
+        displacement_scale = max(
+            training["normalization"]["displacement"],
+            float(np.max(np.abs(flat))),
+            float(np.max(np.abs(targets))),
+        )
+        if np.any(np.abs(flat[fixed] - targets) > 64 * epsilon * displacement_scale):
+            raise EngineError(
+                "invalid-cache", "Cached PINN displacement violates prescribed supports."
+            )
+        stress = arrays["stress"][:, [0, 1, 3]]
+        young, poisson = study["material"]["young"], study["material"]["poisson"]
+        # Invert the independent plane-stress constitutive law. The reported
+        # PINN strain energy uses these same cell-centroid locations, so it can
+        # be reconstructed without persisted weights or any FEM reference.
+        strain = np.column_stack(
+            (
+                (stress[:, 0] - poisson * stress[:, 1]) / young,
+                (stress[:, 1] - poisson * stress[:, 0]) / young,
+                2 * (1 + poisson) * stress[:, 2] / young,
+            )
+        )
+        energy = float(
+            0.5 * np.sum(np.sum(strain * stress, axis=1) * cell_areas(mesh) * mesh.thickness)
+        )
+        if not np.isfinite(energy) or not np.isclose(
+            diagnostic["strainEnergy"], energy, rtol=max(1e-12, 64 * epsilon), atol=0
+        ):
+            raise EngineError(
+                "invalid-cache", "PINN strain energy disagrees with physical stress fields."
+            )
         expected_residual = math.sqrt(training["history"][-1]["pde"])
     closure = force + reactions
     centered = mesh.positions[:, :2] - mesh.positions[:, :2].mean(axis=0)

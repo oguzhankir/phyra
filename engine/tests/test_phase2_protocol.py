@@ -265,6 +265,83 @@ def test_comparison_retains_measured_neural_equilibrium_and_actual_duration(meas
     assert manifest["comparison"]["device"] == manifest["training"]["device"] == "cpu"
 
 
+@pytest.fixture(
+    params=[
+        ("strong-form", "train"),
+        ("potential-energy", "train"),
+        ("strong-form", "compare"),
+        ("potential-energy", "compare"),
+    ]
+)
+def measured_neural_cache(plane_project, tmp_path, request):
+    from phyra_engine.execution.application import _owned_training_result
+    from phyra_engine.methods.physicsml.plane_stress import train
+    from phyra_engine.studies.mesh import generate_study_mesh
+
+    formulation, operation = request.param
+    plane_project["study"]["solver"]["pinn"].update(
+        layers=1,
+        width=8,
+        steps=4,
+        interiorPoints=8,
+        boundaryPoints=4,
+        device="cpu",
+        formulation=formulation,
+    )
+    mesh = generate_study_mesh(plane_project)
+    result = _owned_training_result(
+        train(mesh, plane_project["study"], plane_project["study"]["solver"]["pinn"]),
+        "measured-cache",
+    )
+    manifest = write_output(
+        tmp_path,
+        plane_project,
+        "measured-cache",
+        operation,
+        mesh,
+        solve_mesh(mesh, plane_project["study"]) if operation == "compare" else result,
+        result if operation == "compare" else None,
+    )
+    return plane_project, manifest, (tmp_path / "buffer.bin").read_bytes()
+
+
+def test_neural_cache_rejects_displacement_that_violates_prescribed_supports(measured_neural_cache):
+    project, original, blob = measured_neural_cache
+    manifest = deepcopy(original)
+    altered = bytearray(blob)
+    comparing = manifest["operation"] == "compare"
+    field = "pinnDisplacement" if comparing else "displacement"
+    descriptor = manifest["arrays"][field]
+    displacement = np.frombuffer(
+        altered, dtype="<f8", count=np.prod(descriptor["shape"]), offset=descriptor["offset"]
+    ).reshape(descriptor["shape"])
+    # The fixture's left-bottom node has zero prescribed displacement. Updating
+    # both the hash and all displacement-derived summary/comparison values makes
+    # this an internally consistent cache, except for its physical support.
+    displacement[0, 0] = 1
+    manifest["pinnSummary" if comparing else "summary"]["maxDisplacement"] = float(
+        np.linalg.norm(displacement, axis=1).max()
+    )
+    if comparing:
+        reference = manifest["arrays"]["displacement"]
+        values = np.frombuffer(
+            blob, dtype="<f8", count=np.prod(reference["shape"]), offset=reference["offset"]
+        ).reshape(reference["shape"])
+        manifest["comparison"]["displacement"] = comparison_metric(values, displacement)
+    manifest["bufferHash"] = hashlib.sha256(altered).hexdigest()
+    with pytest.raises(EngineError, match="PINN displacement violates prescribed supports"):
+        validate_cached(project, manifest, bytes(altered))
+
+
+def test_neural_cache_reconstructs_strain_energy_from_stress_fields(measured_neural_cache):
+    project, original, blob = measured_neural_cache
+    manifest = deepcopy(original)
+    diagnostic = manifest["pinnSummary" if manifest["operation"] == "compare" else "summary"]
+    diagnostic["strainEnergy"] += 1
+    with pytest.raises(EngineError, match="PINN strain energy disagrees"):
+        validate_cached(project, manifest, blob)
+
+
 def test_held_out_diagnostics_are_versioned_and_old_training_caches_remain_valid(
     measured_comparison,
 ):
