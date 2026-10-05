@@ -348,6 +348,28 @@ impl Redactor {
         }
         pending
     }
+    /// Return buffered text that cannot still become a saved credential.
+    /// The remaining suffix is deliberately retained and zeroized on drop.
+    pub fn finish_cancelled(&mut self) -> String {
+        let keep = self
+            .secrets
+            .iter()
+            .map(|secret| {
+                (1..secret.len())
+                    .rev()
+                    .find(|length| {
+                        secret.is_char_boundary(*length)
+                            && self.pending.ends_with(&secret[..*length])
+                    })
+                    .unwrap_or(0)
+            })
+            .max()
+            .unwrap_or(0);
+        let split = self.pending.len().saturating_sub(keep);
+        let rest = self.pending.split_off(split);
+        let safe = std::mem::replace(&mut self.pending, rest);
+        safe
+    }
 }
 impl Drop for Redactor {
     fn drop(&mut self) {
@@ -499,5 +521,18 @@ mod tests {
         assert_eq!(redactor.push(" Complete"), " Complete");
         assert_eq!(redactor.push("🙂x"), "🙂x");
         assert_eq!(redactor.finish(), "");
+    }
+    #[test]
+    fn cancellation_flushes_safe_buffer_but_keeps_credential_prefix() {
+        let secret = "x".repeat(4096);
+        let mut redactor = Redactor::new(Some(secret.as_str()));
+        assert_eq!(redactor.push("safe buffered text"), "");
+        assert_eq!(redactor.finish_cancelled(), "safe buffered text");
+
+        let mut redactor = Redactor::new(Some(secret.as_str()));
+        let prefix = &secret[..64];
+        assert_eq!(redactor.push(&format!("safe text {prefix}")), "");
+        assert_eq!(redactor.finish_cancelled(), "safe text ");
+        assert_eq!(redactor.pending_len(), prefix.len());
     }
 }
