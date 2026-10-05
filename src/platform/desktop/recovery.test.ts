@@ -98,4 +98,64 @@ describe('recovery client ownership', () => {
     await expect(client.clearRecovery(13)).rejects.toThrow('closed');
     expect(vi.mocked(invoke)).toHaveBeenCalledTimes(3);
   });
+
+  it('retries failed inventory before checkpoint and cleanup without changing document identity or sequence', async () => {
+    const { createRecoveryClient } = await import('./recovery');
+    const client = createRecoveryClient(crypto.randomUUID());
+    const project = makeProject('cantilever');
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('storage temporarily unavailable'));
+    await expect(client.writeRecovery(project, client.nextSequence())).rejects.toThrow(
+      'storage temporarily unavailable',
+    );
+    await client.writeRecovery(project, client.nextSequence());
+    await client.clearRecovery(client.nextSequence());
+    const calls = vi.mocked(invoke).mock.calls;
+    expect(calls.map(([command]) => command)).toEqual([
+      'get_recovery',
+      'get_recovery',
+      'write_recovery',
+      'clear_recovery',
+    ]);
+    expect(calls[1][1]).toEqual(calls[0][1]);
+    expect(calls[2][1]).toMatchObject({ ...calls[0][1], sequence: 2 });
+    expect(calls[3][1]).toMatchObject({ ...calls[0][1], sequence: 3 });
+  });
+
+  it('shares each pending inventory attempt and allows an explicit retry after it fails', async () => {
+    const { createRecoveryClient } = await import('./recovery');
+    const client = createRecoveryClient(crypto.randomUUID());
+    let reject!: (cause: Error) => void;
+    vi.mocked(invoke).mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const initial = client.initialize();
+    expect(client.initialize()).toBe(initial);
+    reject(new Error('inventory failed'));
+    await expect(initial).rejects.toThrow('inventory failed');
+    await client.getRecovery();
+    expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).toEqual([
+      'get_recovery',
+      'get_recovery',
+    ]);
+  });
+
+  it('keeps the current client and sequence usable after close preflight refuses admission', async () => {
+    const { createRecoveryClient } = await import('./recovery');
+    const client = createRecoveryClient(crypto.randomUUID());
+    await client.initialize();
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('Recovery session limit reached'));
+    await expect(client.prepareClose()).rejects.toThrow('session limit');
+    await client.writeRecovery(makeProject('cantilever'), client.nextSequence());
+    const calls = vi.mocked(invoke).mock.calls;
+    expect(calls.map(([command]) => command)).toEqual([
+      'get_recovery',
+      'preflight_close_project',
+      'write_recovery',
+    ]);
+    expect(calls[1][1]).toEqual(calls[0][1]);
+    expect(calls[2][1]).toMatchObject({ ...calls[0][1], sequence: 1 });
+  });
 });

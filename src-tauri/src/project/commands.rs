@@ -11,7 +11,10 @@ use crate::execution::{
     worker::{job_directory, remember_failure, worker},
 };
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use tauri::Manager;
 #[tauri::command]
 pub(crate) async fn open_project(
@@ -37,58 +40,27 @@ pub(crate) async fn open_project(
         else {
             return Ok(None);
         };
-        let project_state = app.state::<ProjectState>();
-        let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
-        documents.require_owner(owner_id.as_deref())?;
-        documents.require_open(document)?;
-        if let Some(existing) = documents.owner(&path)? {
-            if existing != document {
-                return Ok(Some(json!({"existingDocumentId":existing,
-                    "path":path.to_string_lossy()})));
-            }
-        }
         let directory = job_directory(&app)?;
-        let result: Result<Option<Value>, String> = (|| {
-            let opened = read_archive_details(&path, &directory)?;
-            let project = opened.project;
-            let migration_notice = if opened.migrated {
-                Some(if opened.dropped_cache {
-                    "Version 1 project upgraded to version 4. Its legacy cache was discarded; run the study again."
-                } else {
-                    "Legacy project upgraded to version 4 with its physical study and validated cache preserved."
-                })
-            } else {
-                None
-            };
-            let manifest = if directory.join("manifest.json").is_file() {
-                Some(worker(
+        let result = open_archive_for_document(
+            &app.state::<ProjectState>(),
+            &state,
+            owner_id.as_deref(),
+            document,
+            path,
+            &directory,
+            |project| {
+                worker(
                     &app,
                     &state,
                     "validate",
-                    &project,
+                    project,
                     &directory,
                     &uuid::Uuid::new_v4().to_string(),
                     None,
-                )?)
-            } else {
-                None
-            };
-            if let Some(ref manifest) = manifest {
-                let id = manifest["jobId"]
-                    .as_str()
-                    .ok_or("Missing cached job identity")?
-                    .to_string();
-                retain_document_job(&state, document, id, directory.clone())?;
-            } else {
-                let _ = fs::remove_dir_all(&directory);
-            }
-            let opened_path = path.to_string_lossy().into_owned();
-            documents.associate(document, project["id"].as_str().unwrap(), path)?;
-            Ok(Some(
-                json!({"project":project,"manifest":manifest,"path":opened_path,
-                    "notice":migration_notice}),
-            ))
-        })();
+                )
+            },
+        )
+        .map(Some);
         if let Err(ref error) = result {
             remember_failure(&app, &directory, error);
             let _ = fs::remove_dir_all(directory);
@@ -97,6 +69,87 @@ pub(crate) async fn open_project(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+// Reading/validating a cache may acquire the numerical worker. Do not retain
+// the document lock across it: recovery restore holds the worker lock while
+// clearing its file association. Publication rechecks ownership afterwards.
+fn open_archive_for_document(
+    project_state: &ProjectState,
+    state: &EngineState,
+    owner: Option<&str>,
+    document: &str,
+    path: PathBuf,
+    directory: &Path,
+    validate_cache: impl FnOnce(&Value) -> Result<Value, String>,
+) -> Result<Value, String> {
+    let generation = {
+        let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+        documents.require_owner(owner)?;
+        documents.require_open(document)?;
+        if let Some(existing) = documents.owner(&path)? {
+            if existing != document {
+                return Ok(json!({"existingDocumentId":existing,
+                    "path":path.to_string_lossy()}));
+            }
+        }
+        documents.generation(document)
+    };
+    let opened = read_archive_details(&path, directory)?;
+    let manifest = if directory.join("manifest.json").is_file() {
+        Some(validate_cache(&opened.project)?)
+    } else {
+        None
+    };
+    let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+    documents.require_owner(owner)?;
+    documents.require_open(document)?;
+    if documents.generation(document) != generation {
+        return Err("Project document changed while opening. Reopen the project file.".into());
+    }
+    if documents
+        .owner(&path)?
+        .is_some_and(|existing| existing != document)
+    {
+        return Err("This project file is already open in another tab".into());
+    }
+    if let Some(ref manifest) = manifest {
+        let id = manifest["jobId"]
+            .as_str()
+            .ok_or("Missing cached job identity")?
+            .to_string();
+        retain_document_job(state, document, id, directory.to_path_buf())?;
+    } else {
+        let _ = fs::remove_dir_all(directory);
+    }
+    let notice = migration_notice(
+        &opened.project,
+        opened.migrated,
+        opened.dropped_cache,
+        manifest.is_some(),
+    );
+    let opened_path = path.to_string_lossy().into_owned();
+    documents.associate(document, opened.project["id"].as_str().unwrap(), path)?;
+    Ok(json!({"project":opened.project,"manifest":manifest,"path":opened_path,"notice":notice}))
+}
+
+fn migration_notice(
+    project: &Value,
+    migrated: bool,
+    dropped_cache: bool,
+    cached: bool,
+) -> Option<String> {
+    if !migrated {
+        return None;
+    }
+    let version = project["schemaVersion"].as_u64().unwrap();
+    Some(if dropped_cache {
+        format!("Version 1 project upgraded to version {version}. Its legacy cache was discarded; run the study again.")
+    } else if cached {
+        format!("Legacy project upgraded to version {version} with its physical study and validated cache preserved.")
+    } else {
+        format!("Legacy project upgraded to version {version} with its physical study preserved. Run the study to compute results.")
+    })
 }
 
 #[tauri::command]
@@ -175,6 +228,26 @@ pub(crate) async fn save_project(
 }
 
 #[tauri::command]
+pub(crate) async fn preflight_close_project(
+    app: tauri::AppHandle,
+    document_id: String,
+    owner_id: String,
+    client_id: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        super::recovery::preflight_document_close(
+            &app.state::<super::recovery::RecoveryState>(),
+            &app.state::<ProjectState>(),
+            &owner_id,
+            &document_id,
+            &client_id,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub(crate) async fn close_project(
     app: tauri::AppHandle,
     document_id: String,
@@ -212,8 +285,244 @@ fn save_destination(
 
 #[cfg(test)]
 mod tests {
-    use super::save_destination;
-    use std::path::PathBuf;
+    use super::*;
+
+    // Opaque transport bytes exercise native archive/ownership transactions;
+    // this fixture does not claim to be a numerical field or worker validation.
+    fn cached_archive(root: &Path) -> (Value, PathBuf) {
+        let project: Value =
+            serde_json::from_str(include_str!("../../../examples/cantilever.json")).unwrap();
+        let cache = root.join("source-cache");
+        fs::create_dir(&cache).unwrap();
+        fs::write(cache.join("manifest.json"), b"{}").unwrap();
+        fs::write(cache.join("buffer.bin"), b"transport fixture").unwrap();
+        let path = root.join("project.phyra");
+        write_archive(&path, &project, Some(&cache)).unwrap();
+        (project, path)
+    }
+
+    #[test]
+    fn cache_validation_releases_document_lock_before_acquiring_worker() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (_, path) = cached_archive(temporary.path());
+        let project_state = ProjectState::default();
+        let engine = EngineState::default();
+        let document = uuid::Uuid::new_v4().to_string();
+        let directory = temporary.path().join("staged");
+        let opened = open_archive_for_document(
+            &project_state,
+            &engine,
+            None,
+            &document,
+            path,
+            &directory,
+            |_| {
+                // Recovery restore acquires these in this order. Its ownership
+                // check must finish while archive validation is waiting for the worker.
+                std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            let _worker = engine.active.lock().unwrap();
+                            let _documents = project_state
+                                .documents
+                                .try_lock()
+                                .expect("archive cache validation must release the document lock");
+                        })
+                        .join()
+                        .unwrap();
+                });
+                let _worker = engine.active.lock().unwrap();
+                Ok(json!({"jobId":"opaque-cache-fixture"}))
+            },
+        )
+        .unwrap();
+        assert_eq!(opened["manifest"]["jobId"], "opaque-cache-fixture");
+        assert_eq!(
+            owned_document_directory(&engine, &document, "opaque-cache-fixture").unwrap(),
+            directory
+        );
+    }
+
+    #[test]
+    fn closing_or_reloading_during_cache_validation_cannot_publish_the_opened_archive() {
+        for reload in [false, true] {
+            let temporary = tempfile::tempdir().unwrap();
+            let (project, path) = cached_archive(temporary.path());
+            let project_state = ProjectState::default();
+            let engine = EngineState::default();
+            let document = uuid::Uuid::new_v4().to_string();
+            let owner = uuid::Uuid::new_v4().to_string();
+            project_state
+                .documents
+                .lock()
+                .unwrap()
+                .activate_owner(Some(&owner))
+                .unwrap();
+            let result = open_archive_for_document(
+                &project_state,
+                &engine,
+                Some(&owner),
+                &document,
+                path,
+                &temporary.path().join("staged"),
+                |_| {
+                    let mut documents = project_state.documents.lock().unwrap();
+                    if reload {
+                        documents
+                            .activate_owner(Some(&uuid::Uuid::new_v4().to_string()))
+                            .unwrap();
+                    } else {
+                        documents.close(&document).unwrap();
+                    }
+                    Ok(json!({"jobId":"late-cache-fixture"}))
+                },
+            );
+            assert!(result.is_err());
+            assert!(project_state
+                .documents
+                .lock()
+                .unwrap()
+                .path(&document, project["id"].as_str().unwrap())
+                .is_none());
+            assert!(engine.jobs.lock().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_destination_claimed_during_cache_validation_remains_with_its_new_owner() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (project, path) = cached_archive(temporary.path());
+        let project_state = ProjectState::default();
+        let engine = EngineState::default();
+        let document = uuid::Uuid::new_v4().to_string();
+        let other = uuid::Uuid::new_v4().to_string();
+        let project_id = project["id"].as_str().unwrap();
+        let result = open_archive_for_document(
+            &project_state,
+            &engine,
+            None,
+            &document,
+            path.clone(),
+            &temporary.path().join("staged"),
+            |_| {
+                project_state
+                    .documents
+                    .lock()
+                    .unwrap()
+                    .associate(&other, project_id, path.clone())
+                    .unwrap();
+                Ok(json!({"jobId":"unclaimed-cache-fixture"}))
+            },
+        );
+        assert!(result.unwrap_err().contains("already open"));
+        assert_eq!(
+            project_state
+                .documents
+                .lock()
+                .unwrap()
+                .path(&other, project_id),
+            Some(path)
+        );
+        assert!(engine.jobs.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_new_association_or_recovery_restore_supersedes_pending_archive_open() {
+        for restored in [false, true] {
+            let temporary = tempfile::tempdir().unwrap();
+            let (project, path) = cached_archive(temporary.path());
+            let project_state = ProjectState::default();
+            let engine = EngineState::default();
+            let document = uuid::Uuid::new_v4().to_string();
+            let project_id = project["id"].as_str().unwrap();
+            let newer_path = temporary.path().join("newer.phyra");
+            let prior = temporary.path().join("source-cache");
+            retain_document_job(
+                &engine,
+                &document,
+                "prior-cache-fixture".into(),
+                prior.clone(),
+            )
+            .unwrap();
+            let result = open_archive_for_document(
+                &project_state,
+                &engine,
+                None,
+                &document,
+                path,
+                &temporary.path().join("staged"),
+                |_| {
+                    let mut documents = project_state.documents.lock().unwrap();
+                    if restored {
+                        documents.forget(&document).unwrap();
+                    } else {
+                        documents
+                            .associate(&document, project_id, newer_path.clone())
+                            .unwrap();
+                    }
+                    Ok(json!({"jobId":"superseded-cache-fixture"}))
+                },
+            );
+            assert!(result.unwrap_err().contains("document changed"));
+            assert_eq!(
+                project_state
+                    .documents
+                    .lock()
+                    .unwrap()
+                    .path(&document, project_id),
+                if restored { None } else { Some(newer_path) }
+            );
+            assert_eq!(
+                owned_document_directory(&engine, &document, "prior-cache-fixture").unwrap(),
+                prior
+            );
+        }
+    }
+
+    #[test]
+    fn opening_an_owned_archive_focuses_existing_document_without_staging_bytes() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (project, path) = cached_archive(temporary.path());
+        let project_state = ProjectState::default();
+        let engine = EngineState::default();
+        let document = uuid::Uuid::new_v4().to_string();
+        let existing = uuid::Uuid::new_v4().to_string();
+        project_state
+            .documents
+            .lock()
+            .unwrap()
+            .associate(&existing, project["id"].as_str().unwrap(), path.clone())
+            .unwrap();
+        let directory = temporary.path().join("unused-staging-directory");
+        let opened = open_archive_for_document(
+            &project_state,
+            &engine,
+            None,
+            &document,
+            path,
+            &directory,
+            |_| panic!("focusing an owned archive must not validate another cache"),
+        )
+        .unwrap();
+        assert_eq!(opened["existingDocumentId"], existing);
+        assert!(!directory.exists());
+    }
+
+    #[test]
+    fn migration_notices_report_actual_schema_and_only_validated_cache_reuse() {
+        let project = json!({"schemaVersion":5});
+        assert!(migration_notice(&project, false, false, false).is_none());
+        let discarded = migration_notice(&project, true, true, false).unwrap();
+        assert!(discarded.contains("version 5"));
+        assert!(discarded.contains("cache was discarded"));
+        let reused = migration_notice(&project, true, false, true).unwrap();
+        assert!(reused.contains("version 5"));
+        assert!(reused.contains("validated cache preserved"));
+        let definition = migration_notice(&project, true, false, false).unwrap();
+        assert!(definition.contains("version 5"));
+        assert!(definition.contains("compute results"));
+        assert!(!definition.contains("cache preserved"));
+    }
 
     #[test]
     fn autosave_uses_owned_path_without_a_dialog() {

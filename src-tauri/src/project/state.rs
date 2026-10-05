@@ -27,6 +27,7 @@ pub(crate) struct DocumentArchives {
     owner: Option<String>,
     retired_owners: HashSet<String>,
     paths: HashMap<String, (String, PathBuf, PathBuf)>,
+    generations: HashMap<String, uuid::Uuid>,
     closed: HashSet<String>,
 }
 
@@ -49,6 +50,7 @@ impl DocumentArchives {
                 self.retired_owners.insert(previous);
             }
             self.paths.clear();
+            self.generations.clear();
             self.closed.clear();
         }
         Ok(())
@@ -65,7 +67,7 @@ impl DocumentArchives {
         if self.closed.contains(document) {
             return Err("This project document has closed".into());
         }
-        if !self.paths.contains_key(document) && self.paths.len() >= MAX_DOCUMENTS {
+        if !self.generations.contains_key(document) && self.generations.len() >= MAX_DOCUMENTS {
             return Err("Too many open project documents".into());
         }
         Ok(())
@@ -75,6 +77,10 @@ impl DocumentArchives {
         self.paths
             .get(document)
             .and_then(|(id, path, _)| (id == project).then(|| path.clone()))
+    }
+
+    pub(crate) fn generation(&self, document: &str) -> Option<uuid::Uuid> {
+        self.generations.get(document).copied()
     }
 
     pub(crate) fn owner(&self, path: &Path) -> Result<Option<&str>, String> {
@@ -97,20 +103,32 @@ impl DocumentArchives {
         let identity = archive_identity(&path)?;
         self.paths
             .insert(document.into(), (project.into(), path, identity));
+        self.generations
+            .insert(document.into(), uuid::Uuid::new_v4());
         Ok(())
     }
 
-    pub(crate) fn forget(&mut self, document: &str) {
+    pub(crate) fn forget(&mut self, document: &str) -> Result<(), String> {
+        self.require_open(document)?;
         self.paths.remove(document);
+        self.generations
+            .insert(document.into(), uuid::Uuid::new_v4());
+        Ok(())
     }
 
     pub(crate) fn close(&mut self, document: &str) -> Result<(), String> {
+        self.require_close(document)?;
+        self.paths.remove(document);
+        self.generations.remove(document);
+        self.closed.insert(document.into());
+        Ok(())
+    }
+
+    pub(crate) fn require_close(&self, document: &str) -> Result<(), String> {
         document_identity(Some(document))?;
         if !self.closed.contains(document) && self.closed.len() >= MAX_CLOSED_DOCUMENTS {
             return Err("Document session limit reached. Save projects and restart Phyra.".into());
         }
-        self.paths.remove(document);
-        self.closed.insert(document.into());
         Ok(())
     }
 }
@@ -158,7 +176,7 @@ mod tests {
             Some(temporary.path().join("b.phyra"))
         );
         assert!(state.path(&a, "different-project").is_none());
-        state.forget(&a);
+        state.forget(&a).unwrap();
         assert!(state.path(&a, "same-project").is_none());
         assert!(state.path(&b, "same-project").is_some());
     }
@@ -209,5 +227,26 @@ mod tests {
         assert!(state.require_owner(Some(&before)).is_err());
         assert!(state.activate_owner(Some(&before)).is_err());
         state.require_owner(Some(&after)).unwrap();
+    }
+
+    #[test]
+    fn recovery_association_removal_enforces_admission_and_closed_document_limits() {
+        let mut state = DocumentArchives::default();
+        let mut documents = Vec::new();
+        for _ in 0..MAX_DOCUMENTS {
+            let document = uuid::Uuid::new_v4().to_string();
+            state.forget(&document).unwrap();
+            documents.push(document);
+        }
+        let excess = uuid::Uuid::new_v4().to_string();
+        assert!(state.forget(&excess).is_err());
+        assert!(state.generation(&excess).is_none());
+        assert_eq!(state.generations.len(), MAX_DOCUMENTS);
+        state.close(&documents[0]).unwrap();
+        assert!(state.forget(&documents[0]).is_err());
+        assert!(state.generation(&documents[0]).is_none());
+        state.forget(&excess).unwrap();
+        assert_eq!(state.generations.len(), MAX_DOCUMENTS);
+        assert!(state.forget("not-a-document-id").is_err());
     }
 }

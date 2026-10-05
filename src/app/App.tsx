@@ -255,11 +255,18 @@ export default function App({
     !recovery.prompt &&
     !windowClosing;
   const closeDocument = async (id = documents.getSnapshot().activeId): Promise<void> => {
-    if (!id) return;
+    if (!id || nativeActivity.closing.current) return;
     const entry = documents.getSnapshot().documents.find((item) => item.seed.id === id);
     if (!canCloseDocument(entry?.snapshot ?? null)) return;
     documents.focus(id);
-    if (!(await documents.close(id))) return;
+    nativeActivity.closing.current = true;
+    let closed = false;
+    try {
+      closed = await documents.close(id);
+    } finally {
+      nativeActivity.closing.current = false;
+    }
+    if (!closed) return;
     requestAnimationFrame(() =>
       document
         .getElementById(

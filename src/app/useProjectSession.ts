@@ -32,6 +32,7 @@ interface Props {
   activity: WorkbenchActivity;
   currentResult: () => ResultData | null;
   clearRecovery: () => Promise<void>;
+  prepareDocumentClose: () => Promise<void>;
   retireDocument: () => Promise<void>;
   beforeConfirmation: () => void;
   onReplace: (project: Project, data: ResultData | null) => void;
@@ -367,6 +368,7 @@ export function useProjectSession(props: Props) {
     setTransitioning(true);
     try {
       return await closeProjectDocument({
+        prepareClose: () => callbacks.current.prepareDocumentClose(),
         canReplace,
         clearRecovery: async () => {
           await callbacks.current.clearRecovery();
@@ -378,9 +380,7 @@ export function useProjectSession(props: Props) {
         },
       });
     } catch (cause) {
-      callbacks.current.onError(
-        `Project remains open because recovery cleanup failed: ${String(cause)}`,
-      );
+      callbacks.current.onError(`Project remains open: ${String(cause)}`);
       return false;
     } finally {
       transitionPending.current = false;
