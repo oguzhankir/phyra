@@ -1,3 +1,3 @@
 """Phyra's headless SI, float64 computational engine."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

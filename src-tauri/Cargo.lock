@@ -2838,7 +2838,7 @@ dependencies = [
 
 [[package]]
 name = "phyra"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dirs 6.0.0",
  "futures-util",
