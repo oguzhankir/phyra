@@ -6,6 +6,7 @@ export interface ExecutionLease {
   readonly project: Project;
   readonly operation: Operation;
   cancelled: boolean;
+  cancellation?: Promise<boolean>;
   jobId?: string;
 }
 
@@ -68,6 +69,33 @@ export class ExecutionOwnership {
     if (!this.active) return null;
     this.active.cancelled = true;
     return this.active;
+  }
+
+  activeLease(): ExecutionLease | null {
+    return this.active;
+  }
+
+  requestCancellation(lease: ExecutionLease, stop: () => Promise<boolean>): Promise<boolean> {
+    if (!this.owns(lease)) return Promise.resolve(false);
+    if (lease.cancellation) return lease.cancellation;
+    const attempt = (async () => {
+      const stopped = await stop();
+      if (stopped && this.owns(lease)) lease.cancelled = true;
+      return stopped;
+    })();
+    lease.cancellation = attempt;
+    void attempt.catch(() => {
+      if (lease.cancellation === attempt) lease.cancellation = undefined;
+    });
+    return attempt;
+  }
+
+  async settleCancellation(lease: ExecutionLease): Promise<void> {
+    while (lease.cancellation) {
+      const pending = lease.cancellation;
+      await pending.catch(() => undefined);
+      if (lease.cancellation === pending) return;
+    }
   }
 
   owns(lease: ExecutionLease): boolean {
