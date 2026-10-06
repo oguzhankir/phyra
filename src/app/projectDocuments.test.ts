@@ -29,6 +29,27 @@ function controller(close = vi.fn(async () => true)) {
 }
 
 describe('independent mounted project documents', () => {
+  it('does not republish unchanged narrow CAD state when a mounted document rerenders', () => {
+    const documents = new ProjectDocuments();
+    const seed = newProjectDocument('Blank CAD');
+    documents.add(seed);
+    const onPublication = vi.fn();
+    documents.subscribe(onPublication);
+    const idleCad = { busy: false, receipt: null, sketchSolve: null };
+    const idle = snapshot(seed, { cad: idleCad });
+    documents.update(idle);
+    const accepted = documents.getSnapshot();
+    // App composition must memoize this nested adapter. Fresh outer status
+    // snapshots are normal on rerenders; unchanged CAD evidence is not a change.
+    for (let render = 0; render < 8; render++) documents.update({ ...idle, cad: idleCad });
+    expect(documents.getSnapshot()).toBe(accepted);
+    expect(onPublication).toHaveBeenCalledTimes(1);
+    const busyCad = { ...idleCad, busy: true };
+    documents.update({ ...idle, cad: busyCad });
+    for (let render = 0; render < 8; render++) documents.update({ ...idle, cad: busyCad });
+    expect(onPublication).toHaveBeenCalledTimes(2);
+    expect(documents.getSnapshot().documents[0].snapshot?.cad.busy).toBe(true);
+  });
   it('creates fresh project, study and document identities from blank and example starts', () => {
     const first = newProjectDocument('First', '2d');
     const second = newProjectDocument(undefined, '3d', 'cantilever');

@@ -1,11 +1,55 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import AssistantTranscript, { scrollAssistantTranscript } from './AssistantTranscript';
+import { blankProject, documentPreparation } from '../../domain/project/document';
 
 it('opens an empty conversation at the top even when the welcome content overflows', () => {
   const viewport = { scrollTop: 210, scrollHeight: 700, clientHeight: 390 };
   scrollAssistantTranscript(viewport, true);
   expect(viewport.scrollTop).toBe(0);
+});
+
+it('offers actionable CAD prompts before a project has an analysis study', () => {
+  const project = blankProject('Blank CAD', '3d');
+  const html = renderToStaticMarkup(
+    <AssistantTranscript
+      conversation={{
+        formatVersion: 1,
+        id: 'cad-chat',
+        projectId: project.id,
+        title: 'CAD',
+        updatedAt: 0,
+        messages: [],
+      }}
+      pending={false}
+      study={{
+        documentId: 'cad-document',
+        project,
+        section: 'cad',
+        preparation: documentPreparation(project),
+        manifest: null,
+        run: null,
+        error: null,
+        cad: {
+          state: 'unevaluated',
+          dimension: '3d',
+          outputFeatureId: null,
+          featureCount: 0,
+          sketchCount: 0,
+          assetCount: 0,
+          evaluation: null,
+        },
+      }}
+      desktop={false}
+      onSource={() => {}}
+      onPrompt={() => {}}
+      onError={() => {}}
+    />,
+  );
+  expect(html).toContain('Let’s build your geometry');
+  expect(html).toContain('draw a constrained sketch');
+  expect(html).toContain('selected CAD output support for analysis');
+  expect(html).not.toContain('Explain the governing equations for this study.');
 });
 
 it('follows output by scrolling only the owned transcript viewport', () => {

@@ -8,6 +8,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 - Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
 - Direct blank-plane sketch editing with endpoint/grid/axis snapping, on-canvas dimensions, selection-driven constraints, local open-sketch solving and conflict/degree-of-freedom feedback. Modeling adds rigid placement, guided edge operations, standard orthographic views, retained stale previews and optional automatic rebuild.
+- AI assistance accepts CAD-only project context, bounded current exact-geometry and sketch-solve evidence, and read-only CAD inspection without attaching source files or field buffers.
 - Separate geometry validity and analysis eligibility, with explicit gates for unsupported designs and exact primitive/profile adapters that retain the authored CAD source through the existing material-to-results workflow.
 
 ### Changed

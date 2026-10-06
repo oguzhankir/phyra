@@ -41,8 +41,8 @@ const tools: {
   },
   {
     id: 'phyra_project',
-    name: 'Read study definition',
-    description: 'Geometry, materials, loads and restraints',
+    name: 'Read project and CAD',
+    description: 'Authored geometry, CAD evaluation and analysis definition',
     icon: FileBox,
     needsProject: true,
   },
@@ -223,7 +223,7 @@ export default function AssistantMcpPanel({
               })}
             </div>
             <p className="assistant-mcp-note">
-              Tools read snapshots of the active study. Changes to enabled tools require
+              Tools read snapshots of the active project. Changes to enabled tools require
               reconnecting your client.
             </p>
           </>

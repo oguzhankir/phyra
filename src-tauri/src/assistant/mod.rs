@@ -176,6 +176,7 @@ mod tests {
                 revision: None,
                 project: None,
                 run: None,
+                cad: None,
                 help: vec![],
                 capabilities: vec![],
             },
@@ -220,6 +221,7 @@ mod tests {
             revision: None,
             project: None,
             run: None,
+            cad: None,
             help: vec![Help {
                 id: "overview".into(),
                 title: "Overview".into(),

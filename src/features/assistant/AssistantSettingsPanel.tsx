@@ -432,8 +432,8 @@ export default function AssistantSettingsPanel({
                   </label>
                 )}
                 <p className="assistant-connection-consent">
-                  Messages and the active study are sent to the provider you choose when you send a
-                  message.
+                  Messages and the active project are sent to the provider you choose when you send
+                  a message.
                 </p>
                 {connection && (
                   <button

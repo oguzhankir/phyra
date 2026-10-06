@@ -37,7 +37,7 @@ it('offers one connection action and explains what a deliberate send supplies', 
   const html = render(null);
   expect(html).toContain('Paste your API key');
   expect(html).toContain(
-    'Messages and the active study are sent to the provider you choose when you send a message.',
+    'Messages and the active project are sent to the provider you choose when you send a message.',
   );
   expect(html).not.toContain('Assistant API endpoint');
   expect(html).not.toContain('Disconnect Google Gemini');

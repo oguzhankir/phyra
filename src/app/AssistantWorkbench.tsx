@@ -54,12 +54,19 @@ export default function AssistantWorkbench() {
       revision: active && !active.validation ? active.project.revision : null,
       project: active && !active.validation ? active.project : null,
       run: active && !active.validation ? (study?.run ?? null) : null,
+      cad: active && !active.validation ? (study?.cad ?? null) : null,
       help: helpArticles.map((article) => ({
         id: article.id,
         title: article.title,
         content: helpDocument(article),
       })),
       capabilities: [
+        {
+          id: 'cad-evidence',
+          description:
+            'Authored feature graph and bounded exact-output measurements, sketch DOF and solver compatibility; no CAD source bytes or preview arrays',
+          available: !!study?.cad && !active?.validation,
+        },
         {
           id: 'documentation',
           description: 'Versioned offline product help and mathematical formulations',

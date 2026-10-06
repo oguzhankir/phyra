@@ -7,6 +7,7 @@ import type { ReferenceId } from '../features/examples/references';
 import type { RecoveryRecord } from '../platform/desktop/recovery';
 import type { Workbench } from './useWorkbench';
 import { blankProject } from '../domain/project/document';
+import type { CadReceipt } from '../platform/desktop/cad';
 
 export interface ProjectDocumentSeed {
   id: string;
@@ -55,6 +56,20 @@ export type ProjectDocumentSnapshot = Pick<
   recoveryReady: boolean;
   recoveryPending: boolean;
   inspection: ResultInspection | null;
+  cad: {
+    busy: boolean;
+    receipt: CadReceipt | null;
+    sketchSolve?: {
+      featureId: string;
+      report: {
+        status: string;
+        degreesOfFreedom: number | null;
+        failedConstraintIds: string[];
+        kernel: string;
+        sourceCommit: string;
+      };
+    } | null;
+  };
 };
 
 export interface ProjectDocumentEntry {

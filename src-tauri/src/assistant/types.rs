@@ -91,6 +91,7 @@ pub struct Context {
 #[serde(rename_all = "lowercase")]
 pub enum ContextKind {
     Help,
+    Project,
     Study,
 }
 #[derive(Clone, Deserialize, Serialize)]
@@ -200,6 +201,8 @@ pub struct Snapshot {
     pub revision: Option<u64>,
     pub project: Option<Value>,
     pub run: Option<RunSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cad: Option<CadSnapshot>,
     pub help: Vec<Help>,
     pub capabilities: Vec<Capability>,
 }
@@ -210,6 +213,53 @@ pub struct RunSnapshot {
     pub study_id: String,
     pub input_fingerprint: Option<String>,
     pub state: RunStatus,
+    pub summary: String,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CadSnapshot {
+    pub state: CadStatus,
+    pub dimension: CadDimension,
+    pub output_feature_id: Option<String>,
+    pub feature_count: usize,
+    pub sketch_count: usize,
+    pub asset_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sketch_solve: Option<CadSketchSolve>,
+    pub evaluation: Option<CadEvaluation>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CadSketchSolve {
+    pub feature_id: String,
+    pub status: String,
+    pub degrees_of_freedom: Option<u32>,
+    pub failed_constraint_ids: Vec<String>,
+    pub failed_constraint_count: usize,
+    pub kernel: String,
+    pub source_commit: String,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CadStatus {
+    Unevaluated,
+    Busy,
+    Current,
+}
+#[derive(Clone, Deserialize, Serialize)]
+pub enum CadDimension {
+    #[serde(rename = "2d")]
+    Plane,
+    #[serde(rename = "3d")]
+    Solid,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CadEvaluation {
+    pub job_id: String,
+    pub revision: u64,
+    pub geometry_fingerprint: String,
+    pub output_feature_id: String,
     pub summary: String,
 }
 #[derive(Clone, Deserialize, Serialize)]
@@ -311,6 +361,9 @@ pub fn context(value: &Context) -> Result<(), String> {
         return Err("Invalid assistant revision".into());
     }
     match value.kind {
+        ContextKind::Project if value.project_id.is_none() || value.revision.is_none() => {
+            return Err("Project context requires project and revision provenance".into())
+        }
         ContextKind::Study
             if value.project_id.is_none()
                 || value.study_id.is_none()
@@ -421,6 +474,33 @@ impl Conversation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cad_only_context_has_project_provenance_without_inventing_a_study() {
+        let mut value = Context {
+            kind: ContextKind::Project,
+            project_id: Some("cad-project".into()),
+            study_id: None,
+            revision: Some(2),
+            source_ids: vec!["cad".into()],
+            text: "Authored geometry; no study or evaluation yet".into(),
+        };
+        context(&value).unwrap();
+        let encoded = serde_json::to_value(&value).unwrap();
+        assert_eq!(encoded["kind"], "project");
+        let decoded: Context = serde_json::from_value(encoded).unwrap();
+        context(&decoded).unwrap();
+        value.kind = ContextKind::Study;
+        assert!(context(&value).is_err());
+        value.kind = ContextKind::Project;
+        value.project_id = None;
+        assert!(context(&value).is_err());
+        value.project_id = Some("cad-project".into());
+        value.revision = None;
+        assert!(context(&value).is_err());
+        value.revision = Some(2);
+        value.kind = ContextKind::Help;
+        assert!(context(&value).is_err());
+    }
     #[test]
     fn documentation_history_can_belong_to_a_project_without_sending_that_project() {
         let context = Context {
