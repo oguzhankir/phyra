@@ -1,0 +1,425 @@
+.cad-sketch-editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 350px;
+  container-type: inline-size;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  background: var(--surface);
+}
+.cad-sketch-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cad-sketch-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 9px;
+  font-size: 11px;
+  border-radius: 5px;
+}
+.cad-sketch-tools button.active {
+  background: var(--text);
+  color: var(--surface);
+}
+.cad-sketch-tools kbd {
+  font: inherit;
+  font-size: 9px;
+  opacity: 0.5;
+  margin-left: 2px;
+}
+.cad-sketch-view-tools {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.cad-sketch-instruction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: 40px;
+  background: var(--surface-subtle);
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+}
+.cad-sketch-instruction strong {
+  white-space: nowrap;
+}
+.cad-sketch-instruction span {
+  color: var(--muted);
+  flex: 1;
+}
+.cad-sketch-instruction button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+.cad-sketch-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 230px;
+  min-height: 0;
+}
+.cad-sketch-drawing {
+  position: relative;
+  min-height: 200px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.cad-sketch-drawing > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: default;
+}
+.cad-sketch-drawing.drawing > svg {
+  cursor: crosshair;
+}
+.cad-sketch-drawing > svg:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.cad-sketch-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.6;
+}
+.cad-sketch-axis {
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.cad-sketch-axis.x {
+  stroke: #c36960;
+}
+.cad-sketch-axis.y {
+  stroke: #568b66;
+}
+.cad-sketch-origin {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.cad-sketch-curve {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.8;
+  pointer-events: none;
+}
+.selected .cad-sketch-curve {
+  stroke: #2d7bc5;
+  stroke-width: 2.5;
+}
+.cad-sketch-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cad-sketch-point-hit {
+  fill: transparent;
+  cursor: grab;
+}
+.cad-sketch-point {
+  fill: var(--surface);
+  stroke: var(--text);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.selected .cad-sketch-point {
+  fill: #2d7bc5;
+  stroke: #2d7bc5;
+}
+.cad-sketch-preview {
+  fill: none;
+  stroke: #2d7bc5;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.cad-sketch-pending-point {
+  fill: #2d7bc5;
+}
+.cad-sketch-dimension {
+  fill: var(--muted);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.cad-sketch-snap {
+  fill: none;
+  stroke: #2d7bc5;
+  stroke-width: 1.5;
+}
+.cad-sketch-dimension.interactive {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.cad-sketch-dimension.interactive:hover,
+.cad-sketch-dimension.interactive:focus {
+  fill: #2d7bc5;
+}
+.cad-sketch-snap.endpoint,
+.cad-sketch-snap.origin,
+.cad-sketch-snap.horizontal,
+.cad-sketch-snap.vertical {
+  stroke: #2d9760;
+}
+.cad-sketch-inference {
+  stroke: #2d9760;
+  fill: none;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.cad-sketch-cursor-label {
+  fill: var(--muted);
+}
+.cad-sketch-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+}
+.cad-sketch-empty strong {
+  color: var(--text);
+  font-size: 15px;
+}
+.cad-sketch-empty span {
+  line-height: 1.7;
+}
+.cad-sketch-lock {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 11px;
+}
+.cad-sketch-context {
+  padding: 16px 14px;
+  border-left: 1px solid var(--line);
+  overflow: auto;
+  min-height: 0;
+  font-size: 11px;
+}
+.cad-sketch-context h3 {
+  margin: 0 0 14px;
+  font-size: 12px;
+}
+.cad-sketch-context h4 {
+  margin: 18px 0 9px;
+  font-size: 11px;
+}
+.cad-sketch-context h4 small {
+  color: var(--muted);
+  margin-left: 6px;
+}
+.cad-sketch-context p {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.cad-sketch-context .field-label {
+  margin-bottom: 9px;
+}
+.cad-sketch-context button {
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 8px;
+  margin-bottom: 6px;
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+.cad-sketch-context button:disabled {
+  opacity: 0.45;
+}
+.cad-sketch-constraint-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.cad-sketch-constraint-actions button {
+  width: auto;
+  flex: 1;
+}
+.cad-sketch-context .cad-sketch-delete {
+  color: #b0584a;
+  margin-top: 9px;
+}
+.cad-sketch-constraint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  gap: 5px;
+}
+.cad-sketch-constraint > span {
+  flex: 1;
+}
+.cad-sketch-constraint > button {
+  border: 0;
+  padding: 3px;
+  width: auto;
+  margin: 0;
+}
+.cad-sketch-constraint > .field-label {
+  width: 100%;
+  margin: 4px 0 0;
+}
+.cad-sketch-constraint.failed {
+  color: #b0584a;
+}
+.cad-sketch-loop {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+.cad-sketch-loop select {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.cad-sketch-context .cad-sketch-readiness {
+  padding: 9px;
+  background: var(--surface-subtle);
+  border-radius: 4px;
+}
+.cad-sketch-solve-report {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.cad-sketch-solve-report small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.cad-sketch-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  color: #b0584a;
+  background: var(--surface-subtle);
+  font-size: 11px;
+  border-top: 1px solid var(--line);
+}
+.cad-sketch-message button {
+  margin-left: auto;
+}
+.cad-sketch-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  row-gap: 6px;
+  padding: 9px 12px;
+  font-size: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+.cad-sketch-status label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cad-sketch-status input {
+  margin: 0;
+}
+.cad-sketch-needs-solve {
+  color: #8a6a28;
+  white-space: nowrap;
+  background: var(--surface-subtle);
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.cad-sketch-shortcuts {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+@media (max-width: 950px) {
+  .cad-sketch-body {
+    grid-template-columns: minmax(200px, 1fr) 200px;
+  }
+  .cad-sketch-tools kbd,
+  .cad-sketch-shortcuts {
+    display: none;
+  }
+  .cad-sketch-tools button {
+    padding: 8px 6px;
+  }
+}
+@container (max-width: 800px) {
+  .cad-sketch-shortcuts {
+    display: none;
+  }
+  .cad-sketch-tools kbd {
+    display: none;
+  }
+}
+@container (max-width: 560px) {
+  .cad-sketch-body {
+    grid-template-columns: minmax(120px, 1fr) 180px;
+  }
+  .cad-sketch-context {
+    padding: 12px 10px;
+  }
+  .cad-sketch-instruction {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .cad-sketch-instruction span {
+    flex-basis: 75%;
+  }
+  .cad-sketch-tools {
+    padding: 6px;
+  }
+  .cad-sketch-tools button {
+    padding: 7px 5px;
+    font-size: 10px;
+  }
+  .cad-sketch-status {
+    padding: 7px 10px;
+    gap: 8px;
+    row-gap: 5px;
+  }
+}

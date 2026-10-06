@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ProjectDefinition, NativeAssetMetadata } from '../../domain/contracts/types';
 import { recoveryOwnerId } from './recovery';
 import { cadPreview } from '../../domain/geometry/cadPreview';
+import { validateSketchSolution, type SketchSolution } from '../../domain/geometry/sketchSolution';
 
 export type CadEntity = {
   id: string;
@@ -145,4 +146,20 @@ export function exportCad(
   units: 'm' | 'mm',
 ): Promise<string | null> {
   return invoke('export_cad', { jobId, documentId, format, units, ownerId: recoveryOwnerId });
+}
+
+export async function solveCadSketch(
+  project: ProjectDefinition,
+  featureId: string,
+  requestId: string,
+  documentId: string,
+): Promise<SketchSolution> {
+  const receipt = await invoke<SketchSolution>('solve_cad_sketch', {
+    project,
+    featureId,
+    requestId,
+    documentId,
+    ownerId: recoveryOwnerId,
+  });
+  return validateSketchSolution(receipt, project, featureId);
 }

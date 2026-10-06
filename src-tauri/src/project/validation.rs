@@ -203,3 +203,35 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
     validate_project(&project)?;
     Ok((project, true))
 }
+
+#[cfg(test)]
+mod rigid_transform_tests {
+    use super::validate_project;
+    use serde_json::json;
+
+    #[test]
+    fn bounded_rigid_placement_validates_axis_and_dependency() {
+        let mut project = json!({
+            "schemaVersion":6,"id":"project","name":"Placement","revision":0,
+            "displayUnits":"mm","study":null,"namedSelections":[],
+            "geometry":{"kind":"cad","dimension":"3d","assets":[],
+                "outputFeatureId":"placed","features":[
+                    {"id":"box","name":"Box","kind":"box","length":0.1,"width":0.05,"height":0.02},
+                    {"id":"placed","name":"Placed box","kind":"transform","inputId":"box",
+                        "translation":[0.02,-0.03,0.04],"axisOrigin":[0.01,0.02,0],
+                        "axisDirection":[0,0,4],"angle":0.0}
+                ]}
+        });
+        validate_project(&project).unwrap();
+        project["geometry"]["features"][1]["axisDirection"] = json!([0, 0, 0]);
+        assert!(validate_project(&project).is_err());
+        project["geometry"]["features"][1]["axisDirection"] = json!([0, 0, 1]);
+        project["geometry"]["features"][1]["translation"] = json!([1001, 0, 0]);
+        assert!(validate_project(&project).is_err());
+        project["geometry"]["features"][1]["translation"] = json!([0, 0, 0]);
+        project["geometry"]["features"][1]["inputId"] = json!("future");
+        assert!(validate_project(&project)
+            .unwrap_err()
+            .contains("later feature"));
+    }
+}

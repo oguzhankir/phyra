@@ -47,6 +47,7 @@ SPECIFIC_DEPENDENCIES = {
             "geometry.cad.topology",
             "geometry.cad.tessellation",
             "geometry.cad.compatibility",
+            "geometry.sketch_constraints",
         )
     ),
     "results.plane_stress_validation": frozenset(

@@ -148,7 +148,9 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
         "assets": [],
     }
 
-    def preview(geometry: dict, output: Path, job_id: str) -> dict:
+    def preview(
+        geometry: dict, output: Path, job_id: str, sketch_id: str | None = None
+    ) -> dict:
         payload = {
             "protocolVersion": 1,
             "projectId": "bundle-cad",
@@ -157,6 +159,8 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
             "geometry": geometry,
             "assetRoot": directory,
         }
+        if sketch_id is not None:
+            payload.update(operation="solve-sketch", featureId=sketch_id)
         process = subprocess.run(
             [str(EXECUTABLE), "--cad", "--output", str(output)],
             input=json.dumps(payload, allow_nan=False).encode(),
@@ -181,6 +185,21 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
             f"Bundled CAD failed: {frames}",
         )
         receipt = frames[0]["manifest"]
+        if sketch_id is not None:
+            require(
+                receipt["operation"] == "solve-sketch"
+                and receipt["featureId"] == sketch_id
+                and receipt["jobId"] == job_id
+                and receipt["projectId"] == "bundle-cad"
+                and receipt["revision"] == 0
+                and receipt["geometryFingerprint"]
+                == hashlib.sha256(
+                    json.dumps(geometry, separators=(",", ":")).encode()
+                ).hexdigest()
+                and not output.exists(),
+                "Solve-only sketch lost provenance or wrote shape artifacts.",
+            )
+            return receipt
         require(
             receipt == json.loads((output / "receipt.json").read_bytes()),
             "CAD completion differs from published receipt.",
@@ -239,6 +258,148 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
         and solved["status"] == "solved"
         and solved["degreesOfFreedom"] == 0,
         "Packaged native sketch solver or measured DOF is missing.",
+    )
+    open_definition = json.loads(json.dumps(definition))
+    graph = open_definition["features"][0]["sketch"]
+    graph.update(points=[], entities=[], constraints=[], loops=[])
+    blank_solved = preview(
+        open_definition, root / "cad-solve-blank", "bundle-cad-solve-blank", "sketch"
+    )
+    require(
+        blank_solved["report"]["status"] == "solved"
+        and blank_solved["report"]["degreesOfFreedom"] == 0,
+        "Packaged blank authoring sketch cannot solve.",
+    )
+    graph.update(
+        points=[{"id": "a", "position": [0, 0]}, {"id": "b", "position": [0.08, 0.01]}],
+        entities=[
+            {
+                "id": "line",
+                "name": "Open line",
+                "kind": "line",
+                "startId": "a",
+                "endId": "b",
+            }
+        ],
+        constraints=[{"id": "horizontal", "kind": "horizontal", "lineId": "line"}],
+    )
+    open_solved = preview(
+        open_definition, root / "cad-solve-open", "bundle-cad-solve-open", "sketch"
+    )
+    require(
+        open_solved["report"]["status"] == "solved"
+        and open_solved["report"]["degreesOfFreedom"] == 3
+        and math.isclose(
+            open_solved["sketch"]["points"][0]["position"][1],
+            open_solved["sketch"]["points"][1]["position"][1],
+            abs_tol=1e-13,
+        )
+        and open_solved["sketch"]["constraints"] == graph["constraints"]
+        and open_solved["report"]["sourceCommit"] == pin["revision"],
+        "Packaged open-curve native constraints or measured DOF failed.",
+    )
+    placed = json.loads(json.dumps(definition))
+    placed["features"].append(
+        {
+            "id": "placed",
+            "name": "Placed body",
+            "kind": "transform",
+            "inputId": "extrude",
+            "translation": [0.03, 0.04, 0.05],
+            "axisOrigin": [0, 0, 0],
+            "axisDirection": [0, 0, 4],
+            "angle": math.pi / 2,
+        }
+    )
+    placed["outputFeatureId"] = "placed"
+    placed_receipt = preview(placed, root / "cad-placed", "bundle-cad-placed")
+    expected_bounds = [[0.01, 0.04, 0.05], [0.03, 0.14, 0.07]]
+    require(
+        math.isclose(placed_receipt["statistics"]["volume"], measured, rel_tol=1e-12)
+        and all(
+            math.isclose(value, exact, rel_tol=0, abs_tol=1e-13)
+            for row, target in zip(
+                placed_receipt["statistics"]["bounds"], expected_bounds, strict=True
+            )
+            for value, exact in zip(row, target, strict=True)
+        )
+        and placed_receipt["analysisCompatibility"]["state"] == "unsupported",
+        "Packaged rigid placement changes volume/composition or falls back to an unplaced solver domain.",
+    )
+    holed = json.loads(json.dumps(definition))
+    hole_graph = holed["features"][0]["sketch"]
+    for index, position in enumerate([[0.01, 0.005], [0.03, 0.005], [0.01, 0.015]]):
+        identifier = f"hole-p{index}"
+        hole_graph["points"].append({"id": identifier, "position": position})
+        hole_graph["constraints"].append(
+            {"id": f"fix-{identifier}", "kind": "fixedPoint", "pointId": identifier}
+        )
+        hole_graph["entities"].append(
+            {
+                "id": f"hole-e{index}",
+                "name": f"Hole edge {index}",
+                "kind": "line",
+                "startId": identifier,
+                "endId": f"hole-p{(index + 1) % 3}",
+            }
+        )
+    hole_graph["loops"].append(
+        {
+            "id": "hole",
+            "role": "hole",
+            "entityIds": [f"hole-e{index}" for index in range(3)],
+        }
+    )
+    holed_receipt = preview(holed, root / "cad-line-hole", "bundle-cad-line-hole")
+    require(
+        math.isclose(
+            holed_receipt["statistics"]["volume"],
+            (0.1 * 0.02 - 0.02 * 0.01 / 2) * 0.02,
+            rel_tol=1e-12,
+        )
+        and holed_receipt["analysisCompatibility"]["state"] == "unsupported",
+        "Packaged line-hole CAD is coupled to the smaller numerical profile contract.",
+    )
+    major = json.loads(json.dumps(definition))
+    major["features"][0]["sketch"] = {
+        "points": [
+            {"id": "center", "position": [0, 0]},
+            {"id": "start", "position": [0.02, 0]},
+            {"id": "end", "position": [0, -0.02]},
+        ],
+        "entities": [
+            {
+                "id": "arc",
+                "name": "Major arc",
+                "kind": "arc",
+                "centerId": "center",
+                "startId": "start",
+                "endId": "end",
+                "clockwise": False,
+            },
+            {
+                "id": "chord",
+                "name": "Chord",
+                "kind": "line",
+                "startId": "end",
+                "endId": "start",
+            },
+        ],
+        "constraints": [
+            {"id": f"fix-{name}", "kind": "fixedPoint", "pointId": name}
+            for name in ("center", "start", "end")
+        ],
+        "loops": [{"id": "outer", "role": "outer", "entityIds": ["arc", "chord"]}],
+    }
+    major_receipt = preview(major, root / "cad-major-arc", "bundle-cad-major-arc")
+    require(
+        math.isclose(
+            major_receipt["statistics"]["volume"],
+            0.02**2 * (3 * math.pi / 2 + 1) / 2 * 0.02,
+            rel_tol=1e-12,
+        )
+        and major_receipt["analysisCompatibility"]["state"] == "unsupported",
+        "Packaged exact major-arc CAD has incorrect sweep, volume or eligibility.",
     )
     compatibility = receipt["analysisCompatibility"]
     require(

@@ -12,6 +12,7 @@ import pytest
 from phyra_engine.errors import EngineError
 from phyra_engine.geometry.profile import profile_area
 from phyra_engine.geometry.sketch_constraints import build_profile, decode_sketch, solve_sketch
+from phyra_engine.studies.project import validate_cad_geometry
 
 
 def line_sketch():
@@ -70,6 +71,51 @@ def rectangle():
             {"id": "outer", "role": "outer", "entityIds": ["bottom", "right", "top", "left"]}
         ],
     }
+
+
+@pytest.mark.parametrize("kind, degrees_of_freedom", [("line", 4), ("circle", 3), ("arc", 5)])
+def test_canonical_unicode_entity_names_survive_native_solving(kind, degrees_of_freedom):
+    name = "界" * 200
+    sketch = {
+        "points": [{"id": "center", "position": [0, 0]}],
+        "entities": [{"id": "entity", "name": name, "kind": kind}],
+        "constraints": [],
+        "loops": [],
+    }
+    entity = sketch["entities"][0]
+    if kind == "circle":
+        entity.update(centerId="center", radius=0.1)
+    else:
+        sketch["points"].append({"id": "start", "position": [0.1, 0]})
+        entity.update(startId="center", endId="start")
+        if kind == "arc":
+            sketch["points"].append({"id": "end", "position": [0, 0.1]})
+            entity.update(centerId="center", startId="start", endId="end", clockwise=False)
+    original = deepcopy(sketch)
+    geometry = {
+        "kind": "cad",
+        "dimension": "2d",
+        "features": [
+            {"id": "sketch", "name": "Sketch", "kind": "sketch", "plane": "xy", "sketch": sketch}
+        ],
+        "outputFeatureId": "sketch",
+        "assets": [],
+    }
+    assert validate_cad_geometry(geometry) == geometry
+    solved = solve_sketch(sketch)
+    assert solved.status == "solved"
+    assert solved.degrees_of_freedom == degrees_of_freedom
+    assert solved.entities[0].name == name
+    assert sketch == original
+
+
+@pytest.mark.parametrize("name", ["", "界" * 201])
+def test_entity_names_outside_canonical_bounds_fail_before_native_loading(name):
+    sketch = line_sketch()
+    sketch["entities"][0]["name"] = name
+    with pytest.raises(EngineError, match="1–200 characters") as error:
+        decode_sketch(sketch)
+    assert error.value.code == "invalid-sketch"
 
 
 def test_native_degrees_of_freedom_without_hidden_anchor():

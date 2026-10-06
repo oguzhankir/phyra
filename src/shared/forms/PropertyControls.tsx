@@ -22,7 +22,10 @@ export function NumberInput({
   disabled = false,
   physical = true,
   positive = false,
+  minimum = -Infinity,
   maximum = Infinity,
+  commitMode = 'immediate',
+  format,
 }: {
   label: string;
   value: number;
@@ -31,31 +34,66 @@ export function NumberInput({
   disabled?: boolean;
   physical?: boolean;
   positive?: boolean;
+  minimum?: number;
   maximum?: number;
+  commitMode?: 'immediate' | 'finish';
+  /** Formatting changes text only; untouched text never writes a rounded physical value. */
+  format?: (value: number) => string;
 }) {
   const id = useId();
   const reportValidity = useContext(NumericDraftContext);
-  const [text, setText] = useState(String(value));
+  const presentation = useRef(format);
+  presentation.current = format;
+  const present = (number: number) => presentation.current?.(number) ?? String(number);
+  const [text, setText] = useState(() => present(value));
   const textRef = useRef(text);
   textRef.current = text;
+  const unfinished = useRef(false);
+  const previousValue = useRef(value);
+  const validValue = (draft: string): number | null => {
+    const parsed = parseNumericDraft(draft);
+    return parsed !== null && (!positive || parsed > 0) && parsed >= minimum && parsed <= maximum
+      ? parsed
+      : null;
+  };
   const invalid =
-    parseNumericDraft(text) === null || (positive && !(Number(text) > 0)) || Number(text) > maximum;
+    parseNumericDraft(text) === null ||
+    (positive && !(Number(text) > 0)) ||
+    Number(text) < minimum ||
+    Number(text) > maximum;
   useEffect(() => {
     const parsed = parseNumericDraft(textRef.current);
     if (
-      parsed === null ||
-      Math.abs(parsed - value) > Number.EPSILON * Math.max(1, Math.abs(value)) * 4
+      (commitMode === 'finish' && !Object.is(previousValue.current, value)) ||
+      (commitMode === 'immediate' &&
+        (parsed === null ||
+          Math.abs(parsed - value) > Number.EPSILON * Math.max(1, Math.abs(value)) * 4))
     ) {
-      setText(String(value));
+      const next = presentation.current?.(value) ?? String(value);
+      textRef.current = next;
+      setText(next);
+      unfinished.current = false;
       if (physical) reportValidity(id, null);
     }
-  }, [value, id, physical, reportValidity]);
+    previousValue.current = value;
+  }, [value, id, physical, reportValidity, commitMode]);
   useEffect(
     () => () => {
       if (physical) reportValidity(id, null);
     },
     [id, physical, reportValidity],
   );
+  const finish = () => {
+    if (commitMode !== 'finish' || !unfinished.current) return;
+    const parsed = validValue(textRef.current);
+    if (parsed === null) return;
+    unfinished.current = false;
+    const next = present(parsed);
+    textRef.current = next;
+    setText(next);
+    if (physical) reportValidity(id, null);
+    onChange(parsed);
+  };
   return (
     <label className="field-label">
       <span>{label}</span>
@@ -70,16 +108,28 @@ export function NumberInput({
             const draft = event.target.value;
             textRef.current = draft;
             setText(draft);
-            const parsed = parseNumericDraft(draft);
-            const valid = parsed !== null && (!positive || parsed > 0) && parsed <= maximum;
-            if (physical) reportValidity(id, valid ? null : label);
-            if (valid) onChange(parsed!);
+            const parsed = validValue(draft);
+            if (commitMode === 'finish') {
+              unfinished.current = draft !== present(value);
+              if (physical)
+                reportValidity(id, unfinished.current || parsed === null ? label : null);
+            } else {
+              if (physical) reportValidity(id, parsed !== null ? null : label);
+              if (parsed !== null) onChange(parsed);
+            }
           }}
+          onBlur={finish}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
-              setText(String(value));
+              unfinished.current = false;
+              const next = present(value);
+              textRef.current = next;
+              setText(next);
               if (physical) reportValidity(id, null);
+            } else if (event.key === 'Enter' && commitMode === 'finish') {
+              event.preventDefault();
+              finish();
             }
           }}
         />
@@ -89,7 +139,9 @@ export function NumberInput({
         <small className="draft-error">
           {positive
             ? `Enter a positive number${Number.isFinite(maximum) ? ` at most ${maximum}` : ''}, or press Escape to revert.`
-            : 'Complete the number, or press Escape to revert.'}
+            : Number.isFinite(minimum) || Number.isFinite(maximum)
+              ? `Enter a number${Number.isFinite(minimum) ? ` at least ${minimum}` : ''}${Number.isFinite(maximum) ? ` at most ${maximum}` : ''}, or press Escape to revert.`
+              : 'Complete the number, or press Escape to revert.'}
         </small>
       )}
     </label>

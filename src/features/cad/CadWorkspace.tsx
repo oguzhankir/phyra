@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   BookOpen,
@@ -7,7 +7,9 @@ import {
   Download,
   Layers,
   Play,
-  Plus,
+  Move3D,
+  Check,
+  X,
   Save,
   Scissors,
   Square,
@@ -16,25 +18,19 @@ import {
   Redo2,
   Upload,
 } from 'lucide-react';
-import type {
-  CadFeature,
-  CadSketchFeature,
-  CadSketchConstraint,
-} from '../../domain/contracts/project.generated';
-import { rectangularProfile } from '../../domain/project/profile';
-import {
-  graphProfile,
-  profileGraph,
-  sketchReferenceError,
-} from '../../domain/geometry/sketchGraph';
+import type { CadFeature, CadSketchFeature } from '../../domain/contracts/project.generated';
 import { numericalCadGeometry } from '../../domain/geometry/cadConversion';
 import { isNumericalProject } from '../../domain/project/document';
 import { featureDependencies } from '../../domain/project/document';
 import { lengthFactor, formatValue } from '../../domain/units';
 import { NumberInput } from '../../shared/forms/PropertyControls';
 import Select from '../../shared/ui/Select';
-import SketchCanvas from '../project/SketchCanvas';
+import CadSketchEditor from './CadSketchEditor';
+import { sketchReadiness } from './sketchInteractions';
+import { cadRebuildIssue, usableSketch } from './featureWorkflow';
+import { useModalFocus } from '../../shared/ui/useModalFocus';
 import CadViewport from './CadViewport';
+import { cadAuthoringGuide } from './authoringGuide';
 import type { CadWorkspaceModel } from './model';
 import './CadWorkspace.css';
 
@@ -50,6 +46,7 @@ const labels: Record<CadFeature['kind'], string> = {
   boolean: 'Boolean',
   fillet: 'Fillet',
   chamfer: 'Chamfer',
+  transform: 'Move / rotate',
 };
 
 export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
@@ -57,7 +54,16 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   const conversion = isNumericalProject(project) ? numericalCadGeometry(project) : null;
   const geometry = project.geometry.kind === 'cad' ? project.geometry : null;
   const [sketchDirty, setSketchDirty] = useState(false);
-  const [sketchView, setSketchView] = useState<'authored' | 'evaluated'>('authored');
+  const [editingSketch, setEditingSketch] = useState<string | null>(null);
+  const [newSketchPlane, setNewSketchPlane] = useState<'xy' | 'xz' | 'yz' | null>(null);
+  const planeDialog = useRef<HTMLDivElement>(null);
+  useModalFocus(!!newSketchPlane, () => setNewSketchPlane(null), 'cad-plane-title', planeDialog);
+  const [autoRebuild, setAutoRebuild] = useState(model.desktop);
+  const [edgeTool, setEdgeTool] = useState<'fillet' | 'chamfer' | null>(null);
+  const [edgeSize, setEdgeSize] = useState(0.002);
+  const attemptedSource = useRef('');
+  const evaluateRef = useRef(model.evaluate);
+  evaluateRef.current = model.evaluate;
   useEffect(() => {
     setSelected([]);
   }, [evaluation?.preview]);
@@ -84,8 +90,10 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
     );
   const add = (next: CadFeature) => {
     if (model.locked) return;
-    if (sketchDirty) {
-      model.onError('Apply or revert the current sketch before adding another feature.');
+    if (sketchDirty || model.draftBlocked) {
+      model.onError(
+        'Finish the current drawing gesture or dimension entry before adding another feature.',
+      );
       return;
     }
     if (geometry)
@@ -102,7 +110,7 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
         assets: [],
       });
     setChosenId(next.id);
-    setSketchView('authored');
+    setEditingSketch(next.kind === 'sketch' ? next.id : null);
     setSelected([]);
   };
   const update = (change: (next: CadFeature) => void) => {
@@ -113,8 +121,49 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
     });
   };
   const output = geometry?.outputFeatureId;
+  const activeSketch = geometry?.features.find(
+    (item): item is CadSketchFeature => item.kind === 'sketch' && item.id === editingSketch,
+  );
+  const authoringGuide = useMemo(() => (geometry ? cadAuthoringGuide(geometry) : null), [geometry]);
+  const geometryKey = JSON.stringify(geometry);
+  useEffect(() => {
+    if (
+      !autoRebuild ||
+      !model.desktop ||
+      !geometry ||
+      activeSketch ||
+      model.busy ||
+      model.locked ||
+      model.nativeLocked ||
+      model.draftBlocked ||
+      model.evaluation ||
+      attemptedSource.current === geometryKey
+    )
+      return;
+    if (cadRebuildIssue(geometry)) return;
+    const timer = window.setTimeout(() => {
+      attemptedSource.current = geometryKey;
+      void evaluateRef.current();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [
+    autoRebuild,
+    model.desktop,
+    geometryKey,
+    activeSketch,
+    model.busy,
+    model.locked,
+    model.nativeLocked,
+    model.draftBlocked,
+    model.evaluation,
+  ]);
+  useEffect(() => {
+    if (editingSketch && !activeSketch) setEditingSketch(null);
+  }, [editingSketch, activeSketch]);
   const sketches = geometry?.features.filter((item) => item.kind === 'sketch') ?? [];
   const shapes = geometry?.features.filter((item) => item.kind !== 'sketch') ?? [];
+  const sourceSketch = usableSketch(sketches, feature?.kind === 'sketch' ? feature.id : undefined);
+  const rebuildIssue = geometry ? cadRebuildIssue(geometry) : null;
   const selectedEdges =
     evaluation?.preview.edges
       .filter((edge) => selected.includes(edge.id) && edge.identity !== 'ambiguous')
@@ -141,10 +190,12 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   };
   const dimensionInput = (label: string, value: number, field: string, signed = false) => (
     <NumberInput
+      commitMode="finish"
       label={label}
       value={value * factor}
       unit={project.displayUnits}
       positive={!signed}
+      minimum={signed ? -1000 * factor : -Infinity}
       maximum={1000 * factor}
       onChange={(n) =>
         update((next) => {
@@ -163,7 +214,9 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
         </button>
         <div>
           <h1>{project.name}</h1>
-          <p>Geometry workspace · {dimension.toUpperCase()} · SI definition</p>
+          <p>
+            Geometry workspace · {dimension.toUpperCase()} · {project.displayUnits}
+          </p>
         </div>
         <div className="cad-heading-actions">
           <button className="icon-button" aria-label="CAD help" onClick={model.onHelp}>
@@ -192,9 +245,23 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
           >
             <Save size={14} /> Save project
           </button>
+          {!activeSketch && model.desktop && (
+            <label className="cad-auto-rebuild">
+              <input
+                type="checkbox"
+                checked={autoRebuild}
+                onChange={(event) => setAutoRebuild(event.target.checked)}
+              />
+              Auto rebuild
+            </label>
+          )}
           {model.busy ? (
-            <button className="cancel-button" onClick={() => void model.cancel()}>
-              Cancel evaluation
+            <button
+              className="cancel-button"
+              disabled={!model.cancellable}
+              onClick={() => void model.cancel()}
+            >
+              Cancel operation
             </button>
           ) : (
             <button
@@ -205,175 +272,174 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                 model.draftBlocked ||
                 sketchDirty ||
                 !geometry ||
+                !!activeSketch ||
+                !!rebuildIssue ||
                 !model.desktop
               }
-              onClick={() => void model.evaluate()}
+              title={rebuildIssue ?? 'Build the exact shape from the current feature history'}
+              onClick={() => {
+                attemptedSource.current = geometryKey;
+                void model.evaluate();
+              }}
             >
-              <Play size={14} /> Evaluate geometry
+              <Play size={14} /> Rebuild geometry
             </button>
           )}
         </div>
       </header>
-      <div className="cad-ribbon" role="toolbar" aria-label="CAD feature tools">
-        {conversion && (
-          <>
-            <button disabled={model.locked} onClick={() => model.replaceGeometry(conversion)}>
-              Convert current geometry to CAD
-            </button>
-            <span className="toolbar-divider" />
-          </>
-        )}
-        <button
-          disabled={model.locked || dimension === '2d'}
-          onClick={() =>
-            add({
-              id: freshId('box'),
-              name: 'Box',
-              kind: 'box',
-              length: 0.1,
-              width: 0.05,
-              height: 0.025,
-            })
-          }
-        >
-          <Box size={16} /> Box
-        </button>
-        <button
-          disabled={model.locked || dimension === '2d'}
-          onClick={() =>
-            add({
-              id: freshId('cylinder'),
-              name: 'Cylinder',
-              kind: 'cylinder',
-              radius: 0.025,
-              length: 0.1,
-            })
-          }
-        >
-          <Circle size={16} /> Cylinder
-        </button>
-        <button
-          disabled={model.locked}
-          onClick={() =>
-            add({
-              id: freshId('sketch'),
-              name: 'Rectangle sketch',
-              kind: 'sketch',
-              plane: 'xy',
-              sketch: profileGraph({ ...rectangularProfile(0.1, 0.05), holes: [] }),
-            })
-          }
-        >
-          <Square size={16} /> Sketch
-        </button>
-        <button
-          disabled={model.locked}
-          onClick={() => {
-            const id = freshId('circle'),
-              centerId = freshId('center');
-            add({
-              id: freshId('sketch'),
-              name: 'Circle sketch',
-              kind: 'sketch',
-              plane: 'xy',
-              sketch: {
-                points: [{ id: centerId, position: [0, 0] }],
-                entities: [{ id, name: 'Circle', kind: 'circle', centerId, radius: 0.025 }],
-                constraints: [],
-                loops: [{ id: 'outer', role: 'outer', entityIds: [id] }],
-              },
-            });
-          }}
-        >
-          <Circle size={16} /> Circle sketch
-        </button>
-        <span className="toolbar-divider" />
-        <button
-          disabled={model.locked || !sketches.length || dimension === '2d'}
-          onClick={() =>
-            add({
-              id: freshId('extrude'),
-              name: 'Extrusion',
-              kind: 'extrude',
-              sketchId: feature?.kind === 'sketch' ? feature.id : sketches.at(-1)!.id,
-              distance: 0.025,
-            })
-          }
-        >
-          <Layers size={16} /> Extrude
-        </button>
-        <button
-          disabled={model.locked || !sketches.length || dimension === '2d'}
-          onClick={() =>
-            add({
-              id: freshId('revolve'),
-              name: 'Revolution',
-              kind: 'revolve',
-              sketchId: feature?.kind === 'sketch' ? feature.id : sketches.at(-1)!.id,
-              axisOrigin: [0, 0, 0],
-              axisDirection: [1, 0, 0],
-              angle: 2 * Math.PI,
-            })
-          }
-        >
-          <Circle size={16} /> Revolve
-        </button>
-        <button
-          disabled={model.locked || shapes.length < 2}
-          onClick={() =>
-            add({
-              id: freshId('boolean'),
-              name: 'Boolean cut',
-              kind: 'boolean',
-              operation: 'cut',
-              leftId: shapes.at(-2)!.id,
-              rightId: shapes.at(-1)!.id,
-            })
-          }
-        >
-          <Scissors size={16} /> Boolean
-        </button>
-        <button
-          disabled={model.locked || !output || !selectedEdges.length || !evaluation}
-          title="Select unambiguous evaluated edges first"
-          onClick={() =>
-            add({
-              id: freshId('fillet'),
-              name: 'Fillet',
-              kind: 'fillet',
-              inputId: output!,
-              edgeIds: selectedEdges as [string, ...string[]],
-              radius: 0.002,
-            })
-          }
-        >
-          Fillet
-        </button>
-        <button
-          disabled={model.locked || !output || !selectedEdges.length || !evaluation}
-          title="Select unambiguous evaluated edges first"
-          onClick={() =>
-            add({
-              id: freshId('chamfer'),
-              name: 'Chamfer',
-              kind: 'chamfer',
-              inputId: output!,
-              edgeIds: selectedEdges as [string, ...string[]],
-              distance: 0.002,
-            })
-          }
-        >
-          Chamfer
-        </button>
-        <span className="toolbar-divider" />
-        <button
-          disabled={model.locked || model.nativeLocked || model.draftBlocked || !model.desktop}
-          onClick={() => void model.importSource()}
-        >
-          <Upload size={16} /> Import STEP
-        </button>
-      </div>
-      <div className="cad-layout">
+      {!activeSketch && (
+        <div className="cad-ribbon" role="toolbar" aria-label="CAD feature tools">
+          {conversion && (
+            <>
+              <button disabled={model.locked} onClick={() => model.replaceGeometry(conversion)}>
+                Convert current geometry to CAD
+              </button>
+              <span className="toolbar-divider" />
+            </>
+          )}
+          <button
+            disabled={model.locked || dimension === '2d'}
+            onClick={() =>
+              add({
+                id: freshId('box'),
+                name: 'Box',
+                kind: 'box',
+                length: 0.1,
+                width: 0.05,
+                height: 0.025,
+              })
+            }
+          >
+            <Box size={16} /> Box
+          </button>
+          <button
+            disabled={model.locked || dimension === '2d'}
+            onClick={() =>
+              add({
+                id: freshId('cylinder'),
+                name: 'Cylinder',
+                kind: 'cylinder',
+                radius: 0.025,
+                length: 0.1,
+              })
+            }
+          >
+            <Circle size={16} /> Cylinder
+          </button>
+          <button disabled={model.locked || !!activeSketch} onClick={() => setNewSketchPlane('xy')}>
+            <Square size={16} /> New sketch
+          </button>
+          <span className="toolbar-divider" />
+          <button
+            disabled={model.locked || !sourceSketch || dimension === '2d'}
+            onClick={() =>
+              add({
+                id: freshId('extrude'),
+                name: 'Extrusion',
+                kind: 'extrude',
+                sketchId: sourceSketch!.id,
+                distance: 0.025,
+              })
+            }
+          >
+            <Layers size={16} /> Extrude
+          </button>
+          <button
+            disabled={model.locked || !sourceSketch || dimension === '2d'}
+            onClick={() =>
+              add({
+                id: freshId('revolve'),
+                name: 'Revolution',
+                kind: 'revolve',
+                sketchId: sourceSketch!.id,
+                axisOrigin: [0, 0, 0],
+                axisDirection: [1, 0, 0],
+                angle: 2 * Math.PI,
+              })
+            }
+          >
+            <Circle size={16} /> Revolve
+          </button>
+          <button
+            disabled={model.locked || shapes.length < 2}
+            onClick={() =>
+              add({
+                id: freshId('boolean'),
+                name: 'Boolean cut',
+                kind: 'boolean',
+                operation: 'cut',
+                leftId: shapes.at(-2)!.id,
+                rightId: shapes.at(-1)!.id,
+              })
+            }
+          >
+            <Scissors size={16} /> Boolean
+          </button>
+          <button
+            disabled={model.locked || !output || !evaluation}
+            onClick={() => {
+              setSelectionKind('edge');
+              setSelected([]);
+              setEdgeTool('fillet');
+            }}
+          >
+            Fillet
+          </button>
+          <button
+            disabled={model.locked || !output || !evaluation}
+            onClick={() => {
+              setSelectionKind('edge');
+              setSelected([]);
+              setEdgeTool('chamfer');
+            }}
+          >
+            Chamfer
+          </button>
+          <button
+            disabled={model.locked || !shapes.length}
+            onClick={() =>
+              add({
+                id: freshId('transform'),
+                name: 'Move / rotate',
+                kind: 'transform',
+                inputId: feature && feature.kind !== 'sketch' ? feature.id : shapes.at(-1)!.id,
+                translation: [0, 0, 0],
+                axisOrigin: [0, 0, 0],
+                axisDirection: [0, 0, 1],
+                angle: 0,
+              })
+            }
+          >
+            <Move3D size={16} /> Move / rotate
+          </button>
+          <span className="toolbar-divider" />
+          <button
+            disabled={model.locked || model.nativeLocked || model.draftBlocked || !model.desktop}
+            onClick={() => void model.importSource()}
+          >
+            <Upload size={16} /> Import STEP
+          </button>
+        </div>
+      )}
+      {activeSketch && (
+        <div className="cad-sketch-session" role="toolbar" aria-label="Sketch session">
+          <div>
+            <strong>Editing {activeSketch.name}</strong>
+            <span>{activeSketch.plane.toUpperCase()} plane · draw and constrain your profile</span>
+          </div>
+          <button
+            className="primary"
+            disabled={model.locked || sketchDirty}
+            onClick={() => {
+              setEditingSketch(null);
+              model.reportDraft('cad-sketch', null);
+            }}
+          >
+            <Check size={15} /> Finish sketch
+          </button>
+        </div>
+      )}
+      <div className={`cad-layout ${activeSketch ? 'editing-sketch' : ''}`}>
         <aside className="cad-tree">
           <h2>Feature history</h2>
           {!geometry ? (
@@ -403,10 +469,10 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                 <li key={item.id}>
                   <button
                     className={feature?.id === item.id ? 'active' : ''}
-                    disabled={sketchDirty}
+                    disabled={sketchDirty || model.locked}
                     onClick={() => {
                       setChosenId(item.id);
-                      setSketchView('authored');
+                      setEditingSketch(item.kind === 'sketch' ? item.id : null);
                       setSelected([]);
                     }}
                   >
@@ -476,70 +542,116 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
           )}
         </aside>
         <main className="cad-canvas-area">
-          {feature?.kind === 'sketch' && evaluation && (
-            <div className="cad-view-toggle">
-              <button
-                className={sketchView === 'authored' ? 'active' : ''}
-                onClick={() => setSketchView('authored')}
-              >
-                Authored sketch
-              </button>
-              <button
-                className={sketchView === 'evaluated' ? 'active' : ''}
-                disabled={sketchDirty}
-                onClick={() => setSketchView('evaluated')}
-              >
-                Evaluated shape
-              </button>
-            </div>
-          )}
-          {sketchView === 'authored' &&
-          feature?.kind === 'sketch' &&
-          graphProfile(feature.sketch) ? (
-            <div className="cad-sketch-area" inert={model.locked}>
-              <SketchCanvas
-                profile={graphProfile(feature.sketch)!}
-                planeLabel={`${feature.plane.toUpperCase()} local sketch`}
-                factor={factor}
-                unit={project.displayUnits}
-                reservedIds={feature.sketch.entities.map((item) => item.id)}
-                onSelectBoundary={() => {}}
-                onDraftChange={(dirty) => {
-                  setSketchDirty(dirty);
-                  model.reportDraft('cad-sketch', dirty ? 'Unapplied CAD sketch' : null);
-                }}
-                onApply={(profile) => {
-                  if (model.locked) return false;
-                  const graph = profileGraph(profile, feature.sketch);
-                  const issue = sketchReferenceError(graph);
-                  if (issue) {
-                    model.onError(issue);
-                    return false;
-                  }
-                  model.reportDraft('cad-sketch', null);
-                  update((next) => {
-                    if (next.kind === 'sketch') next.sketch = graph;
-                  });
-                  return true;
-                }}
-              />
-            </div>
-          ) : (
-            <CadViewport
-              preview={evaluation?.preview ?? null}
-              selected={selected}
-              selectionKind={selectionKind}
-              onSelect={chooseEntity}
-              dark={model.dark}
-              onRendered={model.onRendered}
+          {activeSketch ? (
+            <CadSketchEditor
+              key={activeSketch.id}
+              feature={activeSketch}
+              units={project.displayUnits}
+              locked={model.locked}
+              solving={model.busy}
+              onSolve={model.desktop ? () => model.solveSketch(activeSketch.id) : undefined}
+              solveReport={
+                model.sketchSolve?.featureId === activeSketch.id
+                  ? model.sketchSolve.report
+                  : evaluation?.sketches.find((item) => item.featureId === activeSketch.id)
+              }
+              onDraftChange={(dirty) => {
+                setSketchDirty(dirty);
+                model.reportDraft(
+                  'cad-sketch',
+                  dirty ? 'Finish or cancel the current sketch gesture' : null,
+                );
+              }}
+              onChange={(next) =>
+                model.editGeometry((value) => {
+                  const index = value.features.findIndex((item) => item.id === next.id);
+                  if (index >= 0) value.features[index] = next;
+                })
+              }
             />
+          ) : (
+            <>
+              {edgeTool && (
+                <div className="cad-edge-task">
+                  <div>
+                    <strong>
+                      {edgeTool === 'fillet' ? 'Round selected edges' : 'Bevel selected edges'}
+                    </strong>
+                    <span>Click edges in the view. Hold Shift to add more.</span>
+                  </div>
+                  <NumberInput
+                    commitMode="finish"
+                    label={edgeTool === 'fillet' ? 'Radius' : 'Distance'}
+                    value={edgeSize * factor}
+                    unit={project.displayUnits}
+                    positive
+                    onChange={(n) => setEdgeSize(n / factor)}
+                  />
+                  <button
+                    className="primary"
+                    disabled={!selectedEdges.length || model.locked}
+                    onClick={() => {
+                      if (!output) return;
+                      add(
+                        edgeTool === 'fillet'
+                          ? {
+                              id: freshId('fillet'),
+                              name: 'Fillet',
+                              kind: 'fillet',
+                              inputId: output,
+                              edgeIds: selectedEdges as [string, ...string[]],
+                              radius: edgeSize,
+                            }
+                          : {
+                              id: freshId('chamfer'),
+                              name: 'Chamfer',
+                              kind: 'chamfer',
+                              inputId: output,
+                              edgeIds: selectedEdges as [string, ...string[]],
+                              distance: edgeSize,
+                            },
+                      );
+                      setEdgeTool(null);
+                    }}
+                  >
+                    Apply to {selectedEdges.length} edges
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label="Cancel edge operation"
+                    onClick={() => setEdgeTool(null)}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
+              <CadViewport
+                preview={evaluation?.preview ?? model.retainedPreview ?? null}
+                guide={!evaluation ? authoringGuide : null}
+                definitionPresent={!!geometry}
+                stale={!evaluation && !!model.retainedPreview}
+                selected={selected}
+                selectionKind={selectionKind}
+                onSelectionKind={(kind) => {
+                  setSelectionKind(kind);
+                  setSelected([]);
+                }}
+                onSelect={chooseEntity}
+                onClearSelection={() => setSelected([])}
+                dark={model.dark}
+                onRendered={evaluation ? model.onRendered : undefined}
+              />
+            </>
           )}
           <div className={`cad-evaluation-status ${evaluation ? 'complete' : ''}`} role="status">
             {model.busy
               ? 'Evaluating exact geometry in the local worker…'
-              : evaluation
-                ? `${evaluation.kernel} · ${evaluation.bodyCount} bodies · ${evaluation.faceCount} faces · ${evaluation.edgeCount} edges`
-                : 'Geometry has not been evaluated for the current definition.'}
+              : activeSketch
+                ? 'Completed drawing gestures are saved in the project. Finish sketch to rebuild the exact geometry.'
+                : evaluation
+                  ? `${evaluation.kernel} · ${evaluation.bodyCount} bodies · ${evaluation.faceCount} faces · ${evaluation.edgeCount} edges`
+                  : (rebuildIssue ??
+                    'Edit feature dimensions, then rebuild to view the exact geometry.')}
           </div>
           {model.error && (
             <div className="cad-error" role="alert">
@@ -551,459 +663,364 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             </div>
           )}
         </main>
-        <aside className="cad-properties">
-          <h2>{feature ? labels[feature.kind] : 'Geometry properties'}</h2>
-          {feature ? (
-            <fieldset disabled={model.locked}>
-              <label className="field-label">
-                <span>Feature name</span>
-                <input
-                  value={feature.name}
-                  maxLength={200}
-                  onChange={(e) =>
-                    update((next) => {
-                      next.name = e.target.value;
-                    })
-                  }
-                />
-              </label>
-              {feature.kind === 'box' && (
-                <>
-                  {dimensionInput('Length', feature.length, 'length')}
-                  {dimensionInput('Width', feature.width, 'width')}
-                  {dimensionInput('Height', feature.height, 'height')}
-                </>
-              )}
-              {feature.kind === 'cylinder' && (
-                <>
-                  {dimensionInput('Length · X axis', feature.length, 'length')}
-                  {dimensionInput('Radius', feature.radius, 'radius')}
-                </>
-              )}
-              {(feature.kind === 'extrude' || feature.kind === 'revolve') && (
-                <Select
-                  aria-label="Source sketch"
-                  value={feature.sketchId}
-                  options={sketches.map((item) => ({ value: item.id, label: item.name }))}
-                  onChange={(id) =>
-                    update((next) => {
-                      if (next.kind === 'extrude' || next.kind === 'revolve') next.sketchId = id;
-                    })
-                  }
-                />
-              )}
-              {feature.kind === 'extrude' &&
-                dimensionInput('Distance', feature.distance, 'distance', true)}
-              {feature.kind === 'revolve' && (
-                <>
-                  <NumberInput
-                    label="Angle"
-                    value={(feature.angle * 180) / Math.PI}
-                    unit="°"
-                    positive
-                    maximum={360}
-                    onChange={(n) =>
+        {!activeSketch && (
+          <aside className="cad-properties">
+            <h2>{feature ? labels[feature.kind] : 'Geometry properties'}</h2>
+            {feature ? (
+              <fieldset disabled={model.locked}>
+                <label className="field-label">
+                  <span>Feature name</span>
+                  <input
+                    value={feature.name}
+                    maxLength={200}
+                    onChange={(e) =>
                       update((next) => {
-                        if (next.kind === 'revolve') next.angle = (n * Math.PI) / 180;
+                        next.name = e.target.value;
                       })
                     }
                   />
-                  {([0, 1, 2] as const).map((axis) => (
-                    <div key={axis}>
-                      {dimensionInput(
-                        `Axis origin ${'XYZ'[axis]}`,
-                        feature.axisOrigin[axis],
-                        `axisOrigin${axis}`,
-                        true,
-                      )}
-                      <NumberInput
-                        label={`Axis direction ${'XYZ'[axis]}`}
-                        value={feature.axisDirection[axis]}
-                        onChange={(n) =>
-                          update((next) => {
-                            if (next.kind === 'revolve') next.axisDirection[axis] = n;
-                          })
-                        }
-                      />
-                    </div>
-                  ))}
-                </>
-              )}
-              {feature.kind === 'boolean' && (
-                <>
+                </label>
+                {feature.kind === 'box' && (
+                  <>
+                    {dimensionInput('Length', feature.length, 'length')}
+                    {dimensionInput('Width', feature.width, 'width')}
+                    {dimensionInput('Height', feature.height, 'height')}
+                  </>
+                )}
+                {feature.kind === 'cylinder' && (
+                  <>
+                    {dimensionInput('Length · X axis', feature.length, 'length')}
+                    {dimensionInput('Radius', feature.radius, 'radius')}
+                  </>
+                )}
+                {(feature.kind === 'extrude' || feature.kind === 'revolve') && (
                   <Select
-                    aria-label="Boolean operation"
-                    value={feature.operation}
-                    options={[
-                      { value: 'union', label: 'Union' },
-                      { value: 'cut', label: 'Cut' },
-                      { value: 'intersect', label: 'Intersection' },
-                    ]}
-                    onChange={(value) =>
+                    aria-label="Source sketch"
+                    value={feature.sketchId}
+                    options={sketches.map((item) => ({ value: item.id, label: item.name }))}
+                    onChange={(id) =>
                       update((next) => {
-                        if (next.kind === 'boolean')
-                          next.operation = value as typeof next.operation;
+                        if (next.kind === 'extrude' || next.kind === 'revolve') next.sketchId = id;
                       })
                     }
                   />
-                  {(['leftId', 'rightId'] as const).map((field) => (
-                    <Select
-                      key={field}
-                      aria-label={field === 'leftId' ? 'Base solid' : 'Tool solid'}
-                      value={feature[field]}
-                      options={shapes
-                        .filter(
-                          (item) =>
-                            geometry!.features.indexOf(item) < geometry!.features.indexOf(feature),
-                        )
-                        .map((item) => ({ value: item.id, label: item.name }))}
-                      onChange={(id) =>
+                )}
+                {feature.kind === 'extrude' &&
+                  dimensionInput('Distance', feature.distance, 'distance', true)}
+                {feature.kind === 'revolve' && (
+                  <>
+                    <NumberInput
+                      commitMode="finish"
+                      label="Angle"
+                      value={(feature.angle * 180) / Math.PI}
+                      unit="°"
+                      positive
+                      maximum={360}
+                      onChange={(n) =>
                         update((next) => {
-                          if (next.kind === 'boolean') next[field] = id;
+                          if (next.kind === 'revolve') next.angle = (n * Math.PI) / 180;
                         })
                       }
                     />
-                  ))}
-                </>
-              )}
-              {feature.kind === 'import-step' && (
-                <>
-                  <p className="cad-hint">
-                    STEP units are read by the exact kernel and converted to SI. The scale below is
-                    an additional user transformation.
-                  </p>
-                  <NumberInput
-                    label="Additional scale factor"
-                    value={feature.scaleFactor}
-                    positive
-                    onChange={(n) =>
-                      update((next) => {
-                        if (next.kind === 'import-step') next.scaleFactor = n;
-                      })
-                    }
-                  />
-                </>
-              )}
-              {feature.kind === 'fillet' && dimensionInput('Radius', feature.radius, 'radius')}
-              {feature.kind === 'chamfer' &&
-                dimensionInput('Distance', feature.distance, 'distance')}
-              {feature.kind === 'sketch' && (
-                <SketchProperties
-                  feature={feature}
-                  draftBlocked={sketchDirty}
-                  report={evaluation?.sketches.find((item) => item.featureId === feature.id)}
-                  factor={factor}
-                  unit={project.displayUnits}
-                  onChange={(next) =>
-                    update((item) => {
-                      if (item.kind === 'sketch') Object.assign(item, next);
-                    })
-                  }
-                />
-              )}
-              <button className="secondary full" disabled={sketchDirty} onClick={deleteFeature}>
-                <Trash2 size={14} /> Delete feature
-              </button>
-            </fieldset>
-          ) : (
-            <p className="cad-hint">Choose a feature to edit its definition.</p>
-          )}
-          {evaluation && (
-            <div className="cad-shape-summary">
-              <h2>Exact shape measurements</h2>
-              <dl>
-                <dt>Volume</dt>
-                <dd>{formatValue(evaluation.volume)} m³</dd>
-                <dt>Surface area</dt>
-                <dd>{formatValue(evaluation.surfaceArea)} m²</dd>
-              </dl>
-            </div>
-          )}
-          <div className="cad-export">
-            <h2>Export geometry</h2>
-            <Select
-              aria-label="CAD export units"
-              value={exportUnits}
-              options={[
-                { value: 'm', label: 'Meters' },
-                { value: 'mm', label: 'Millimeters' },
-              ]}
-              onChange={(unit) => setExportUnits(unit as 'm' | 'mm')}
-            />
-            <button
-              className="secondary full"
-              disabled={
-                model.locked ||
-                model.nativeLocked ||
-                model.draftBlocked ||
-                !evaluation ||
-                !model.desktop
-              }
-              onClick={() => void model.exportShape('step', exportUnits)}
-            >
-              <Download size={14} /> Export STEP
-            </button>
-            <button
-              className="secondary full"
-              disabled={
-                model.locked ||
-                model.nativeLocked ||
-                model.draftBlocked ||
-                !evaluation ||
-                !model.desktop
-              }
-              onClick={() => void model.exportShape('brep', 'm')}
-            >
-              Export B-rep (SI)
-            </button>
-          </div>
-          <p className="cad-hint">
-            Geometry validity and analysis support are separate. The project overview reports the
-            exact geometry’s available analysis paths. Unsupported shapes remain editable and
-            exportable.
-          </p>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function SketchProperties({
-  feature,
-  draftBlocked,
-  report,
-  factor,
-  unit,
-  onChange,
-}: {
-  feature: CadSketchFeature;
-  draftBlocked: boolean;
-  report?: CadWorkspaceModel['evaluation'] extends infer T
-    ? NonNullable<T> extends { sketches: infer S }
-      ? S extends (infer R)[]
-        ? R
-        : never
-      : never
-    : never;
-  factor: number;
-  unit: 'm' | 'mm';
-  onChange: (feature: CadSketchFeature) => void;
-}) {
-  const [kind, setKind] = useState<CadSketchConstraint['kind']>('horizontal');
-  const [first, setFirst] = useState('');
-  const [second, setSecond] = useState('');
-  const [value, setValue] = useState(10);
-  const points = feature.sketch.points;
-  const lines = feature.sketch.entities.filter((e) => e.kind === 'line');
-  const curves = feature.sketch.entities.filter((e) => e.kind !== 'line');
-  const pointKind = ['fixedPoint', 'coincident', 'distance'].includes(kind);
-  const curveKind = ['diameter', 'equalRadius'].includes(kind);
-  const options = (pointKind ? points : curveKind ? curves : lines).map((item) => ({
-    value: item.id,
-    label: 'name' in item ? item.name : item.id,
-  }));
-  const firstId = options.some((o) => o.value === first) ? first : (options[0]?.value ?? '');
-  const secondId = options.some((o) => o.value === second)
-    ? second
-    : (options[1]?.value ?? options[0]?.value ?? '');
-  const two = [
-    'coincident',
-    'distance',
-    'equalLength',
-    'parallel',
-    'perpendicular',
-    'equalRadius',
-  ].includes(kind);
-  const addConstraint = () => {
-    const id = freshId('constraint');
-    let c: CadSketchConstraint;
-    switch (kind) {
-      case 'fixedPoint':
-        c = { id, kind, pointId: firstId };
-        break;
-      case 'coincident':
-        c = { id, kind, firstPointId: firstId, secondPointId: secondId };
-        break;
-      case 'distance':
-        c = { id, kind, firstPointId: firstId, secondPointId: secondId, value: value / factor };
-        break;
-      case 'horizontal':
-      case 'vertical':
-        c = { id, kind, lineId: firstId };
-        break;
-      case 'diameter':
-        c = { id, kind, curveId: firstId, value: value / factor };
-        break;
-      case 'equalRadius':
-        c = { id, kind, firstCurveId: firstId, secondCurveId: secondId };
-        break;
-      default:
-        c = { id, kind, firstLineId: firstId, secondLineId: secondId };
-    }
-    onChange({
-      ...feature,
-      sketch: { ...feature.sketch, constraints: [...feature.sketch.constraints, c] },
-    });
-  };
-  return (
-    <>
-      <details className="cad-sketch-coordinates">
-        <summary>Authored points & curves</summary>
-        {feature.sketch.points.map((point) => (
-          <div key={point.id}>
-            <small>{point.id}</small>
-            {([0, 1] as const).map((axis) => (
-              <NumberInput
-                key={axis}
-                disabled={draftBlocked}
-                label={'XY'[axis]}
-                value={point.position[axis] * factor}
-                unit={unit}
-                onChange={(value) =>
-                  onChange({
-                    ...feature,
-                    sketch: {
-                      ...feature.sketch,
-                      points: feature.sketch.points.map((item) =>
-                        item.id === point.id
-                          ? {
-                              ...item,
-                              position: item.position.map((n, i) =>
-                                i === axis ? value / factor : n,
-                              ) as [number, number],
-                            }
-                          : item,
-                      ),
-                    },
-                  })
-                }
+                    {([0, 1, 2] as const).map((axis) => (
+                      <div key={axis}>
+                        {dimensionInput(
+                          `Axis origin ${'XYZ'[axis]}`,
+                          feature.axisOrigin[axis],
+                          `axisOrigin${axis}`,
+                          true,
+                        )}
+                        <NumberInput
+                          commitMode="finish"
+                          label={`Axis direction ${'XYZ'[axis]}`}
+                          value={feature.axisDirection[axis]}
+                          onChange={(n) =>
+                            update((next) => {
+                              if (next.kind === 'revolve') next.axisDirection[axis] = n;
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </>
+                )}
+                {feature.kind === 'boolean' && (
+                  <>
+                    <Select
+                      aria-label="Boolean operation"
+                      value={feature.operation}
+                      options={[
+                        { value: 'union', label: 'Union' },
+                        { value: 'cut', label: 'Cut' },
+                        { value: 'intersect', label: 'Intersection' },
+                      ]}
+                      onChange={(value) =>
+                        update((next) => {
+                          if (next.kind === 'boolean')
+                            next.operation = value as typeof next.operation;
+                        })
+                      }
+                    />
+                    {(['leftId', 'rightId'] as const).map((field) => (
+                      <Select
+                        key={field}
+                        aria-label={field === 'leftId' ? 'Base solid' : 'Tool solid'}
+                        value={feature[field]}
+                        options={shapes
+                          .filter(
+                            (item) =>
+                              geometry!.features.indexOf(item) <
+                              geometry!.features.indexOf(feature),
+                          )
+                          .map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={(id) =>
+                          update((next) => {
+                            if (next.kind === 'boolean') next[field] = id;
+                          })
+                        }
+                      />
+                    ))}
+                  </>
+                )}
+                {feature.kind === 'import-step' && (
+                  <>
+                    <p className="cad-hint">
+                      STEP units are read by the exact kernel and converted to SI. The scale below
+                      is an additional user transformation.
+                    </p>
+                    <NumberInput
+                      commitMode="finish"
+                      label="Additional scale factor"
+                      value={feature.scaleFactor}
+                      positive
+                      onChange={(n) =>
+                        update((next) => {
+                          if (next.kind === 'import-step') next.scaleFactor = n;
+                        })
+                      }
+                    />
+                  </>
+                )}
+                {feature.kind === 'fillet' && dimensionInput('Radius', feature.radius, 'radius')}
+                {feature.kind === 'chamfer' &&
+                  dimensionInput('Distance', feature.distance, 'distance')}
+                {feature.kind === 'sketch' && (
+                  <>
+                    <p className="cad-hint">
+                      {feature.plane.toUpperCase()} plane · {feature.sketch.entities.length}{' '}
+                      entities · {feature.sketch.constraints.length} constraints
+                    </p>
+                    {sketchReadiness(feature.sketch).issue && (
+                      <p className="cad-hint">
+                        {sketchReadiness(feature.sketch).issue} The sketch remains saved and
+                        editable.
+                      </p>
+                    )}
+                    <button className="primary" onClick={() => setEditingSketch(feature.id)}>
+                      Edit sketch
+                    </button>
+                  </>
+                )}
+                {feature.kind === 'transform' && (
+                  <>
+                    <p className="cad-hint">
+                      Rigid placement of{' '}
+                      {geometry?.features.find((item) => item.id === feature.inputId)?.name ??
+                        'input shape'}
+                      .
+                    </p>
+                    {([0, 1, 2] as const).map((axis) => (
+                      <NumberInput
+                        commitMode="finish"
+                        key={axis}
+                        label={`Translate ${'XYZ'[axis]}`}
+                        value={feature.translation[axis] * factor}
+                        unit={project.displayUnits}
+                        onChange={(n) =>
+                          update((next) => {
+                            if (next.kind === 'transform') next.translation[axis] = n / factor;
+                          })
+                        }
+                      />
+                    ))}
+                    <NumberInput
+                      commitMode="finish"
+                      label="Rotation"
+                      value={(feature.angle * 180) / Math.PI}
+                      unit="°"
+                      maximum={360}
+                      onChange={(n) =>
+                        update((next) => {
+                          if (next.kind === 'transform') next.angle = (n * Math.PI) / 180;
+                        })
+                      }
+                    />
+                    <Select
+                      aria-label="Rotation axis"
+                      value={JSON.stringify(feature.axisDirection)}
+                      options={[
+                        { value: '[1,0,0]', label: 'X axis' },
+                        { value: '[0,1,0]', label: 'Y axis' },
+                        { value: '[0,0,1]', label: 'Z axis' },
+                      ]}
+                      onChange={(value) =>
+                        update((next) => {
+                          if (next.kind === 'transform') next.axisDirection = JSON.parse(value);
+                        })
+                      }
+                    />
+                    <details>
+                      <summary>Rotation axis origin</summary>
+                      {([0, 1, 2] as const).map((axis) => (
+                        <NumberInput
+                          commitMode="finish"
+                          key={axis}
+                          label={`Origin ${'XYZ'[axis]}`}
+                          value={feature.axisOrigin[axis] * factor}
+                          unit={project.displayUnits}
+                          onChange={(n) =>
+                            update((next) => {
+                              if (next.kind === 'transform') next.axisOrigin[axis] = n / factor;
+                            })
+                          }
+                        />
+                      ))}
+                    </details>
+                  </>
+                )}
+                <button className="secondary full" disabled={sketchDirty} onClick={deleteFeature}>
+                  <Trash2 size={14} /> Delete feature
+                </button>
+              </fieldset>
+            ) : (
+              <p className="cad-hint">Choose a feature to edit its definition.</p>
+            )}
+            {evaluation && (
+              <div className="cad-shape-summary">
+                <h2>Exact shape measurements</h2>
+                <dl>
+                  <dt>Volume</dt>
+                  <dd>
+                    {formatValue(evaluation.volume * factor ** 3)} {project.displayUnits}³
+                  </dd>
+                  <dt>Surface area</dt>
+                  <dd>
+                    {formatValue(evaluation.surfaceArea * factor ** 2)} {project.displayUnits}²
+                  </dd>
+                </dl>
+              </div>
+            )}
+            {evaluation && (
+              <div className={`cad-analysis-support ${evaluation.analysisCompatibility.state}`}>
+                <h2>Analysis support</h2>
+                <strong>
+                  {evaluation.analysisCompatibility.state === 'supported'
+                    ? 'Supported analysis path'
+                    : 'CAD ready · analysis unavailable'}
+                </strong>
+                <p>{evaluation.analysisCompatibility.reason}</p>
+                {evaluation.analysisCompatibility.state === 'unsupported' && (
+                  <span>You can continue modeling, save this geometry or export it.</span>
+                )}
+              </div>
+            )}
+            <div className="cad-export">
+              <h2>Export geometry</h2>
+              <Select
+                aria-label="CAD export units"
+                value={exportUnits}
+                options={[
+                  { value: 'm', label: 'Meters' },
+                  { value: 'mm', label: 'Millimeters' },
+                ]}
+                onChange={(unit) => setExportUnits(unit as 'm' | 'mm')}
               />
-            ))}
+              <button
+                className="secondary full"
+                disabled={
+                  model.locked ||
+                  model.nativeLocked ||
+                  model.draftBlocked ||
+                  !evaluation ||
+                  !model.desktop
+                }
+                onClick={() => void model.exportShape('step', exportUnits)}
+              >
+                <Download size={14} /> Export STEP
+              </button>
+              <button
+                className="secondary full"
+                disabled={
+                  model.locked ||
+                  model.nativeLocked ||
+                  model.draftBlocked ||
+                  !evaluation ||
+                  !model.desktop
+                }
+                onClick={() => void model.exportShape('brep', 'm')}
+              >
+                Export B-rep (SI)
+              </button>
+            </div>
+            <p className="cad-hint">
+              Geometry validity and analysis support are separate. The project overview reports the
+              exact geometry’s available analysis paths. Unsupported shapes remain editable and
+              exportable.
+            </p>
+          </aside>
+        )}
+      </div>
+      {newSketchPlane && (
+        <div
+          className="cad-plane-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cad-plane-title"
+        >
+          <div ref={planeDialog} className="cad-plane-dialog modal">
+            <h2 id="cad-plane-title">Choose a sketch plane</h2>
+            <p>
+              Draw a 2D profile on a principal plane. You can extrude or revolve it after closing
+              the profile.
+            </p>
+            <div className="cad-plane-options">
+              {(['xy', 'xz', 'yz'] as const).map((plane) => (
+                <button
+                  className={newSketchPlane === plane ? 'active' : ''}
+                  key={plane}
+                  aria-pressed={newSketchPlane === plane}
+                  disabled={dimension === '2d' && plane !== 'xy'}
+                  onClick={() => setNewSketchPlane(plane)}
+                >
+                  <Square size={24} />
+                  <strong>{plane.toUpperCase()}</strong>
+                  <span>{plane === 'xy' ? 'Front' : plane === 'xz' ? 'Top' : 'Right'}</span>
+                </button>
+              ))}
+            </div>
+            <div className="cad-plane-actions">
+              <button className="secondary" onClick={() => setNewSketchPlane(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary"
+                onClick={() => {
+                  add({
+                    id: freshId('sketch'),
+                    name: `Sketch ${sketches.length + 1}`,
+                    kind: 'sketch',
+                    plane: newSketchPlane,
+                    sketch: { points: [], entities: [], constraints: [], loops: [] },
+                  });
+                  setNewSketchPlane(null);
+                }}
+              >
+                Start drawing
+              </button>
+            </div>
           </div>
-        ))}
-        {curves
-          .filter((curve) => curve.kind === 'circle')
-          .map((curve) => (
-            <NumberInput
-              key={curve.id}
-              disabled={draftBlocked}
-              label={`${curve.name} radius`}
-              value={curve.radius * factor}
-              unit={unit}
-              positive
-              onChange={(value) =>
-                onChange({
-                  ...feature,
-                  sketch: {
-                    ...feature.sketch,
-                    entities: feature.sketch.entities.map((item) =>
-                      item.id === curve.id && item.kind === 'circle'
-                        ? { ...item, radius: value / factor }
-                        : item,
-                    ),
-                  },
-                })
-              }
-            />
-          ))}
-      </details>
-      <Select
-        aria-label="Sketch plane"
-        value={feature.plane}
-        options={['xy', 'xz', 'yz'].map((plane) => ({
-          value: plane,
-          label: `${plane.toUpperCase()} plane`,
-        }))}
-        onChange={(plane) => onChange({ ...feature, plane: plane as typeof feature.plane })}
-      />
-      <h3>Sketch constraints</h3>
-      <p className="cad-hint">
-        {report
-          ? `${report.status} · ${report.degreesOfFreedom ?? 'unknown'} degrees of freedom`
-          : 'Evaluate to measure degrees of freedom and constraint conflicts. No automatic anchor is added.'}
-      </p>
-      {feature.sketch.constraints.map((constraint) => (
-        <div className="cad-constraint-row" key={constraint.id}>
-          <span>
-            {constraint.kind}
-            {report?.failedConstraintIds.includes(constraint.id) && <small>Needs repair</small>}
-          </span>
-          <button
-            className="icon-button"
-            aria-label={`Delete ${constraint.kind} constraint`}
-            onClick={() =>
-              onChange({
-                ...feature,
-                sketch: {
-                  ...feature.sketch,
-                  constraints: feature.sketch.constraints.filter(
-                    (item) => item.id !== constraint.id,
-                  ),
-                },
-              })
-            }
-          >
-            <Trash2 size={13} />
-          </button>
         </div>
-      ))}
-      <Select
-        aria-label="New sketch constraint"
-        value={kind}
-        options={(
-          [
-            'fixedPoint',
-            'coincident',
-            'distance',
-            'horizontal',
-            'vertical',
-            'diameter',
-            'equalLength',
-            'parallel',
-            'perpendicular',
-            'equalRadius',
-          ] as const
-        ).map((k) => ({ value: k, label: k.replace(/([A-Z])/g, ' $1') }))}
-        onChange={(k) => {
-          setKind(k as typeof kind);
-          setFirst('');
-          setSecond('');
-        }}
-      />
-      <Select
-        aria-label="First constraint reference"
-        value={firstId}
-        options={options}
-        onChange={setFirst}
-      />
-      {two && (
-        <Select
-          aria-label="Second constraint reference"
-          value={secondId}
-          options={options}
-          onChange={setSecond}
-        />
       )}
-      {['distance', 'diameter'].includes(kind) && (
-        <NumberInput
-          label="Constraint value"
-          value={value}
-          unit={unit}
-          positive
-          onChange={setValue}
-        />
-      )}
-      <button
-        className="secondary full"
-        disabled={
-          !firstId ||
-          (two && (!secondId || firstId === secondId)) ||
-          feature.sketch.constraints.length >= 512
-        }
-        onClick={addConstraint}
-      >
-        <Plus size={14} /> Add constraint
-      </button>
-    </>
+    </div>
   );
 }

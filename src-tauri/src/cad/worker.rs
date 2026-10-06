@@ -30,13 +30,59 @@ pub(crate) fn evaluate(
     request: &RunRequestId,
     publish: impl FnOnce(Value) -> Result<Value, String>,
 ) -> Result<Value, String> {
+    execute(
+        app, state, project, directory, sources, job, request, None, publish,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn solve_sketch(
+    app: &tauri::AppHandle,
+    state: &EngineState,
+    project: &Value,
+    directory: &Path,
+    sources: &Path,
+    job: &str,
+    request: &RunRequestId,
+    feature_id: &str,
+    publish: impl FnOnce(Value) -> Result<Value, String>,
+) -> Result<Value, String> {
+    execute(
+        app,
+        state,
+        project,
+        directory,
+        sources,
+        job,
+        request,
+        Some(feature_id),
+        publish,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute(
+    app: &tauri::AppHandle,
+    state: &EngineState,
+    project: &Value,
+    directory: &Path,
+    sources: &Path,
+    job: &str,
+    request: &RunRequestId,
+    sketch_id: Option<&str>,
+    publish: impl FnOnce(Value) -> Result<Value, String>,
+) -> Result<Value, String> {
     let cancelled = run_cancellation(state, Some(request))?;
     if cancelled.load(Ordering::SeqCst) || state.shutting_down.load(Ordering::SeqCst) {
         return Err("CAD operation cancelled".into());
     }
-    let payload = serde_json::to_vec(&json!({"protocolVersion":1,"jobId":job,
-        "projectId":project["id"],"revision":project["revision"],"geometry":project["geometry"],"assetRoot":sources}))
-        .map_err(|e| e.to_string())?;
+    let mut envelope = json!({"protocolVersion":1,"jobId":job,
+        "projectId":project["id"],"revision":project["revision"],"geometry":project["geometry"],"assetRoot":sources});
+    if let Some(feature_id) = sketch_id {
+        envelope["operation"] = json!("solve-sketch");
+        envelope["featureId"] = json!(feature_id);
+    }
+    let payload = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
     if payload.len() as u64 > MAX_JSON {
         return Err("CAD request exceeds 1 MiB".into());
     }
@@ -64,6 +110,7 @@ pub(crate) fn evaluate(
     let mut process = command
         .spawn()
         .map_err(|e| format!("CAD worker failed to start: {e}"))?;
+    crate::verification::trace_verification("CAD worker started");
     let stdout = process.stdout.take().ok_or("Missing CAD output")?;
     let mut stdin = process.stdin.take().ok_or("Missing CAD input")?;
     let stderr = process.stderr.take().ok_or("Missing CAD diagnostics")?;
@@ -133,19 +180,33 @@ pub(crate) fn evaluate(
             return Err("CAD operation cancelled".into());
         }
         if !status.success() {
+            crate::verification::trace_verification(&format!("CAD worker exit: {status}"));
             return Err("The isolated CAD worker stopped; the previous model was preserved".into());
         }
         let receipt = receipt.ok_or("CAD worker returned no geometry")?;
+        crate::verification::trace_verification("CAD worker completed");
         if receipt["protocolVersion"] != 1
             || receipt["status"] != "succeeded"
-            || receipt["operation"] != "cad"
+            || receipt["operation"]
+                != if sketch_id.is_some() {
+                    "solve-sketch"
+                } else {
+                    "cad"
+                }
             || receipt["projectId"] != project["id"]
             || receipt["revision"] != project["revision"]
             || receipt["jobId"] != job
-            || receipt["outputFeatureId"] != project["geometry"]["outputFeatureId"]
-            || receipt["coordinateFrame"] != "cartesian-global-SI"
         {
             return Err("CAD geometry ownership mismatch".into());
+        }
+        if let Some(feature_id) = sketch_id {
+            validate_sketch_solution(project, feature_id, &receipt)?;
+            return Ok(receipt);
+        }
+        if receipt["outputFeatureId"] != project["geometry"]["outputFeatureId"]
+            || receipt["coordinateFrame"] != "cartesian-global-SI"
+        {
+            return Err("CAD shape ownership mismatch".into());
         }
         let receipt_bytes = read_bounded(&directory.join("receipt.json"), MAX_JSON)?;
         let stored: Value =
@@ -203,7 +264,125 @@ pub(crate) fn evaluate(
         }
     });
     active.take();
+    crate::verification::trace_verification("CAD worker publication finished");
     result
+}
+
+fn validate_sketch_solution(
+    project: &Value,
+    feature_id: &str,
+    receipt: &Value,
+) -> Result<(), String> {
+    let source = project["geometry"]["features"]
+        .as_array()
+        .and_then(|features| {
+            features
+                .iter()
+                .find(|feature| feature["id"] == feature_id && feature["kind"] == "sketch")
+        })
+        .ok_or("Unknown sketch solution input")?;
+    if receipt["featureId"] != feature_id
+        || receipt["geometryFingerprint"]
+            .as_str()
+            .is_none_or(|digest| {
+                digest.len() != 64 || !digest.bytes().all(|c| c.is_ascii_hexdigit())
+            })
+    {
+        return Err("Sketch solution identity mismatch".into());
+    }
+    let solved = &receipt["sketch"];
+    let source_graph = &source["sketch"];
+    for key in ["constraints", "loops"] {
+        if solved[key] != source_graph[key] {
+            return Err("Sketch solver changed authored relationships".into());
+        }
+    }
+    for key in ["points", "entities"] {
+        let before = source_graph[key]
+            .as_array()
+            .ok_or("Missing authored sketch graph")?;
+        let after = solved[key]
+            .as_array()
+            .ok_or("Missing solved sketch graph")?;
+        if before.len() != after.len() {
+            return Err("Sketch solver changed graph identity".into());
+        }
+        for (original, candidate) in before.iter().zip(after) {
+            let mut permitted = original.clone();
+            if key == "points" {
+                permitted["position"] = candidate["position"].clone();
+            } else if original["kind"] == "circle" {
+                permitted["radius"] = candidate["radius"].clone();
+            }
+            if permitted != *candidate {
+                return Err("Sketch solver changed graph topology".into());
+            }
+        }
+    }
+    let mut candidate = project.clone();
+    let feature = candidate["geometry"]["features"]
+        .as_array_mut()
+        .ok_or("Missing CAD graph")?
+        .iter_mut()
+        .find(|feature| feature["id"] == feature_id)
+        .ok_or("Missing sketch input")?;
+    feature["sketch"] = solved.clone();
+    crate::project::validation::validate_project(&candidate)?;
+    let report = &receipt["report"];
+    let status = report["status"]
+        .as_str()
+        .ok_or("Missing sketch solver status")?;
+    if !matches!(
+        status,
+        "solved" | "redundant" | "conflicting" | "nonConverged" | "tooManyUnknowns"
+    ) {
+        return Err("Unknown sketch solver status".into());
+    }
+    if matches!(status, "solved" | "redundant") == report["degreesOfFreedom"].is_null() {
+        return Err("Sketch status and degrees of freedom disagree".into());
+    }
+    let dof_limit = source_graph["points"]
+        .as_array()
+        .map_or(0, |points| points.len() * 2)
+        + source_graph["entities"]
+            .as_array()
+            .map_or(0, |entities| entities.len());
+    if !report["degreesOfFreedom"].is_null()
+        && report["degreesOfFreedom"]
+            .as_u64()
+            .is_none_or(|dof| dof > dof_limit as u64)
+    {
+        return Err("Invalid sketch degrees of freedom".into());
+    }
+    let constraint_ids: std::collections::HashSet<_> = source_graph["constraints"]
+        .as_array()
+        .ok_or("Missing sketch constraints")?
+        .iter()
+        .filter_map(|constraint| constraint["id"].as_str())
+        .collect();
+    let failed = report["failedConstraintIds"]
+        .as_array()
+        .ok_or("Missing sketch conflict identities")?;
+    let mut unique = std::collections::HashSet::new();
+    if failed.iter().any(|id| {
+        id.as_str()
+            .is_none_or(|id| !constraint_ids.contains(id) || !unique.insert(id))
+    }) {
+        return Err("Unknown or repeated sketch conflict identity".into());
+    }
+    if !matches!(status, "solved" | "redundant") && solved != source_graph {
+        return Err("Failed sketch solve changed authored geometry".into());
+    }
+    if report["kernel"]
+        .as_str()
+        .is_none_or(|name| name.is_empty() || name.len() > 100)
+        || report["sourceCommit"].as_str().is_none_or(|commit| {
+            commit.len() != 40 || !commit.bytes().all(|c| c.is_ascii_hexdigit())
+        })
+    {
+        return Err("Invalid sketch solver provenance".into());
+    }
+    Ok(())
 }
 
 fn drain_diagnostics(mut input: impl Read, mut log: impl Write) -> Result<(), String> {
@@ -392,6 +571,60 @@ mod tests {
             }}),
             bytes,
         )
+    }
+    #[test]
+    fn sketch_solutions_preserve_graph_identity_and_validate_actual_diagnostics() {
+        let mut project: Value =
+            serde_json::from_str(include_str!("../../../examples/cantilever.json")).unwrap();
+        project["study"] = Value::Null;
+        project["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"sketch","features":[{"id":"sketch","name":"Open sketch","kind":"sketch","plane":"xy","sketch":{"points":[{"id":"a","position":[0,0]},{"id":"b","position":[0.1,0.02]}],"entities":[{"id":"line","name":"Line","kind":"line","startId":"a","endId":"b"}],"constraints":[{"id":"h","kind":"horizontal","lineId":"line"}],"loops":[]}}]});
+        project["namedSelections"] = json!([]);
+        let mut receipt = json!({"featureId":"sketch","geometryFingerprint":"a".repeat(64),"sketch":project["geometry"]["features"][0]["sketch"],"report":{"status":"solved","degreesOfFreedom":3,"failedConstraintIds":[],"kernel":"SolveSpace 3.2","sourceCommit":"b".repeat(40)}});
+        receipt["sketch"]["points"][1]["position"] = json!([0.1, 0]);
+        validate_sketch_solution(&project, "sketch", &receipt).unwrap();
+        for defect in [
+            "target",
+            "point",
+            "reference",
+            "constraint",
+            "bound",
+            "dof",
+            "failed",
+            "status",
+            "provenance",
+            "failed-edit",
+            "solved-null",
+            "conflict-dof",
+        ] {
+            let mut bad = receipt.clone();
+            match defect {
+                "target" => bad["featureId"] = json!("another"),
+                "point" => bad["sketch"]["points"][0]["id"] = json!("changed"),
+                "reference" => bad["sketch"]["entities"][0]["endId"] = json!("a"),
+                "constraint" => bad["sketch"]["constraints"] = json!([]),
+                "bound" => bad["sketch"]["points"][0]["position"][0] = json!(1001),
+                "dof" => bad["report"]["degreesOfFreedom"] = json!(100),
+                "failed" => bad["report"]["failedConstraintIds"] = json!(["unknown"]),
+                "status" => bad["report"]["status"] = json!("fake"),
+                "provenance" => bad["report"]["sourceCommit"] = json!("invented"),
+                "solved-null" => bad["report"]["degreesOfFreedom"] = Value::Null,
+                "conflict-dof" => {
+                    bad["report"]["status"] = json!("conflicting");
+                    bad["sketch"] = project["geometry"]["features"][0]["sketch"].clone();
+                }
+                "failed-edit" => bad["report"]["status"] = json!("conflicting"),
+                _ => unreachable!(),
+            }
+            assert!(
+                validate_sketch_solution(&project, "sketch", &bad).is_err(),
+                "{defect}"
+            );
+        }
+        receipt["report"]["status"] = json!("conflicting");
+        receipt["report"]["degreesOfFreedom"] = Value::Null;
+        receipt["report"]["failedConstraintIds"] = json!(["h"]);
+        receipt["sketch"] = project["geometry"]["features"][0]["sketch"].clone();
+        validate_sketch_solution(&project, "sketch", &receipt).unwrap();
     }
     #[test]
     fn display_integrity_layout_finite_values_and_topology_are_independently_checked() {

@@ -153,8 +153,8 @@ def decode_sketch(value: Any) -> SketchDefinition:
         if kind != "circle" and len(set(references)) != len(references):
             raise _error("Line and arc defining points must have distinct identifiers.")
         name = item["name"]
-        if not isinstance(name, str) or not 1 <= len(name) <= 100:
-            raise _error("Sketch entity names must contain 1–100 characters.")
+        if not isinstance(name, str) or not 1 <= len(name) <= 200:
+            raise _error("Sketch entity names must contain 1–200 characters.")
         if kind == "arc" and type(item["clockwise"]) is not bool:
             raise _error("Arc direction must be a Boolean.")
         entities.append(

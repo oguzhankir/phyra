@@ -34,6 +34,12 @@ def lower_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
     features = {feature["id"]: feature for feature in output_features(geometry)}
     output = features[geometry["outputFeatureId"]]
     kind, dimension = output["kind"], geometry["dimension"]
+    if kind == "transform":
+        raise EngineError(
+            "unsupported-cad-study",
+            "Moved or rotated geometry remains exact editable CAD. Current analyses do not "
+            "yet support rigidly placed domains; return to an eligible output to create a study.",
+        )
     if dimension == "3d" and kind == "box":
         length, width, height = (output[key] for key in ("length", "width", "height"))
         return _verified(geometry, _primitive("box", length, width, height, min(width, height) / 2))

@@ -47,6 +47,7 @@ export function featureDependencies(feature: CadFeature): string[] {
       return [feature.leftId, feature.rightId];
     case 'fillet':
     case 'chamfer':
+    case 'transform':
       return [feature.inputId];
     default:
       return [];
@@ -90,13 +91,20 @@ export function cadDefinitionError(geometry: CadGeometry): string | null {
             ? [feature.distance]
             : feature.kind === 'revolve'
               ? [feature.angle, ...feature.axisOrigin, ...feature.axisDirection]
-              : feature.kind === 'fillet'
-                ? [feature.radius]
-                : feature.kind === 'chamfer'
-                  ? [feature.distance]
-                  : feature.kind === 'import-step'
-                    ? [feature.scaleFactor]
-                    : [];
+              : feature.kind === 'transform'
+                ? [
+                    feature.angle,
+                    ...feature.translation,
+                    ...feature.axisOrigin,
+                    ...feature.axisDirection,
+                  ]
+                : feature.kind === 'fillet'
+                  ? [feature.radius]
+                  : feature.kind === 'chamfer'
+                    ? [feature.distance]
+                    : feature.kind === 'import-step'
+                      ? [feature.scaleFactor]
+                      : [];
     if (numbers.some((value) => !Number.isFinite(value)))
       return `${feature.name} needs finite parameters.`;
     if (
@@ -110,6 +118,12 @@ export function cadDefinitionError(geometry: CadGeometry): string | null {
         (feature.angle <= 0 ||
           feature.angle > 2 * Math.PI ||
           Math.hypot(...feature.axisDirection) === 0)) ||
+      (feature.kind === 'transform' &&
+        (Math.abs(feature.angle) > 2 * Math.PI ||
+          Math.hypot(...feature.axisDirection) === 0 ||
+          [...feature.translation, ...feature.axisOrigin, ...feature.axisDirection].some(
+            (n) => Math.abs(n) > 1000,
+          ))) ||
       (feature.kind === 'fillet' && (feature.radius <= 0 || feature.radius > 1000)) ||
       (feature.kind === 'chamfer' && (feature.distance <= 0 || feature.distance > 1000)) ||
       (feature.kind === 'import-step' && feature.scaleFactor <= 0)

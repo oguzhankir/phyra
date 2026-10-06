@@ -9,6 +9,7 @@ import {
   documentError,
   documentPreparation,
   documentSizeError,
+  featureDependencies,
   isNumericalProject,
 } from './document';
 import { createHistory, recordEdit, undo, redo } from './history';
@@ -17,6 +18,47 @@ import { makeProject } from '../../features/examples/projects';
 const validate = new Ajv({ strict: true }).compile(schema),
   validateOld = new Ajv({ strict: true }).compile(frozenV5);
 describe('independent geometry and lazy studies', () => {
+  it('validates rigid placement dependencies and finite SI parameters without assuming solver eligibility', () => {
+    const project = blankProject();
+    const placement = {
+      id: 'placed',
+      name: 'Placed box',
+      kind: 'transform' as const,
+      inputId: 'box',
+      translation: [0.02, -0.03, 0.04] as [number, number, number],
+      axisOrigin: [0.01, 0.02, 0] as [number, number, number],
+      axisDirection: [0, 0, 4] as [number, number, number],
+      angle: Math.PI / 2,
+    };
+    project.geometry = {
+      kind: 'cad',
+      dimension: '3d',
+      features: [
+        { id: 'box', name: 'Box', kind: 'box', length: 0.1, width: 0.05, height: 0.02 },
+        placement,
+      ],
+      outputFeatureId: 'placed',
+      assets: [],
+    };
+    expect(validate(project), JSON.stringify(validate.errors)).toBe(true);
+    expect(cadDefinitionError(project.geometry)).toBeNull();
+    expect(featureDependencies(placement)).toEqual(['box']);
+    expect(documentPreparation(project).canRun).toBe(false);
+    placement.axisDirection = [0, 0, 0];
+    expect(validate(project)).toBe(false);
+    expect(cadDefinitionError(project.geometry)).toContain('parameter range');
+    placement.axisDirection = [0, 0, 1];
+    placement.translation[0] = 1001;
+    expect(validate(project)).toBe(false);
+    expect(cadDefinitionError(project.geometry)).toContain('parameter range');
+    placement.translation[0] = Number.NaN;
+    expect(cadDefinitionError(project.geometry)).toContain('finite');
+    placement.translation[0] = 0;
+    placement.angle = 0;
+    expect(validate(project), JSON.stringify(validate.errors)).toBe(true);
+    placement.inputId = 'future';
+    expect(cadDefinitionError(project.geometry)).toContain('later feature');
+  });
   it('rejects a structurally bounded CAD definition that exceeds the shared UTF-8 document budget', () => {
     const project = blankProject();
     const points = Array.from({ length: 128 }, (_, index) => ({

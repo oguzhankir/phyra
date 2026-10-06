@@ -14,6 +14,7 @@ export type CadFeature =
   | CadExtrudeFeature
   | CadRevolveFeature
   | CadBooleanFeature
+  | CadTransformFeature
   | CadFilletFeature
   | CadChamferFeature;
 export type CadSketchEntity = CadSketchLine | CadSketchCircle | CadSketchArc;
@@ -277,6 +278,28 @@ export interface CadBooleanFeature {
   operation: "union" | "cut" | "intersect";
   leftId: string;
   rightId: string;
+}
+export interface CadTransformFeature {
+  id: string;
+  name: string;
+  kind: "transform";
+  inputId: string;
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  translation: [number, number, number];
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  axisOrigin: [number, number, number];
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  axisDirection: [number, number, number];
+  angle: number;
 }
 export interface CadFilletFeature {
   id: string;
