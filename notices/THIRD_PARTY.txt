@@ -12,8 +12,19 @@ Packaging copies licenses and copyright notices from the exact installed
 Python distributions and frontend packages into resources/licenses. It also
 records the resolved versions. The application includes these legal resources.
 
+The CAD worker adds cadquery-ocp-novtk 8.0.1.1.0 (OpenCASCADE bindings)
+and a headless SolveSpace 3.2 C ABI. Their original notices, pinned build
+recipes and source manifests are retained in this repository and generated
+legal inventory; setup retains source archives under artifacts/. The macOS
+native CAD audit identifies the wheel's native dependencies. Exact upstream
+pybind11/RapidJSON header revisions remain unverified because its recipe
+resolved wildcard versions. Windows CAD dependencies are not yet audited.
+Public installer staging requires both the target audit and verified exact
+source provenance; these development packages do not satisfy that gate.
+
 Before redistributing any installer, provide its complete Corresponding Source,
 including Phyra, the exact Gmsh native source and embedded copyleft components,
+the bundled CAD kernels and their dependencies,
 and the scripts/toolchain information needed to rebuild it. Hosting the same
 source alongside a binary is one route under GPLv3 section 6(d); a generic
 upstream link alone is not a source offer. No source-offer service or public

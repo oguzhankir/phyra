@@ -48,3 +48,5 @@ await run(python, [
   '-r',
   'engine/requirements-dev.txt',
 ]);
+await run(process.execPath, ['scripts/build-sketch-solver.mjs']);
+await run(python, ['scripts/prepare-cad-sources.py']);

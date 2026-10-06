@@ -33,28 +33,27 @@ describe('independent mounted project documents', () => {
     const first = newProjectDocument('First', '2d');
     const second = newProjectDocument(undefined, '3d', 'cantilever');
     const third = newProjectDocument(undefined, '3d', 'cantilever');
-    expect(first.project.study.dimension).toBe('2d');
-    expect(first.project.study.constraints).toEqual([]);
-    expect(first.project.study.loads).toEqual([]);
+    expect(first.project.geometry).toEqual({ kind: 'empty', dimension: '2d' });
+    expect(first.project.study).toBeNull();
     expect(first.project.name).toBe('First');
     for (const key of ['id'] as const)
       expect(new Set([first[key], second[key], third[key]]).size).toBe(3);
     expect(new Set([first.project.id, second.project.id, third.project.id]).size).toBe(3);
-    expect(
-      new Set([first.project.study.id, second.project.study.id, third.project.study.id]).size,
-    ).toBe(3);
-    expect(second.project.study.constraints[0].id).not.toBe(third.project.study.constraints[0].id);
-    second.project.study.material.young = 10;
-    expect(third.project.study.material.young).not.toBe(10);
+    expect(new Set([second.project.study!.id, third.project.study!.id]).size).toBe(2);
+    expect(second.project.study!.constraints[0].id).not.toBe(
+      third.project.study!.constraints[0].id,
+    );
+    second.project.study!.material.young = 10;
+    expect(third.project.study!.material.young).not.toBe(10);
   });
 
   it('focusing Home and other tabs retains each controller, view, archive and edit history', () => {
     const documents = new ProjectDocuments();
-    const a = newProjectDocument('A');
+    const a = newProjectDocument('A', '3d', 'cantilever');
     const b = newProjectDocument('B');
     const historyA = createHistory(a.project);
     const nextA = structuredClone(a.project);
-    nextA.geometry.length *= 2;
+    if (nextA.geometry.kind === 'box') nextA.geometry.length *= 2;
     const edited = recordEdit(historyA, a.project, nextA, true);
     const aController = controller();
     const bController = controller();
@@ -77,7 +76,7 @@ describe('independent mounted project documents', () => {
     expect(retained[1].snapshot?.section).toBe('material');
     expect(retained.map((item) => item.snapshot?.path)).toEqual(['/a.phyra', '/b.phyra']);
     const undone = undo(edited.history, edited.project);
-    expect(undone.project.geometry.length).toBe(a.project.geometry.length);
+    expect(undone.project.geometry).toEqual(a.project.geometry);
     expect(undone.project.id).toBe(a.project.id);
     expect(retained[1].snapshot?.project).toBe(b.project);
   });

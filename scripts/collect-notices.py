@@ -2,6 +2,7 @@
 
 import ast
 import decimal
+import hashlib
 import importlib.metadata
 import json
 import platform
@@ -13,6 +14,7 @@ import sysconfig
 from pathlib import Path
 
 import tomllib
+from cad_dependency_audit import collect_cad_audit
 
 ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / "src-tauri" / "resources" / "licenses"
@@ -38,6 +40,45 @@ inventory: dict[str, list[dict[str, str]]] = {
     "rust": [],
     "native": [],
 }
+inventory["native"].append(collect_cad_audit(ROOT))
+sketch_pin = json.loads((ROOT / "scripts" / "sketch-solver.lock.json").read_text())
+architecture = {"aarch64": "arm64", "AMD64": "x64", "x86_64": "x64"}.get(
+    platform.machine(), platform.machine()
+)
+sketch_target = f"{sys.platform}-{architecture}"
+sketch_root = ROOT / "artifacts" / "sketch-solver" / sketch_target
+sketch_manifest = json.loads((sketch_root / "manifest.json").read_text())
+if any(sketch_manifest.get(key) != value for key, value in sketch_pin.items()):
+    raise RuntimeError("The packaged sketch solver does not match its pinned source")
+if (
+    hashlib.sha256((sketch_root / sketch_manifest["filename"]).read_bytes()).hexdigest()
+    != sketch_manifest["sha256"]
+):
+    raise RuntimeError("The packaged sketch solver failed its provenance check")
+sketch_source = (
+    ROOT
+    / "artifacts"
+    / "sketch-solver"
+    / f"solvespace-{sketch_pin['version']}-{sketch_target}-corresponding-source.tar.gz"
+)
+if not sketch_source.is_file():
+    raise RuntimeError("The sketch solver Corresponding Source artifact is missing")
+for source in (sketch_root / "notices").iterdir():
+    if source.is_file():
+        copy_file(source, Path("native") / "sketch-solver" / source.name)
+inventory["native"].append(
+    {
+        "name": "SolveSpace libslvs with pinned Eigen/mimalloc",
+        "version": sketch_pin["version"],
+        "revision": sketch_pin["revision"],
+        "target": sketch_target,
+        "sha256": sketch_manifest["sha256"],
+        "correspondingSource": sketch_source.name,
+        "correspondingSourceSha256": hashlib.sha256(
+            sketch_source.read_bytes()
+        ).hexdigest(),
+    }
+)
 inventory["python"].append(
     {
         "name": "Python",
@@ -61,6 +102,8 @@ inventory["frontend"].append(
     }
 )
 names = [
+    "cadquery-ocp-novtk",
+    "cadquery-ocp-proxy",
     "gmsh",
     "numpy",
     "scipy",

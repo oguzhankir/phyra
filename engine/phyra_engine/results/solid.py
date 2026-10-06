@@ -27,7 +27,12 @@ from phyra_engine.meshing.types import Mesh
 from phyra_engine.physics.elasticity.solid import integrate_surface_loads
 from phyra_engine.results import validate_cached
 from phyra_engine.results.fields import STRESS_COMPONENTS
-from phyra_engine.studies.project import _finite_tree, fingerprint, validate_project
+from phyra_engine.studies.project import (
+    _finite_tree,
+    fingerprint,
+    numerical_view,
+    validate_numerical_project,
+)
 
 LAYOUT: dict[str, tuple[str, str, str, int | None]] = {
     "positions": ("float64", "node", "m", 3),
@@ -177,7 +182,9 @@ def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dic
     No pickle or executable serialization is used. Hashes detect accidental
     corruption; they are integrity checks, not a scientific authenticity claim.
     """
-    validate_project(project)
+    validate_numerical_project(project)
+    source_project = project
+    project = numerical_view(project)
     _finite_tree(manifest)
     if not isinstance(manifest, dict):
         raise EngineError("invalid-cache", "Result manifest must be an object.")
@@ -225,7 +232,7 @@ def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dic
         "protocolVersion": 1,
         "projectId": project["id"],
         "studyId": project["study"]["id"],
-        "fingerprint": fingerprint(project),
+        "fingerprint": fingerprint(source_project),
         "status": "succeeded",
         "coordinateFrame": "cartesian-global-SI",
         "stressComponents": STRESS_COMPONENTS,

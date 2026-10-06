@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     platform::files::{read_bounded, MAX_BLOB, MAX_JSON, MAX_LOG},
-    project::validation::validate_project,
+    project::validation::validate_numerical_project,
     verification::trace_verification,
 };
 use serde_json::{json, Value};
@@ -110,7 +110,7 @@ pub(crate) fn worker_with_publication(
         return Err("Analysis cancelled".into());
     }
     trace_verification(&format!("worker-request:{operation}"));
-    validate_project(project)?;
+    validate_numerical_project(project)?;
     if state.shutting_down.load(Ordering::SeqCst) {
         return Err("Application is closing".into());
     }

@@ -48,18 +48,29 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
               ...project.study.loads,
               ...project.namedSelections,
             ].flatMap((item) => item.regions)}
+            onDraftChange={(dirty) =>
+              workbench.reportDraftValidity?.(
+                'plane-profile-sketch',
+                dirty ? 'Unapplied plane sketch' : null,
+              )
+            }
             onSelectBoundary={(id) => {
               if ([...profile.outer, ...profile.holes].some((item) => item.id === id))
                 workbench.setSelected([id]);
             }}
             onApply={(draft) => {
               if (workbench.locked) return false;
-              if (workbench.invalidDraftsRef.current.size) {
+              if (
+                [...workbench.invalidDraftsRef.current.keys()].some(
+                  (id) => id !== 'plane-profile-sketch',
+                )
+              ) {
                 workbench.setError(
                   'Complete or revert the numeric input before applying the sketch.',
                 );
                 return false;
               }
+              workbench.reportDraftValidity?.('plane-profile-sketch', null);
               edit((next) => {
                 next.geometry.profile = structuredClone(draft);
               });

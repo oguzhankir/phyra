@@ -1,0 +1,286 @@
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import type { Project, ProjectDefinition } from '../domain/contracts/types';
+import type { ResultData } from '../domain/results/fields';
+import { invokeVerification } from '../platform/desktop/verification';
+import type { useCadSession } from './useCadSession';
+
+type Phase =
+  | 'start'
+  | 'base'
+  | 'base-evaluated'
+  | 'unsupported'
+  | 'unsupported-evaluated'
+  | 'restored'
+  | 'restored-evaluated'
+  | 'study'
+  | 'mesh'
+  | 'solve'
+  | 'complete'
+  | 'failed';
+interface Props {
+  enabled: boolean;
+  ready: boolean;
+  project: ProjectDefinition;
+  projectRef: RefObject<ProjectDefinition>;
+  analysisProject: Project | null;
+  currentData: ResultData | null;
+  cad: ReturnType<typeof useCadSession>;
+  report: RefObject<Record<string, unknown> | null>;
+  edit: (change: (project: ProjectDefinition) => void, physical?: boolean) => void;
+  numericalEdit: (change: (project: Project) => void, physical?: boolean) => void;
+  undo: () => void;
+  createStudy: (
+    material: { name: string; young: number; poisson: number },
+    thickness: number,
+    size: number,
+  ) => void;
+  execute: (operation: 'mesh' | 'solve') => Promise<void>;
+  error: string | null;
+}
+
+/** A packaged desktop test drives the same canonical edit and native worker owners as the UI. */
+export function useCadVerificationWorkflow(props: Props) {
+  const current = useRef(props);
+  current.current = props;
+  const [phase, setPhase] = useState<Phase>('start');
+  const [renderedTick, setRenderedTick] = useState(0);
+  const pending = useRef(false),
+    base = useRef<string | null>(null),
+    previewRendered = useRef(false);
+  const evidence = useRef({
+    emptyStart: false,
+    evaluated: false,
+    sourcePreserved: false,
+    unsupportedBlocked: false,
+    undoPreserved: false,
+    previewRendered: false,
+    meshGenerated: false,
+  });
+  const failed = async (message: string) => {
+    setPhase('failed');
+    await invokeVerification('verification_complete', {
+      report: {
+        error: `CAD verification: ${message}`,
+        project: current.current.projectRef.current,
+      },
+    });
+  };
+  useEffect(() => {
+    if (
+      !props.enabled ||
+      !props.ready ||
+      pending.current ||
+      phase === 'complete' ||
+      phase === 'failed'
+    )
+      return;
+    const p = current.current;
+    pending.current = true;
+    const trace = (message: string) =>
+      void invokeVerification('verification_trace', { message: `CAD workflow: ${message}` });
+    let nextPhase: Phase | null = null;
+    trace(`phase ${phase}`);
+    void (async () => {
+      switch (phase) {
+        case 'start': {
+          const definition = p.projectRef.current;
+          evidence.current.emptyStart =
+            definition.geometry.kind === 'empty' && definition.study === null;
+          if (!evidence.current.emptyStart) throw new Error('New document was not empty.');
+          p.edit((next) => {
+            next.geometry = {
+              kind: 'cad',
+              dimension: '3d',
+              features: [
+                {
+                  id: 'verification-box',
+                  name: 'Verification box',
+                  kind: 'box',
+                  length: 0.1,
+                  width: 0.05,
+                  height: 0.025,
+                },
+              ],
+              outputFeatureId: 'verification-box',
+              assets: [],
+            };
+          });
+          base.current = JSON.stringify(p.projectRef.current.geometry);
+          trace('empty document -> authored box');
+          nextPhase = 'base';
+          break;
+        }
+        case 'base':
+          if (!(await p.cad.evaluate()))
+            throw new Error('CAD evaluation did not publish an owned geometry receipt.');
+          nextPhase = 'base-evaluated';
+          break;
+        case 'base-evaluated': {
+          if (!p.cad.current) {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          const receipt = p.cad.current.receipt;
+          evidence.current.evaluated =
+            receipt.analysisCompatibility.state === 'supported' && receipt.statistics.volume > 0;
+          if (!evidence.current.evaluated) throw new Error('Exact box adapter was not supported.');
+          if (!previewRendered.current) return;
+          evidence.current.previewRendered = true;
+          p.edit((next) => {
+            if (next.geometry.kind !== 'cad') throw new Error('CAD source lost.');
+            next.geometry.features.push(
+              {
+                id: 'verification-tool',
+                name: 'Overlapping box',
+                kind: 'box',
+                length: 0.05,
+                width: 0.04,
+                height: 0.02,
+              },
+              {
+                id: 'verification-union',
+                name: 'Union',
+                kind: 'boolean',
+                operation: 'union',
+                leftId: 'verification-box',
+                rightId: 'verification-tool',
+              },
+            );
+            next.geometry.outputFeatureId = 'verification-union';
+          });
+          trace('exact preview rendered -> unsupported Boolean');
+          nextPhase = 'unsupported';
+          break;
+        }
+        case 'unsupported':
+          if (!(await p.cad.evaluate()))
+            throw new Error('CAD evaluation did not publish an owned geometry receipt.');
+          nextPhase = 'unsupported-evaluated';
+          break;
+        case 'unsupported-evaluated': {
+          if (!p.cad.current) {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          evidence.current.unsupportedBlocked =
+            p.cad.current.receipt.analysisCompatibility.state === 'unsupported' &&
+            p.project.study === null &&
+            p.analysisProject === null;
+          if (!evidence.current.unsupportedBlocked)
+            throw new Error('Unsupported exact Boolean was allowed into a study.');
+          const revision = p.projectRef.current.revision;
+          p.undo();
+          evidence.current.undoPreserved =
+            JSON.stringify(p.projectRef.current.geometry) === base.current &&
+            p.projectRef.current.revision > revision;
+          if (!evidence.current.undoPreserved)
+            throw new Error('Undo did not restore the authored source.');
+          trace('unsupported analysis gate verified -> undo restores source');
+          nextPhase = 'restored';
+          break;
+        }
+        case 'restored':
+          if (!(await p.cad.evaluate()))
+            throw new Error('CAD evaluation did not publish an owned geometry receipt.');
+          nextPhase = 'restored-evaluated';
+          break;
+        case 'restored-evaluated': {
+          if (!p.cad.current) {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          if (p.cad.current.receipt.analysisCompatibility.state !== 'supported')
+            throw new Error('Restored source is not supported.');
+          p.createStudy(
+            { name: 'Verification elastic material', young: 210e9, poisson: 0.3 },
+            1,
+            0.01,
+          );
+          trace('explicit material + mesh -> create study');
+          nextPhase = 'study';
+          break;
+        }
+        case 'study': {
+          if (!p.analysisProject) return;
+          p.numericalEdit((next) => {
+            next.study.constraints.push({
+              id: 'verification-support',
+              name: 'Fixed end',
+              regions: ['x0'],
+              components: [0, 0, 0],
+            });
+            next.study.loads.push({
+              id: 'verification-load',
+              name: 'Axial force',
+              regions: ['x1'],
+              kind: 'force',
+              vector: [1000, 0, 0],
+              pressure: 0,
+            });
+          });
+          evidence.current.sourcePreserved =
+            JSON.stringify(p.projectRef.current.geometry) === base.current;
+          if (!evidence.current.sourcePreserved)
+            throw new Error('Study preparation replaced the CAD source.');
+          nextPhase = 'mesh';
+          break;
+        }
+        case 'mesh':
+          await p.execute('mesh');
+          nextPhase = 'solve';
+          break;
+        case 'solve': {
+          if (!p.currentData || p.currentData.manifest.operation !== 'mesh') {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          evidence.current.meshGenerated = true;
+          p.report.current = {
+            ...evidence.current,
+            jobId: p.cad.current?.receipt.jobId,
+            exportIntegrity: false,
+          };
+          trace('CAD source -> mesh -> solve');
+          await p.execute('solve');
+          nextPhase = 'complete';
+          break;
+        }
+      }
+    })()
+      .catch((error) => {
+        nextPhase = null;
+        return failed(String(error));
+      })
+      .finally(() => {
+        // The next phase must observe an unlocked transaction even if React flushed its edits early.
+        pending.current = false;
+        if (nextPhase) setPhase(nextPhase);
+      });
+  }, [
+    props.enabled,
+    props.ready,
+    phase,
+    props.project,
+    props.cad.current,
+    props.currentData,
+    props.error,
+    renderedTick,
+  ]);
+  const rendered = (report: { nodes: number; triangles: number; drawCalls: number }) => {
+    if (props.enabled && report.nodes > 0 && report.triangles > 0 && report.drawCalls > 0) {
+      if (!previewRendered.current) {
+        previewRendered.current = true;
+        setRenderedTick(1);
+      }
+    }
+  };
+  return {
+    phase,
+    rendered,
+    workspace: props.enabled
+      ? phase === 'study' || phase === 'mesh' || phase === 'solve' || phase === 'complete'
+        ? 'analysis'
+        : 'cad'
+      : null,
+  } as const;
+}

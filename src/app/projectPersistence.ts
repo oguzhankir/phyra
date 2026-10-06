@@ -1,5 +1,5 @@
-import type { Project } from '../domain/contracts/types';
-import { inputError } from '../domain/project/validation';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
+import { documentError } from '../domain/project/document';
 
 export interface SaveSnapshot {
   project: Project;
@@ -31,7 +31,7 @@ export async function persistProjectSnapshot(
   ports: SavePorts,
 ): Promise<boolean> {
   const project = structuredClone(snapshot.project);
-  const invalid = inputError(project);
+  const invalid = documentError(project);
   if (invalid) throw new Error(invalid);
   if (snapshot.automatic && !snapshot.path)
     throw new Error('Save this project once before enabling archive autosave.');

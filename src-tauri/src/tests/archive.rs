@@ -1,6 +1,6 @@
 use super::*;
 fn project() -> Value {
-    json!({"schemaVersion":5,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"formulation":"strong-form","layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
+    json!({"schemaVersion":6,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"formulation":"strong-form","layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
 }
 fn legacy_project() -> Value {
     let mut project = project();
@@ -21,8 +21,43 @@ fn unmeshed_project_round_trip() {
 #[test]
 fn malformed_version_rejected() {
     let mut value = project();
-    value["schemaVersion"] = json!(6);
+    value["schemaVersion"] = json!(7);
     assert!(validate_project(&value).is_err());
+}
+#[test]
+fn individually_bounded_cad_features_cannot_overwrite_with_an_unreadable_definition() {
+    let mut oversized = project();
+    oversized["study"] = Value::Null;
+    let points = (0..256)
+        .map(|index| {
+            json!({"id":format!("p{index:03}_{}", "x".repeat(59)), "position":[index as f64 / 100., 0.]})
+        })
+        .collect::<Vec<_>>();
+    let features = (0..80)
+        .map(|index| {
+            json!({"id":format!("feature-{index}"), "name":format!("Sketch {index}"),
+                "kind":"sketch", "plane":"xy", "sketch":{"points":points,
+                "entities":[], "constraints":[], "loops":[]}})
+        })
+        .collect::<Vec<_>>();
+    oversized["geometry"] = json!({"kind":"cad", "dimension":"3d", "features":features,
+        "outputFeatureId":"feature-79", "assets":[]});
+    let schema: Value =
+        serde_json::from_str(include_str!("../../../contracts/project.schema.json")).unwrap();
+    jsonschema::validator_for(&schema)
+        .unwrap()
+        .validate(&oversized)
+        .unwrap();
+    assert!(validate_project(&oversized).unwrap_err().contains("1 MiB"));
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("preserved.phyra");
+    write_archive(&path, &project(), None).unwrap();
+    let original = fs::read(&path).unwrap();
+    assert!(write_archive(&path, &oversized, None)
+        .unwrap_err()
+        .contains("1 MiB"));
+    assert_eq!(fs::read(&path).unwrap(), original);
+    assert_eq!(read_archive(&path, temporary.path()).unwrap(), project());
 }
 #[test]
 fn archive_traversal_rejected() {
@@ -65,7 +100,7 @@ fn legacy_schema_is_validated_before_defaults_are_added() {
     legacy["study"]["solver"] = json!({"kind":"pinn"});
     assert!(migrate_project(legacy).is_err());
     let mut unknown = legacy_project();
-    unknown["schemaVersion"] = json!(6);
+    unknown["schemaVersion"] = json!(7);
     assert!(migrate_project(unknown).is_err());
     let (unchanged, migrated) = migrate_project(project()).unwrap();
     assert_eq!(unchanged, project());
@@ -115,7 +150,7 @@ fn version_two_migration_keeps_cache_for_normal_worker_validation() {
     let opened = read_archive_details(&path, &restored).unwrap();
     assert_eq!(opened.project, project());
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 5);
+    assert_eq!(opened.project["schemaVersion"], 6);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -156,11 +191,11 @@ fn version_three_migration_preserves_named_selections_and_cache() {
     let restored = temporary.path().join("new cache");
     let opened = read_archive_details(&path, &restored).unwrap();
     let mut expected = previous;
-    expected["schemaVersion"] = json!(5);
+    expected["schemaVersion"] = json!(6);
     expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     assert_eq!(opened.project, expected);
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 5);
+    assert_eq!(opened.project["schemaVersion"], 6);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -196,7 +231,7 @@ fn version_four_archive_preserves_definition_source_and_staged_cache_bytes() {
     let restored = temporary.path().join("restored cache");
     let opened = read_archive_details(&path, &restored).unwrap();
     let mut expected = previous;
-    expected["schemaVersion"] = json!(5);
+    expected["schemaVersion"] = json!(6);
     expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     assert_eq!(opened.project, expected);
     assert!(opened.migrated);
@@ -221,9 +256,9 @@ fn unknown_version_archive_is_preserved_and_never_stages_cache() {
     fs::create_dir(&source).unwrap();
     fs::write(source.join("manifest.json"), b"{}").unwrap();
     fs::write(source.join("buffer.bin"), b"unknown fields").unwrap();
-    let path = temporary.path().join("version 6.phyra");
+    let path = temporary.path().join("version 7.phyra");
     let mut previous = version_four_project();
-    previous["schemaVersion"] = json!(6);
+    previous["schemaVersion"] = json!(7);
     write_archive(&path, &previous, Some(&source)).unwrap();
     let original_archive = fs::read(&path).unwrap();
     let restored = temporary.path().join("restored cache");
@@ -324,4 +359,69 @@ fn boundary_set_name_folding_preserves_non_ascii_identity() {
         })
         .collect::<Vec<_>>());
     validate_project(&value).unwrap();
+}
+
+#[test]
+fn frozen_version_five_energy_configuration_migrates_without_loss() {
+    let mut previous = project();
+    previous["schemaVersion"] = json!(5);
+    previous["study"]["solver"]["pinn"]["formulation"] = json!("potential-energy");
+    let (migrated, changed) = migrate_project(previous.clone()).unwrap();
+    previous["schemaVersion"] = json!(6);
+    assert!(changed);
+    assert_eq!(migrated, previous);
+}
+
+#[test]
+fn empty_cad_document_is_valid_and_round_trips_without_a_dummy_study() {
+    let temporary = tempfile::tempdir().unwrap();
+    let mut document = project();
+    document["geometry"] = json!({"kind":"empty","dimension":"3d"});
+    document["study"] = Value::Null;
+    validate_project(&document).unwrap();
+    assert!(crate::project::validation::validate_numerical_project(&document).is_err());
+    let path = temporary.path().join("empty.phyra");
+    write_archive(&path, &document, None).unwrap();
+    assert_eq!(read_archive(&path, temporary.path()).unwrap(), document);
+}
+
+#[test]
+fn cad_archive_transports_only_verified_immutable_definition_sources() {
+    use crate::project::{
+        archive::{read_archive_details_with_assets, write_archive_with_assets},
+        assets::{import_source, source_name},
+    };
+    let temporary = tempfile::tempdir().unwrap();
+    let native = temporary.path().join("native");
+    let selected = temporary.path().join("model.step");
+    let bytes = b"ISO-10303-21;\nEND-ISO-10303-21;";
+    fs::write(&selected, bytes).unwrap();
+    let source = import_source(&native, &selected).unwrap();
+    let mut document = project();
+    document["study"] = Value::Null;
+    document["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[source],
+        "features":[{"id":"import","name":"Imported model","kind":"import-step","assetId":source["id"],"scaleFactor":1.}],"outputFeatureId":"import"});
+    validate_project(&document).unwrap();
+    let archive = temporary.path().join("cad.phyra");
+    write_archive_with_assets(&archive, &document, None, Some(&native)).unwrap();
+    let restored_sources = temporary.path().join("restored-sources");
+    let opened = read_archive_details_with_assets(
+        &archive,
+        &temporary.path().join("results"),
+        Some(&restored_sources),
+    )
+    .unwrap();
+    assert_eq!(opened.project, document);
+    let name = source_name(source["sha256"].as_str().unwrap()).unwrap();
+    assert_eq!(fs::read(restored_sources.join(name)).unwrap(), bytes);
+    assert!(!temporary.path().join("results").exists());
+    // Corruption fails before an archive replaces the last good saved model.
+    let original = fs::read(&archive).unwrap();
+    fs::write(
+        native.join(source_name(source["sha256"].as_str().unwrap()).unwrap()),
+        b"damaged",
+    )
+    .unwrap();
+    assert!(write_archive_with_assets(&archive, &document, None, Some(&native)).is_err());
+    assert_eq!(fs::read(&archive).unwrap(), original);
 }

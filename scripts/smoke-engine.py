@@ -97,6 +97,283 @@ def relative_l2(prediction: list[list], reference: list[list]) -> float:
     return math.sqrt(difference / denominator)
 
 
+def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
+    """Exercise packaged exact CAD, native sketches, units and source-owned fields."""
+    root = Path(directory)
+    sketch = {
+        "id": "sketch",
+        "name": "Constrained rectangle",
+        "kind": "sketch",
+        "plane": "xy",
+        "sketch": {
+            "points": [
+                {"id": f"p{i}", "position": position}
+                for i, position in enumerate([[0, 0], [0.1, 0], [0.1, 0.02], [0, 0.02]])
+            ],
+            "entities": [
+                {
+                    "id": name,
+                    "name": name,
+                    "kind": "line",
+                    "startId": f"p{i}",
+                    "endId": f"p{(i + 1) % 4}",
+                }
+                for i, name in enumerate(["bottom", "right", "top", "left"])
+            ],
+            "constraints": [
+                {"id": f"fixed-{i}", "kind": "fixedPoint", "pointId": f"p{i}"}
+                for i in range(4)
+            ],
+            "loops": [
+                {
+                    "id": "outer",
+                    "role": "outer",
+                    "entityIds": ["bottom", "right", "top", "left"],
+                }
+            ],
+        },
+    }
+    extrusion = {
+        "id": "extrude",
+        "name": "Extrusion",
+        "kind": "extrude",
+        "sketchId": "sketch",
+        "distance": 0.02,
+    }
+    definition = {
+        "kind": "cad",
+        "dimension": "3d",
+        "features": [sketch, extrusion],
+        "outputFeatureId": "extrude",
+        "assets": [],
+    }
+
+    def preview(geometry: dict, output: Path, job_id: str) -> dict:
+        payload = {
+            "protocolVersion": 1,
+            "projectId": "bundle-cad",
+            "revision": 0,
+            "jobId": job_id,
+            "geometry": geometry,
+            "assetRoot": directory,
+        }
+        process = subprocess.run(
+            [str(EXECUTABLE), "--cad", "--output", str(output)],
+            input=json.dumps(payload, allow_nan=False).encode(),
+            capture_output=True,
+            env=env,
+            cwd=directory,
+            timeout=120,
+            check=False,
+        )
+        require(
+            len(process.stdout) <= 1024 * 1024,
+            "Bundled CAD stdout exceeds its framing limit.",
+        )
+        frames = [
+            json.loads(line, parse_constant=reject_constant)
+            for line in process.stdout.splitlines()
+        ]
+        require(
+            process.returncode == 0
+            and len(frames) == 1
+            and frames[0].get("type") == "complete",
+            f"Bundled CAD failed: {frames}",
+        )
+        receipt = frames[0]["manifest"]
+        require(
+            receipt == json.loads((output / "receipt.json").read_bytes()),
+            "CAD completion differs from published receipt.",
+        )
+        require(
+            receipt["projectId"] == "bundle-cad"
+            and receipt["jobId"] == job_id
+            and receipt["revision"] == 0,
+            "CAD worker lost snapshot identity.",
+        )
+        require(
+            receipt["kernel"]
+            == {
+                "name": "OpenCASCADE",
+                "version": "8.0.1",
+                "binding": "cadquery-ocp-novtk",
+                "bindingVersion": "8.0.1.1.0",
+            },
+            "Packaged CAD kernel provenance changed.",
+        )
+        for asset in receipt["assets"].values():
+            data = (output / asset["filename"]).read_bytes()
+            require(
+                0 < len(data) == asset["byteLength"] <= 64 * 1024 * 1024
+                and hashlib.sha256(data).hexdigest() == asset["sha256"],
+                "Bundled exact CAD artifact is corrupt or unbounded.",
+            )
+        arrays = read_arrays(receipt, output)
+        require(
+            all(len(point) == 3 for point in arrays["positions"])
+            and all(
+                0 <= vertex < len(arrays["positions"])
+                for triangle in arrays["triangles"]
+                for vertex in triangle
+            ),
+            "Invalid CAD display topology.",
+        )
+        return receipt
+
+    output = root / "cad-authored"
+    receipt = preview(definition, output, "bundle-cad-authored")
+    require(
+        receipt["assets"]["brep"]["units"] == "m",
+        "BRep export lost its metre-coordinate contract.",
+    )
+    measured = receipt["statistics"]["volume"]
+    require(
+        math.isclose(measured, 0.1 * 0.02 * 0.02, rel_tol=1e-12),
+        "Bundled sketch extrusion changes SI volume.",
+    )
+    solved = receipt["features"][0]["sketch"]
+    pin = json.loads((ROOT / "scripts/sketch-solver.lock.json").read_text())
+    require(
+        solved["kernel"] == "SolveSpace 3.2"
+        and solved["sourceCommit"] == pin["revision"]
+        and solved["status"] == "solved"
+        and solved["degreesOfFreedom"] == 0,
+        "Packaged native sketch solver or measured DOF is missing.",
+    )
+    compatibility = receipt["analysisCompatibility"]
+    require(
+        compatibility["state"] == "supported"
+        and compatibility["methodIds"] == ["fem-solid-tetra4"]
+        and len(compatibility["regionBindings"]) == 6
+        and all(
+            len(binding["entityIds"]) == 1
+            for binding in compatibility["regionBindings"]
+        ),
+        "Exact extrusion lacks unique numerical boundary bindings.",
+    )
+    for key, units in (("step", "m"), ("stepMm", "mm")):
+        asset = receipt["assets"][key]
+        require(asset["units"] == units, "Export lost explicit length units.")
+        data = (output / asset["filename"]).read_bytes()
+        require(
+            (b"SI_UNIT(.MILLI.,.METRE.)" if units == "mm" else b"SI_UNIT($,.METRE.)")
+            in data,
+            "STEP declares the wrong unit prefix.",
+        )
+        digest = hashlib.sha256(data).hexdigest()
+        (root / f"{digest}.step").write_bytes(data)
+        imported = {
+            "kind": "cad",
+            "dimension": "3d",
+            "features": [
+                {
+                    "id": "import",
+                    "name": "Imported STEP",
+                    "kind": "import-step",
+                    "assetId": "source",
+                    "scaleFactor": 1,
+                }
+            ],
+            "outputFeatureId": "import",
+            "assets": [
+                {
+                    "id": "source",
+                    "kind": "step-source",
+                    "originalName": f"source-{units}.step",
+                    "sha256": digest,
+                    "byteLength": len(data),
+                }
+            ],
+        }
+        roundtrip = preview(
+            imported, root / f"cad-import-{units}", f"bundle-cad-import-{units}"
+        )
+        require(
+            math.isclose(roundtrip["statistics"]["volume"], measured, rel_tol=1e-12),
+            "Metre/mm STEP import changes physical SI volume.",
+        )
+        require(
+            roundtrip["analysisCompatibility"]["state"] == "unsupported",
+            "Imported solids bypass exact numerical eligibility.",
+        )
+    source = json.loads((ROOT / "examples/cantilever.json").read_text())
+    source["id"], source["geometry"], source["namedSelections"] = (
+        "bundle-cad",
+        definition,
+        [],
+    )
+    source["study"]["mesh"]["size"] = 0.015
+    source["study"]["loads"][0]["vector"] = [0, 0, -1]
+    output = root / "cad-analysis"
+    manifest, _ = completed("solve", source, output, "bundle-cad-solve")
+    canonical = {
+        key: value
+        for key, value in source.items()
+        if key not in ("name", "revision", "displayUnits", "namedSelections")
+    }
+    expected_fingerprint = hashlib.sha256(
+        json.dumps(
+            canonical, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    ).hexdigest()
+    require(
+        manifest["fingerprint"] == expected_fingerprint,
+        "CAD solve discarded authored source provenance.",
+    )
+    require(
+        manifest["summary"]["relativeResidual"] < 1e-8
+        and all(
+            abs(value - expected) < 2e-9
+            for value, expected in zip(
+                manifest["summary"]["totalReaction"], [0, 0, 1], strict=True
+            )
+        ),
+        "CAD analysis does not conserve applied force.",
+    )
+    reopened, _ = completed("validate", source, output, "bundle-cad-solve")
+    require(reopened == manifest, "CAD cache restoration changed fields/provenance.")
+    changed = json.loads(json.dumps(source))
+    changed["geometry"]["features"][0]["name"] = "Changed authored source"
+    code, messages = invoke("validate", changed, output, "bundle-cad-solve")
+    require(
+        code != 0 and messages[-1].get("code") == "stale-cache",
+        "CAD cache accepts another source recipe.",
+    )
+    changed["geometry"]["features"].extend(
+        [
+            {
+                "id": "tool",
+                "name": "Tool",
+                "kind": "box",
+                "length": 0.05,
+                "width": 0.1,
+                "height": 0.03,
+            },
+            {
+                "id": "cut",
+                "name": "Cut",
+                "kind": "boolean",
+                "operation": "cut",
+                "leftId": "extrude",
+                "rightId": "tool",
+            },
+        ]
+    )
+    changed["geometry"]["outputFeatureId"] = "cut"
+    code, messages = invoke(
+        "solve", changed, root / "cad-unsupported", "bundle-cad-unsupported"
+    )
+    require(
+        code != 0
+        and messages[-1].get("code") == "unsupported-cad-study"
+        and not (root / "cad-unsupported/manifest.json").exists(),
+        "General CAD entered an unsupported solver.",
+    )
+    print(
+        "Bundled exact CAD/native sketch/SI STEP roundtrip/FEM/cache/eligibility passed."
+    )
+
+
 def check_2d_fields(
     manifest: dict, output: Path, project: dict, operation: str
 ) -> dict[str, float]:
@@ -518,6 +795,8 @@ def main() -> None:
             f"Bundled 3D solve/cache/failures passed: {manifest['statistics']['nodes']} nodes, "
             f"{manifest['statistics']['cells']} cells, residual={diagnostic['relativeResidual']:.3g}."
         )
+
+        cad_smoke(directory, env, completed, invoke)
 
         profile = json.loads(
             (ROOT / "examples" / "kirsch-quarter.json").read_text(encoding="utf-8")

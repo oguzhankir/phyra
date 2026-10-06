@@ -1,4 +1,4 @@
-import type { Manifest, Project } from '../domain/contracts/types';
+import type { Manifest, ProjectDefinition } from '../domain/contracts/types';
 import type { ResultData } from '../domain/results/fields';
 import type { ExecutionLease, ExecutionOwnership } from './executionOwnership';
 
@@ -7,7 +7,7 @@ import type { ExecutionLease, ExecutionOwnership } from './executionOwnership';
 export async function receiveExecutionResult(
   ownership: ExecutionOwnership,
   lease: ExecutionLease,
-  current: () => Project,
+  current: () => ProjectDefinition,
   manifest: Manifest,
   ports: {
     read: () => Promise<ArrayBuffer>;

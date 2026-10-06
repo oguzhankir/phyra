@@ -1,9 +1,9 @@
-import type { Manifest, Operation, Project } from '../domain/contracts/types';
+import type { Manifest, Operation, ProjectDefinition } from '../domain/contracts/types';
 
 export interface ExecutionLease {
   readonly generation: number;
   readonly requestId: string;
-  readonly project: Project;
+  readonly project: ProjectDefinition;
   readonly operation: Operation;
   cancelled: boolean;
   cancellation?: Promise<boolean>;
@@ -16,7 +16,7 @@ export class ExecutionOwnership {
   private generation = 0;
   private active: ExecutionLease | null = null;
 
-  begin(project: Project, operation: Operation): ExecutionLease {
+  begin(project: ProjectDefinition, operation: Operation): ExecutionLease {
     if (this.active) throw new Error('An execution already owns the native worker.');
     const lease = {
       generation: ++this.generation,
@@ -49,7 +49,7 @@ export class ExecutionOwnership {
     return true;
   }
 
-  canPublish(lease: ExecutionLease, current: Project, manifest: Manifest): boolean {
+  canPublish(lease: ExecutionLease, current: ProjectDefinition, manifest: Manifest): boolean {
     const snapshot = lease.project;
     return (
       this.owns(lease) &&
@@ -57,10 +57,10 @@ export class ExecutionOwnership {
       lease.jobId === manifest.jobId &&
       lease.operation === manifest.operation &&
       current.id === snapshot.id &&
-      current.study.id === snapshot.study.id &&
+      current.study?.id === snapshot.study?.id &&
       current.revision === snapshot.revision &&
       manifest.projectId === snapshot.id &&
-      manifest.studyId === snapshot.study.id &&
+      manifest.studyId === snapshot.study?.id &&
       manifest.revision === snapshot.revision
     );
   }

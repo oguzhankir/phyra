@@ -1,4 +1,6 @@
 attrs==26.1.0
+cadquery-ocp-novtk==8.0.1.1.0
+cadquery-ocp-proxy==8.0.1.1.0
 gmsh==4.15.2
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1

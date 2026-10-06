@@ -1,0 +1,48 @@
+Phyra uses Open CASCADE Technology 8.0.1 through the OCP 8.0.1.1 Python
+bindings (cadquery-ocp-novtk and cadquery-ocp-proxy 8.0.1.1.0).
+
+OCP and its build system are Apache-2.0. Open CASCADE Technology is
+LGPL-2.1 with the Open CASCADE exception. Users have the rights described
+in the retained license texts, including modifying and rebuilding these
+libraries and the application. Full Phyra application source and build
+scripts must accompany binary redistribution under GPL-3.0-or-later.
+
+This software is based in part on the work of the FreeType Team.
+The FreeType library is used under the FreeType License (FTL).
+This software is based in part on the work of the Independent JPEG Group.
+The IJG README and libjpeg-turbo license texts are retained unchanged.
+FreeImage is used under GPL-3.0-or-later, one of its offered licenses.
+LibRaw is retained under LGPL-2.1-only. All other native library licenses,
+including the LLVM runtime exception, are retained in this directory.
+
+darwin-arm64-provenance.json records the exact CPython 3.12 Apple Silicon
+wheel and all 78 native binary hashes. Its 26 third-party dylibs were
+matched to 20 original hash-verified conda packages using both Mach-O
+UUID and compiled __text SHA256 before wheel relocation. Original
+license files were recovered from those exact packages. The generated
+source artifact includes their full original build recipes and patches.
+
+Upstream sources:
+https://github.com/Open-Cascade-SAS/OCCT/tree/b8f597c677811d1f9f4d8a97f5ae2825c0353a42
+https://github.com/CadQuery/OCP/tree/a6d078cfda3e5e695c68d2bfbfe38e91b0ccb566
+https://github.com/CadQuery/OCP/releases/tag/8.0.1.1
+https://github.com/CadQuery/ocp-build-system/tree/eace4e42cfa2c162ac39bc36864534fe5f5787a6
+
+scripts/prepare-cad-sources.py prepares the retained source artifact
+artifacts/cad-sources/ocp-8.0.1.1.0-darwin-arm64-source.tar.gz from locked,
+hash-verified archives. It includes OCCT, generated OCP C++ bindings and
+generator/configuration sources, the original build system, FreeImage,
+LibRaw and LibRaw-cmake, plus the exact native recipes. That artifact
+and the complete Phyra source must accompany binary redistribution;
+upstream URLs alone are not a source offer.
+
+The upstream macOS build recipe specified wildcard versions of
+pybind11 and RapidJSON headers. Their exact resolved patch versions
+cannot be established from wheel metadata. Pinned pybind11 2.13.6 and
+RapidJSON 1.1.0 sources and notices are included as rebuild inputs.
+Binary matching establishes native dependency provenance; it does not
+claim a byte-identical source rebuild, Windows validation, or certification.
+
+Target-specific Windows native redistribution audit remains pending.
+Developer builds are permitted, and public release staging requires a
+completed source/license audit for every target.

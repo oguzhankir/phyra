@@ -1,6 +1,7 @@
 export type HelpContext =
   | 'overview'
   | 'geometry'
+  | 'cad'
   | 'selections'
   | 'material'
   | 'conditions'
@@ -19,6 +20,7 @@ export type HelpArticleId =
   | 'first-study'
   | 'preparation-tools'
   | 'geometry'
+  | 'cad'
   | 'material'
   | 'study'
   | 'supports'
@@ -74,6 +76,74 @@ export interface HelpArticle {
 }
 
 export const helpArticles: readonly HelpArticle[] = [
+  {
+    id: 'cad',
+    title: 'CAD workspace and analysis eligibility',
+    summary: 'Create exact geometry independently of the numerical methods available for it.',
+    category: 'Prepare',
+    kind: 'Guide',
+    keywords: [
+      'CAD',
+      'STEP',
+      'sketch',
+      'constraint',
+      'extrude',
+      'revolve',
+      'Boolean',
+      'fillet',
+      'chamfer',
+      'degrees of freedom',
+    ],
+    sections: [
+      {
+        title: 'Create and evaluate geometry',
+        steps: [
+          'Create an empty 2D or 3D project, then open Geometry from the project overview.',
+          'Create a box/cylinder or draft a line/arc/circle sketch. Sketch constraints belong to the authored graph; Apply commits drafts into the project definition.',
+          'Add extrusion, revolution, Boolean, fillet or chamfer operations. Select evaluated, unambiguous edges before adding an edge treatment.',
+          'Evaluate geometry in the local isolated worker. Inspect exact shape measurements, faces/edges/bodies and sketch degrees of freedom. Fix conflicting constraints or failed operations before proceeding.',
+        ],
+        paragraphs: [
+          'OpenCASCADE evaluates the exact shape; SolveSpace libslvs solves bounded sketch constraints. Display triangles are a rendering approximation and never become the FEM mesh. Underconstrained sketches may evaluate with their current coordinates; zero degrees of freedom means fully constrained, not that the design is physically valid.',
+          'A recipe supports up to 128 features. Each sketch supports 256 points/curves, 512 constraints and 64 loops; the complete project definition has a cumulative 1 MiB limit. Imported source bytes are stored separately. Oversized edits are rejected while preserving the previous definition.',
+        ],
+      },
+      {
+        title: 'Import, save and export',
+        paragraphs: [
+          'STEP import reads declared source units and converts to SI. Additional scale is a deliberate dimensionless transform. Each source is limited to 16 MiB; the project limit is 64 MiB across 32 sources. Native-owned immutable definition sources travel inside .phyra archives and remain available for definition recovery.',
+          'Export evaluated exact geometry as STEP in metres/millimetres, or BRep in SI metres. Geometry export is available independently of analysis support. Invalid or cancelled evaluation preserves the authored definition; correct it or use definition undo before evaluating again.',
+        ],
+      },
+      {
+        title: 'Analysis gate and topology repair',
+        paragraphs: [
+          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. General STEP, revolution, Boolean and edge-treatment outputs remain editable CAD until a matching numerical adapter exists.',
+          'Content references identify unchanged geometry entities. Changed or coincident ambiguous entities require explicit repair. Geometry edits invalidate incompatible assignments and old results; selecting a face does not assign a physical law or establish solver support. Thermal, multilayer materials, inverse material estimation and space-environment studies remain roadmap work.',
+        ],
+      },
+      {
+        title: 'Kernel references',
+        references: [
+          {
+            title: 'OpenCASCADE modeling algorithms',
+            authors: 'Open CASCADE contributors',
+            url: 'https://occt3d.com/dev/doc/overview/html/occt_user_guides__modeling_algos.html',
+            scope:
+              'Primary kernel algorithms; Phyra exposes the bounded operations described above.',
+          },
+          {
+            title: 'SolveSpace library interface',
+            authors: 'SolveSpace contributors',
+            url: 'https://solvespace.com/library.pl',
+            scope:
+              'Native geometric constraint solver. Phyra uses the pinned headless C ABI in isolated CAD workers.',
+          },
+        ],
+      },
+    ],
+    related: ['geometry', 'study', 'material', 'files', 'scope'],
+  },
   {
     id: 'preparation-tools',
     title: 'Selection, boundary sets and edit history',
@@ -248,7 +318,7 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Draft a 2D profile',
         paragraphs: [
           'In 2D Geometry, the sketch canvas supports bounded rectangle, polyline and exact rounded-slot construction, grid snapping, circular holes and midpoint splitting of a straight boundary. Select an edge to convert between a line and a circular arc, edit its radius/center/direction, or move shared vertices. Work in the displayed length unit and inspect the line/arc definitions before applying them.',
-          'Apply sketch validates and replaces the project geometry; Revert discards the draft. Leaving Geometry also discards unapplied changes. Drafting does not remesh or solve. Closed-loop orientation, intersections, arc limits and hole containment must pass validation. This editor does not provide a general geometric constraint solver, feature history or imported CAD.',
+          'Apply sketch validates and replaces the project geometry; Revert discards the draft. Leaving Geometry also discards unapplied changes. Drafting does not remesh or solve. Closed-loop orientation, intersections, arc limits and hole containment must pass validation. This legacy profile draft editor edits the bounded numerical profile. The dedicated CAD workspace adds authored constraints, exact feature recipes and STEP import.',
         ],
       },
       {
@@ -1140,7 +1210,7 @@ The reported normalized potential is strain energy minus external work. It may b
         title: 'Project files',
         paragraphs: [
           'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
-          'Versions 1–4 are validated against frozen schemas before migrating to version 5 with the strong-form formulation. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
+          'Versions 1–5 are validated against frozen schemas before migrating to version 6. Versions through 4 receive strong-form; version 5 preserves the selected formulation. Version 6 stores empty/CAD designs independently of optional studies. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
@@ -1511,7 +1581,7 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Planned; not available in this release',
         bullets: [
-          'General CAD/sketching, assemblies, multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
+          'Advanced CAD surfaces, assemblies, general imported-solid analysis, multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
           'Thermal/fluid, plane strain, dynamics, nonlinear materials, contact and coupled physics.',
           'Reusable learned operators, inverse studies, validated uncertainty and resumable model checkpoints.',
           'Optional external Physics ML framework adapters and distributed/HPC execution. Current local device capability does not establish framework or distributed support.',
@@ -1703,6 +1773,7 @@ The reported normalized potential is strain energy minus external work. It may b
 const contextArticles: Record<HelpContext, HelpArticleId> = {
   overview: 'first-study',
   geometry: 'geometry',
+  cad: 'cad',
   selections: 'preparation-tools',
   material: 'material',
   conditions: 'supports',

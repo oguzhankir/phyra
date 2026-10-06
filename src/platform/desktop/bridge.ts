@@ -8,6 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import { recoveryOwnerId } from './recovery';
 import type {
   Project,
+  ProjectDefinition,
   Manifest,
   Progress,
   Operation,
@@ -24,7 +25,7 @@ export interface ExecutionEvent<T> {
 
 export async function runJob(
   operation: Operation,
-  project: Project,
+  project: ProjectDefinition,
   requestId: string,
   documentId?: string,
 ): Promise<Manifest> {
@@ -84,7 +85,7 @@ export function finishResult(
   });
 }
 export type OpenedProject = {
-  project: Project;
+  project: ProjectDefinition;
   path: string;
   manifest?: Manifest;
   buffer?: ArrayBuffer;
@@ -96,7 +97,7 @@ export async function openProject(
 ): Promise<OpenedProject | ExistingProjectDocument | null> {
   const opened = await invoke<
     | {
-        project: Project;
+        project: ProjectDefinition;
         path: string;
         manifest?: Manifest;
         notice?: string;
@@ -119,7 +120,7 @@ export async function openProject(
   };
 }
 export function saveProject(
-  project: Project,
+  project: ProjectDefinition,
   jobId?: string,
   saveAs = false,
   automatic = false,

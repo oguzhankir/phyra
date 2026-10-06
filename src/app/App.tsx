@@ -65,7 +65,11 @@ export default function App({
   const active = activeEntry?.snapshot ?? null;
   const activeController = () => documents.controller(documents.getSnapshot().activeId);
   const nativeOwner = state.documents.find(
-    (entry) => entry.snapshot?.busy || entry.snapshot?.fileBusy || entry.snapshot?.deviceBusy,
+    (entry) =>
+      entry.snapshot?.busy ||
+      entry.snapshot?.cadBusy ||
+      entry.snapshot?.fileBusy ||
+      entry.snapshot?.deviceBusy,
   );
   const nativeBusy = opening || !!nativeOwner;
   const documentModal = state.documents.some(
@@ -167,6 +171,7 @@ export default function App({
       !desktop ||
       overlayModalOpen ||
       openingRef.current ||
+      nativeActivity.cad?.current ||
       nativeActivity.execution.current ||
       nativeActivity.file.current ||
       nativeActivity.device.current ||
@@ -240,6 +245,7 @@ export default function App({
     !!snapshot &&
     !overlayModalOpen &&
     !snapshot.busy &&
+    !snapshot.cadBusy &&
     !snapshot.deviceBusy &&
     !snapshot.transitioning &&
     (!snapshot.fileBusy || snapshot.autosaveStatus === 'saving') &&

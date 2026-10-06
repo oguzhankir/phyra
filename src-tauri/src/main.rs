@@ -2,6 +2,7 @@
 
 mod application;
 mod assistant;
+mod cad;
 mod execution;
 mod platform;
 mod project;

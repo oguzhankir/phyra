@@ -1,9 +1,16 @@
-import type { Manifest, Operation, Project, TrainingMetric } from '../contracts/types';
+import type {
+  Manifest,
+  Operation,
+  Project,
+  ProjectDefinition,
+  TrainingMetric,
+} from '../contracts/types';
 import type { ResultData } from '../results/fields';
 
 export type RunStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'cancelled' | 'failed';
 export type RunExecution = {
   project: Project;
+  definition?: ProjectDefinition;
   operation: Operation;
   jobId?: string;
   manifest?: Manifest;
@@ -70,11 +77,11 @@ export function runDuration(manifest: Manifest | undefined, elapsed: number): nu
     return manifest.training.timings.trainingSeconds + manifest.training.timings.inferenceSeconds;
   return manifest?.summary?.elapsedSeconds ?? elapsed;
 }
-export function resultIsCurrent(project: Project, data: ResultData | null): boolean {
+export function resultIsCurrent(project: ProjectDefinition, data: ResultData | null): boolean {
   return (
     !!data &&
     data.manifest.projectId === project.id &&
-    data.manifest.studyId === project.study.id &&
+    data.manifest.studyId === project.study?.id &&
     data.manifest.revision === project.revision
   );
 }

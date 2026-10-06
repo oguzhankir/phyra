@@ -1,0 +1,683 @@
+{
+  "distribution": "cadquery-ocp-novtk",
+  "version": "8.0.1.1.0",
+  "target": "darwin-arm64",
+  "python": "cp312",
+  "wheelSha256": "b76212dcda2ea19a501b26225f5d36ae1a5eed35e594c2af948a534e7f82a908",
+  "ocpSourceRevision": "a6d078cfda3e5e695c68d2bfbfe38e91b0ccb566",
+  "occtSourceRevision": "b8f597c677811d1f9f4d8a97f5ae2825c0353a42",
+  "buildRecipeRevision": "eace4e42cfa2c162ac39bc36864534fe5f5787a6",
+  "matchingMethod": "Exact Mach-O LC_UUID and __text SHA256 match between wheel and hash-verified conda package before wheel relocation.",
+  "packages": [
+    {
+      "name": "fmt",
+      "version": "12.2.0",
+      "build": "h99e4e11_1",
+      "license": "MIT",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/fmt-12.2.0-h99e4e11_1.conda",
+      "sha256": "d2de3d3aef29e8ca37589228c76b3c1dd7f6d8ccbdd40160b8a6f34e3dd72199",
+      "libraries": [
+        {
+          "library": "libfmt.12.2.0.dylib",
+          "uuid": "f0356f6eed453043895b14bf45a75de5",
+          "textSha256": "4ef6f1c6437d40f5ecfce4290661fff582fe79ae8c7a1befcd0d4a5e750b410c",
+          "wheelSha256": "9ae763324538e09038257c458212e832a610c55ffe7f2f306a61e831a231abd5"
+        }
+      ]
+    },
+    {
+      "name": "freeimage",
+      "version": "3.18.0",
+      "build": "h87663b4_25",
+      "license": "GPL-2.0-or-later OR GPL-3.0-or-later OR FreeImage",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/freeimage-3.18.0-h87663b4_25.conda",
+      "sha256": "3223ff0cb9719748f86b1d5644fb60302a9d8c656b568b0821bba673f1eaae65",
+      "libraries": [
+        {
+          "library": "libfreeimage.3.18.0.dylib",
+          "uuid": "fec1d881560e3a2cb841364d3471137b",
+          "textSha256": "aa9eef7899b37c04872fa6f822fcb881df3a2aaa4a9631213bedcbf3a39a316a",
+          "wheelSha256": "51c665ac293fee1ff522195f5b07ec616d42cc882aa6aef48c7bc7fb78cbd69c"
+        }
+      ]
+    },
+    {
+      "name": "imath",
+      "version": "3.2.2",
+      "build": "h13e8271_0",
+      "license": "BSD-3-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/imath-3.2.2-h13e8271_0.conda",
+      "sha256": "18986a94213497b9e60880fbbb71c54ac4f34adf948373d8298af8316fab17fc",
+      "libraries": [
+        {
+          "library": "libImath.30.3.2.2.dylib",
+          "uuid": "9c8ceb65c73e3d4992036eafe12c76aa",
+          "textSha256": "ff18fae0483d467499b2f5a272dc8fb762a5ba7f614112ec49d8f0f8b0ecd3f0",
+          "wheelSha256": "513a59851b7ce3b5dce604ec2d293b086edf7f8d9523af69659b2aaf42c5b6d4"
+        }
+      ]
+    },
+    {
+      "name": "jxrlib",
+      "version": "1.1",
+      "build": "h93a5062_3",
+      "license": "BSD-2-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/jxrlib-1.1-h93a5062_3.conda",
+      "sha256": "c9e0d3cf9255d4585fa9b3d07ace3bd934fdc6a67ef4532e5507282eff2364ab",
+      "libraries": [
+        {
+          "library": "libjpegxr.1.1.dylib",
+          "uuid": "45225acaa838330b93f2b5ba93194e20",
+          "textSha256": "497f76322daf4069fece77ea26db7426ae45f5c4eb1efc34d92323d39aa1ee28",
+          "wheelSha256": "1a67fae79753546a5305692673ef55cd694cb58039b9e90fec1cc4cade7d6261"
+        },
+        {
+          "library": "libjxrglue.1.1.dylib",
+          "uuid": "a8e9484e970637d59f6e120a5e012778",
+          "textSha256": "0aeda647a592db11c6fd74ef673510c0684f945567b52704bbed93996a821d11",
+          "wheelSha256": "ff29d12ff8485e9944e68cf90be70d16904de5526a7c63aca64b90106e0cba8a"
+        }
+      ]
+    },
+    {
+      "name": "lcms2",
+      "version": "2.19.1",
+      "build": "hce41798_3",
+      "license": "MIT",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda",
+      "sha256": "5f9b511f918e13dfddb8495c1764aec894b66c5a88359737aa302b8899ae25fa",
+      "libraries": [
+        {
+          "library": "liblcms2.2.dylib",
+          "uuid": "fe7111c180ba39c288f9e2cddbcc2ae6",
+          "textSha256": "8113409fb3cd4b385f2824e963998c8c52a68f3539f939db4ea7fcfcbecfaaeb",
+          "wheelSha256": "f3ef3641dd49b7a41fc3ad0985be508bc34810c8848ddb56e23cab3f29d7fac0"
+        }
+      ]
+    },
+    {
+      "name": "lerc",
+      "version": "4.2.0",
+      "build": "h1eee2c3_0",
+      "license": "Apache-2.0",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lerc-4.2.0-h1eee2c3_0.conda",
+      "sha256": "c97aa17d16d2ac332ba9f184e82ce8f72dcb10e9a10c5f299030be2d44e191b9",
+      "libraries": [
+        {
+          "library": "libLerc.4.dylib",
+          "uuid": "4d69a3bcb7c83e21b261fe9fcc71947a",
+          "textSha256": "08af3a2dec54b7b53ab53debb6761ec05382709f4cb741a8d446bb699d1a5a31",
+          "wheelSha256": "6a88ee70104d377ee6a7ccf88de281fb7fb2d0075f235b59f6902f7ec99bb3db"
+        }
+      ]
+    },
+    {
+      "name": "libjpeg-turbo",
+      "version": "3.2.0",
+      "build": "h84a0fba_1",
+      "license": "IJG AND BSD-3-Clause AND Zlib",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libjpeg-turbo-3.2.0-h84a0fba_1.conda",
+      "sha256": "05006418f9392c9b723e8428808db106de0350a497832f95f921b85ff1072310",
+      "libraries": [
+        {
+          "library": "libjpeg.8.3.2.dylib",
+          "uuid": "fedfba6153783f28a33e5b3b6ae488a3",
+          "textSha256": "05ee787006a10babb1caeff7a9ce03083ac2144160781463392f2d59769d6683",
+          "wheelSha256": "3c9df133f38f8143889922cb307e6973a17f192c0b3e56abdea73aadae18e06b"
+        }
+      ]
+    },
+    {
+      "name": "liblzma",
+      "version": "5.8.3",
+      "build": "h8088a28_1",
+      "license": "0BSD",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/liblzma-5.8.3-h8088a28_1.conda",
+      "sha256": "23d0630046a3e8b164d8f80f2b74ed2605af2e7050ab9913018056402fae4311",
+      "libraries": [
+        {
+          "library": "liblzma.5.dylib",
+          "uuid": "a4882333d3493ff880a1f125507b4de5",
+          "textSha256": "4a199d0ef2ea150885b95db5440a6e461be3c7e21a71d60263f25db58e6e8709",
+          "wheelSha256": "78b06fad2154928d2abff16f9fc71feaf5b5b3d68129fffd869ae933f3382dc6"
+        }
+      ]
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.59",
+      "build": "hf5e6511_0",
+      "license": "zlib-acknowledgement",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libpng-1.6.59-hf5e6511_0.conda",
+      "sha256": "4de4dc4cb7432c328c1eaf4f7cc9c6b48c073eab1e9c6723d4533e6d57e7d595",
+      "libraries": [
+        {
+          "library": "libpng16.16.dylib",
+          "uuid": "8305ee8c16653538a7e8670855db6a54",
+          "textSha256": "caac39337f4c3388065e751efc0beb3f14ea8090f65bc34a5341eb49ac7bb414",
+          "wheelSha256": "bd501d1bdcdd9dab6906d3e89504b8697ca733bfb037d58deb7aac9885b558cf"
+        }
+      ]
+    },
+    {
+      "name": "libraw",
+      "version": "0.22.2",
+      "build": "h2d05ff4_0",
+      "license": "LGPL-2.1-only",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libraw-0.22.2-h2d05ff4_0.conda",
+      "sha256": "e3e654527f10346ca39fe628bb6f81dadf946647e5c081f84703ab654ae15a45",
+      "libraries": [
+        {
+          "library": "libraw.25.dylib",
+          "uuid": "e6d10c0106203d29b2ee0660e1ebb3e0",
+          "textSha256": "143f0f47f66770586581962c7b9f0a35e55edb26b19dd12c045a545cc020aa77",
+          "wheelSha256": "53a0095e53500234c02fa66f65f9ad374b9ba654530dfb2804749090a0e9d930"
+        }
+      ]
+    },
+    {
+      "name": "libtiff",
+      "version": "4.7.2",
+      "build": "hf67920b_1",
+      "license": "HPND",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libtiff-4.7.2-hf67920b_1.conda",
+      "sha256": "847d22a86ae28f66d3888702698254d25bb4eac3a0f64c1fabfb1842ac00be4c",
+      "libraries": [
+        {
+          "library": "libtiff.6.dylib",
+          "uuid": "e4b99c5b921638f9a209347626506c30",
+          "textSha256": "109bb67de98beb0d323a33e17ac380b3106adc991a03f55722017cd25b65592e",
+          "wheelSha256": "bab3672b3bb4f4696be318e845dbedbdc77d8345dc46f62edbc7bfca1782764f"
+        }
+      ]
+    },
+    {
+      "name": "libwebp-base",
+      "version": "1.6.0",
+      "build": "h202fb40_1",
+      "license": "BSD-3-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libwebp-base-1.6.0-h202fb40_1.conda",
+      "sha256": "0ff54650d470c7e54cbeffdd53a8c063e055a7bcf784388c0385ce5c4741b0f4",
+      "libraries": [
+        {
+          "library": "libwebpmux.3.1.2.dylib",
+          "uuid": "ff6af9cb91693d2ba1308efbf3ee6c4c",
+          "textSha256": "79003e0a70ca04343daacc27e5bf26bfd1edbc209bda2591542c80058d1a708b",
+          "wheelSha256": "878dc84335650105418652b2f502f8f27ea0c97af36dc432b38e6536b6ded9d6"
+        },
+        {
+          "library": "libsharpyuv.0.1.2.dylib",
+          "uuid": "f33d1a8b10223e5c8fa51e9f57351991",
+          "textSha256": "5020c7813fc8284a1d91c3f0e1aaa36e355f269ee7ecbd61f053a8caa068aea2",
+          "wheelSha256": "3d3f6c5573a908799b2fb2fd8c56f49a944603b2c4917b9b6b8b939adfb03d85"
+        },
+        {
+          "library": "libwebp.7.2.0.dylib",
+          "uuid": "71a2f6615e6f3ddd9e624643df3381da",
+          "textSha256": "406a821b6f50568836ef221e1c9b80c56086c0ac81712b954d03cdc2a1b3562c",
+          "wheelSha256": "fb95da722a227a75f38c04d98827c8a9775d138ae6cdef6e83c4096faba11b0b"
+        }
+      ]
+    },
+    {
+      "name": "libzlib",
+      "version": "1.3.2",
+      "build": "h8088a28_3",
+      "license": "Zlib",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libzlib-1.3.2-h8088a28_3.conda",
+      "sha256": "a18fa5d5bac452401459f966cf0d872224e8080c4ff93c77e168d43ab42ef9d7",
+      "libraries": [
+        {
+          "library": "libz.1.3.2.dylib",
+          "uuid": "65bdd247731335789c4fda34382f2090",
+          "textSha256": "0929f64b427dc4f8aadf40a428177ff3065892d897e445c165277ee124a7a784",
+          "wheelSha256": "a717bf49b343c37f0ff42eadaf24d83a1ad9db522c30c2c67bcaeafb444f84b2"
+        }
+      ]
+    },
+    {
+      "name": "openexr",
+      "version": "3.4.15",
+      "build": "h3105456_0",
+      "license": "BSD-3-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openexr-3.4.15-h3105456_0.conda",
+      "sha256": "eaca051eac49700b2d06b3d55fb8c15eb04e641f52959edf47130b90b7e5d919",
+      "libraries": [
+        {
+          "library": "libIex.33.3.4.15.dylib",
+          "uuid": "4e1a22a1dd8a3d5b8c3d9da20f0d3955",
+          "textSha256": "d580da93f2cf585176c3f0d7b484d9fea5796e5c32c247b97b3dbf6e34716a02",
+          "wheelSha256": "aadd69a4feaa7fc3a86b833b209bfe602fef812058fd6f8df4670c6cbd2e7a4c"
+        },
+        {
+          "library": "libIlmThread.33.3.4.15.dylib",
+          "uuid": "5f9f7ee009cf317084561f18f535d464",
+          "textSha256": "79060357ac7b6cc943f2b74f5dda1ddf861dc74f0590d0fb10109b9b69b5d32e",
+          "wheelSha256": "c63b673af5d578cf6ebba3fb23c317803256c0c2ca9134bf282a5af408e376f7"
+        },
+        {
+          "library": "libOpenEXR.33.3.4.15.dylib",
+          "uuid": "164aa9ef29483bb5b0882de2d494cfa4",
+          "textSha256": "e2dfe31fb05d638da3a87073176c06e0277eb854b1eb8d1353c96c69662bea38",
+          "wheelSha256": "27ab90d087eac361cc6820b0112edf85c255b3bf381fc4f9f81d4657fc26f441"
+        },
+        {
+          "library": "libOpenEXRCore.33.3.4.15.dylib",
+          "uuid": "0b1b212b04b43113841fe4654e4fe1c3",
+          "textSha256": "297f85e67e51003e6839e76041ba7fcac9d4edd0457613e423ed22453efd8db4",
+          "wheelSha256": "73a3cf8f00e79e2d2581adf9f5e0637108542afa7c6ecf34c6444acd1960b497"
+        }
+      ]
+    },
+    {
+      "name": "openjpeg",
+      "version": "2.5.4",
+      "build": "h4d1e80c_2",
+      "license": "BSD-2-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjpeg-2.5.4-h4d1e80c_2.conda",
+      "sha256": "e71bd04b5d0e39f39a3c039d021d3b76cd65bee3032e7f859ab7082f0ace8be5",
+      "libraries": [
+        {
+          "library": "libopenjp2.2.5.4.dylib",
+          "uuid": "2e1ae682379831a8a3693c727533cdff",
+          "textSha256": "d6b0a9dc9bf904a3113df813d073c140076934883d89ffd37132aded6f3d9bf0",
+          "wheelSha256": "d18653799e0e92649233cc1c0aa14c5840025bff1bd95a6abc17d0cc43aea00c"
+        }
+      ]
+    },
+    {
+      "name": "openjph",
+      "version": "0.31.0",
+      "build": "h2a4d681_0",
+      "license": "BSD-2-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjph-0.31.0-h2a4d681_0.conda",
+      "sha256": "853c41f0e041a5c1acce60490ec065e4ca1b43d7b63fbad504980de3a822f719",
+      "libraries": [
+        {
+          "library": "libopenjph.0.31.0.dylib",
+          "uuid": "d9bd8325f75b368f99a38e1414dfb836",
+          "textSha256": "6923cd7e6fb1d41048336c88e0e348a3de4b849868640bb63117dde501117978",
+          "wheelSha256": "cd122877c263f837d889723f9e16de7a666a009804341539b18e2ebbedb114b0"
+        }
+      ]
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7",
+      "build": "hf451053_7",
+      "license": "BSD-3-Clause",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda",
+      "sha256": "da867f5092eb0cb746d353694f0098031fd9817a4ce7d5743121209ae0f406ca",
+      "libraries": [
+        {
+          "library": "libzstd.1.5.7.dylib",
+          "uuid": "63e2d1b714a3367799b0443ad8e38af8",
+          "textSha256": "80de34564d1c8ce632f5735c66754e617a1ed1f78f4ff1b392f03d8d36a53557",
+          "wheelSha256": "76b75506cdb26346f38f5eee35018e8bc2f75c4ce78580c4c559acf11bf617e2"
+        }
+      ]
+    },
+    {
+      "name": "libcxx",
+      "version": "23.1.2",
+      "build": "h55c6f16_0",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcxx-23.1.2-h55c6f16_0.conda",
+      "sha256": "087a610bacee7901d259ef72c6f060d795ab26831bd7541ba75ced786a5a63f9",
+      "libraries": [
+        {
+          "library": "libc++.1.0.dylib",
+          "uuid": "3d1e41f2e7fa35638e8d5b43ce23d337",
+          "textSha256": "16a11b1f7fdee5f83bfd36da6249f343c402273bba40c1c859ef029f52c11c3b",
+          "wheelSha256": "5d6d1804537798d3e44fe0d26908d93893b68003bef6c604937e2f1abf2abb25"
+        }
+      ]
+    },
+    {
+      "name": "libdeflate",
+      "version": "1.25",
+      "build": "he7e0567_1",
+      "license": "MIT",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libdeflate-1.25-he7e0567_1.conda",
+      "sha256": "d896f4aa4ce4c590c2838678cb1917356fdb461d2a189991c0280c818c362172",
+      "libraries": [
+        {
+          "library": "libdeflate.0.dylib",
+          "uuid": "b1bce13d94263966a624c61aea624903",
+          "textSha256": "a5a9abb3542fa5fb4c800092f3680d2bdd54bdc4bcd29c3232a30c83802e7db9",
+          "wheelSha256": "021f805f8c75f30dde500cc57934035219c14da1e2e21cca748c35c6e848cdec"
+        }
+      ]
+    },
+    {
+      "name": "freetype",
+      "version": "2.12.1",
+      "build": "hadb7bae_2",
+      "license": "GPL-2.0-only OR FTL",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/freetype-2.12.1-hadb7bae_2.conda",
+      "sha256": "791673127e037a2dc0eebe122dc4f904cb3f6e635bb888f42cbe1a76b48748d9",
+      "libraries": [
+        {
+          "library": "libfreetype.6.dylib",
+          "uuid": "dd584a6e2bab311594e3401506b7ca4c",
+          "textSha256": "d5d07841a997f68718144be896f3b4bccf089cf243ea140b0f312943f26569bc",
+          "wheelSha256": "8b115d55812f3f57997dbaaf2a5ae837292b0c8d542340335b257a2b9c6f2e50"
+        }
+      ]
+    }
+  ],
+  "nativeBinaries": [
+    {
+      "path": ".dylibs/libIex.33.3.4.15.dylib",
+      "sha256": "aadd69a4feaa7fc3a86b833b209bfe602fef812058fd6f8df4670c6cbd2e7a4c"
+    },
+    {
+      "path": ".dylibs/libIlmThread.33.3.4.15.dylib",
+      "sha256": "c63b673af5d578cf6ebba3fb23c317803256c0c2ca9134bf282a5af408e376f7"
+    },
+    {
+      "path": ".dylibs/libImath.30.3.2.2.dylib",
+      "sha256": "513a59851b7ce3b5dce604ec2d293b086edf7f8d9523af69659b2aaf42c5b6d4"
+    },
+    {
+      "path": ".dylibs/libLerc.4.dylib",
+      "sha256": "6a88ee70104d377ee6a7ccf88de281fb7fb2d0075f235b59f6902f7ec99bb3db"
+    },
+    {
+      "path": ".dylibs/libOpenEXR.33.3.4.15.dylib",
+      "sha256": "27ab90d087eac361cc6820b0112edf85c255b3bf381fc4f9f81d4657fc26f441"
+    },
+    {
+      "path": ".dylibs/libOpenEXRCore.33.3.4.15.dylib",
+      "sha256": "73a3cf8f00e79e2d2581adf9f5e0637108542afa7c6ecf34c6444acd1960b497"
+    },
+    {
+      "path": ".dylibs/libTKBO.8.0.1.dylib",
+      "sha256": "50ff2dcd2daa60a20abdc7a19db4390ed2c30d742c87f42034283cf261dfd5a2"
+    },
+    {
+      "path": ".dylibs/libTKBRep.8.0.1.dylib",
+      "sha256": "d34af87e778b0e292f613ca14a58294e9397fea4e3ac08c75a7d8141330719f5"
+    },
+    {
+      "path": ".dylibs/libTKBin.8.0.1.dylib",
+      "sha256": "a0b86688eb1f4daaec6601ce9e297ea5eed14935b634ccfaa12c5749dab5bd22"
+    },
+    {
+      "path": ".dylibs/libTKBinL.8.0.1.dylib",
+      "sha256": "504ca62855934abb141d0168186903dc27a77a97add7519ee9c0b71c2914a015"
+    },
+    {
+      "path": ".dylibs/libTKBinTObj.8.0.1.dylib",
+      "sha256": "e89221a2900377611800fa64ddb4835398e0af582b75710fa581555e94369748"
+    },
+    {
+      "path": ".dylibs/libTKBinXCAF.8.0.1.dylib",
+      "sha256": "0833264acc6be6e8f799c22a63f83b747a6ae1c804814fe26788500a40740f0d"
+    },
+    {
+      "path": ".dylibs/libTKBool.8.0.1.dylib",
+      "sha256": "e99e8c89653c6b656a7888259e5b15602676e82dbfb1878e241ba9f19d90371c"
+    },
+    {
+      "path": ".dylibs/libTKCAF.8.0.1.dylib",
+      "sha256": "74ca2be407ff7a819785b12d9abb3a085f88ed0276694fef12d4e4ef7c2edb12"
+    },
+    {
+      "path": ".dylibs/libTKCDF.8.0.1.dylib",
+      "sha256": "d5496211464375ae2087f3a1caeedb281cbf00ad67e76b045f7f4275d1bec38e"
+    },
+    {
+      "path": ".dylibs/libTKDE.8.0.1.dylib",
+      "sha256": "e8255279d4acd8f8042eeccdd92184a79869baf7ee990f0ae2bb4599a3e3cbbc"
+    },
+    {
+      "path": ".dylibs/libTKDECascade.8.0.1.dylib",
+      "sha256": "b403df8f52aefc3dfa95e660a5e6a464461b1053664299b3f62a1c205c4c01e2"
+    },
+    {
+      "path": ".dylibs/libTKDEGLTF.8.0.1.dylib",
+      "sha256": "9505d4662fa51b71efa748f9dcea993737248d19addba57ce602540f8cbe84ba"
+    },
+    {
+      "path": ".dylibs/libTKDEIGES.8.0.1.dylib",
+      "sha256": "e833d4715404f56a81d1dc69b25e93cd08b43c16fcffda148a9756fdb6785fb9"
+    },
+    {
+      "path": ".dylibs/libTKDEOBJ.8.0.1.dylib",
+      "sha256": "484c29b24ee54c6a5287332980b42b53f45698c322c72eb0cf4a54fce457224d"
+    },
+    {
+      "path": ".dylibs/libTKDEPLY.8.0.1.dylib",
+      "sha256": "11abff6af6a7c791a071d6e7300f56b7440b47a1e494c249723b992e4f8e4fb5"
+    },
+    {
+      "path": ".dylibs/libTKDESTEP.8.0.1.dylib",
+      "sha256": "c319e86b45fc29efeb6508fdd3016e96c0c10731ff176c5d64639bb566179863"
+    },
+    {
+      "path": ".dylibs/libTKDESTL.8.0.1.dylib",
+      "sha256": "6ff4ad9f12db9e666533bd77fb52f47bc87efbde1fe0c5fd29058e4c8d04d9ab"
+    },
+    {
+      "path": ".dylibs/libTKDEVRML.8.0.1.dylib",
+      "sha256": "5e91bd020972596e7c8467a483e3eb8f2e9a807fe35ee8a2908ef2ea749761e5"
+    },
+    {
+      "path": ".dylibs/libTKExpress.8.0.1.dylib",
+      "sha256": "9e1c0671fc950f7526a33e3722fe5d6b1f230c71c6ba9f7d3f3a66526cde58d6"
+    },
+    {
+      "path": ".dylibs/libTKFeat.8.0.1.dylib",
+      "sha256": "42ae6308ef020c12d9f86ccbb7e3566a920b8a9fdd5302ed087adb1bf35ffaf0"
+    },
+    {
+      "path": ".dylibs/libTKFillet.8.0.1.dylib",
+      "sha256": "a44ac58078162634d2826876bb6d2d2458aee7a9c13a255456a602c3842357aa"
+    },
+    {
+      "path": ".dylibs/libTKG2d.8.0.1.dylib",
+      "sha256": "5f3b58860d429a88a3f69f6b8a0f9dee0172daf7183db2d5c13f0cb3c3aa67ff"
+    },
+    {
+      "path": ".dylibs/libTKG3d.8.0.1.dylib",
+      "sha256": "52edd1c46a46b9169f1ad759a18914cfcfbcbc21f4f6314461be8eb46ef68db9"
+    },
+    {
+      "path": ".dylibs/libTKGeomAlgo.8.0.1.dylib",
+      "sha256": "6496d65836e4a789f2dbecb5114a2678ad790543ebb10ddbd11d8419722a94cc"
+    },
+    {
+      "path": ".dylibs/libTKGeomBase.8.0.1.dylib",
+      "sha256": "321403c1aa28dbcab9207b4c1ef0b493b1bd535ff3c5d2cef6da680844a74e96"
+    },
+    {
+      "path": ".dylibs/libTKHLR.8.0.1.dylib",
+      "sha256": "3575d9231caa2385b851ab2f1438cddd696a3c1ebdd1da778f1bc666910d62ce"
+    },
+    {
+      "path": ".dylibs/libTKHelix.8.0.1.dylib",
+      "sha256": "444f8d26917e1961317c30c9da87a469d01fd95b1f05caf63d4a946411b00f97"
+    },
+    {
+      "path": ".dylibs/libTKLCAF.8.0.1.dylib",
+      "sha256": "c65ff72795cd9e31f27eac96eb878d8b22d9ad40eee85cdea43ab48db753a3b6"
+    },
+    {
+      "path": ".dylibs/libTKMath.8.0.1.dylib",
+      "sha256": "4055e3b428fec145db84bdcb76cae5d4cf94ee611084c829a6d2635a831a06b0"
+    },
+    {
+      "path": ".dylibs/libTKMesh.8.0.1.dylib",
+      "sha256": "ea592678cb5a8fa4c40dc1a9442735f1400c61b7a0230742f51ae8d572383fe2"
+    },
+    {
+      "path": ".dylibs/libTKMeshVS.8.0.1.dylib",
+      "sha256": "8d555a002d468ccf5e7e5251859aa2ec60325a2f9d209e35821d8695038d5265"
+    },
+    {
+      "path": ".dylibs/libTKOffset.8.0.1.dylib",
+      "sha256": "69b3cf1b0044b4b897aa7a4bb4906663d33f67192c9d7199072777eb2cf6d62e"
+    },
+    {
+      "path": ".dylibs/libTKOpenGl.8.0.1.dylib",
+      "sha256": "0b85a0c38da009698b11d0bfd4d067e52d982a37d4b83ab2bb84837f3981b492"
+    },
+    {
+      "path": ".dylibs/libTKPrim.8.0.1.dylib",
+      "sha256": "b631ad9224dc4fe47d455b9c15b864aea19216af47950e1628a3cb9b16ff0673"
+    },
+    {
+      "path": ".dylibs/libTKRWMesh.8.0.1.dylib",
+      "sha256": "9c0b5e0a7387505b4543d49c70ef8928744cb14ccdc0298be81af654146b9a40"
+    },
+    {
+      "path": ".dylibs/libTKService.8.0.1.dylib",
+      "sha256": "fc36b8c7ebd0b3313b90914ba1a78bcc64c5e969c908d45c431f24041cc3902c"
+    },
+    {
+      "path": ".dylibs/libTKShHealing.8.0.1.dylib",
+      "sha256": "c08f99ed29bb94790fcb1ba65932c63fb648c63eed5848b342c7b0b4b1699956"
+    },
+    {
+      "path": ".dylibs/libTKStd.8.0.1.dylib",
+      "sha256": "9ce729298abfdc1909375c04c6b7ff4cb0e1e8bb4a8cccd60afd4143e9441afc"
+    },
+    {
+      "path": ".dylibs/libTKStdL.8.0.1.dylib",
+      "sha256": "2556a6b86b96cdaab8aeb14cfe0cd6c656da4b46bd9821ac0f52b78f628cfa84"
+    },
+    {
+      "path": ".dylibs/libTKTObj.8.0.1.dylib",
+      "sha256": "5d3a348b3d1f48a4d68c54e9260c478005c5db7135fb429d6290a4cc31e4a998"
+    },
+    {
+      "path": ".dylibs/libTKTopAlgo.8.0.1.dylib",
+      "sha256": "ee0682ed02b573d079032ea55efd762533689741b2ed5e5f3c8fc776891e2fe9"
+    },
+    {
+      "path": ".dylibs/libTKV3d.8.0.1.dylib",
+      "sha256": "c7e8baef22075ff379cfda21d0bea9ede7d1c912b93b0a5af952c5fe52996410"
+    },
+    {
+      "path": ".dylibs/libTKVCAF.8.0.1.dylib",
+      "sha256": "95f8f9966a2fe4115878b8f74c53c36f6d6f13e176e9189b91c54ce6d5a5cd72"
+    },
+    {
+      "path": ".dylibs/libTKXCAF.8.0.1.dylib",
+      "sha256": "5f28982d904e1283a710e90b316980d9b0b1fb3762c8d098d93a352db41eb116"
+    },
+    {
+      "path": ".dylibs/libTKXMesh.8.0.1.dylib",
+      "sha256": "9d972a5b1979a608ad703f64d1c39d8ad607581c1a30b60ebff3a350c26ed67f"
+    },
+    {
+      "path": ".dylibs/libTKXSBase.8.0.1.dylib",
+      "sha256": "dc74c46d8a6961a9e253a515e58da26eda24f9b707b2e819fdb5bbe05d0e9b65"
+    },
+    {
+      "path": ".dylibs/libTKXml.8.0.1.dylib",
+      "sha256": "97dc4cccd6f3542ad44449ff70cc29996589cf0fc7aa1e44d6d5be27e8a53ce5"
+    },
+    {
+      "path": ".dylibs/libTKXmlL.8.0.1.dylib",
+      "sha256": "a8ef46af3e88f65881395a611577e86db7ac2ec698f80390ec557c845b0504df"
+    },
+    {
+      "path": ".dylibs/libTKXmlTObj.8.0.1.dylib",
+      "sha256": "bd66c03b562580d65d853832f96756bab7ca74bff74a7419a7fd257542f559c4"
+    },
+    {
+      "path": ".dylibs/libTKXmlXCAF.8.0.1.dylib",
+      "sha256": "4c56ecd517531ea94de634bd8e308718faadd1e0e53cec08289c5e201adba96e"
+    },
+    {
+      "path": ".dylibs/libTKernel.8.0.1.dylib",
+      "sha256": "f5cbb6b142d94334b8e06d68a7456b7b68b5c7877a4a2ef23f34d8c91967b105"
+    },
+    {
+      "path": ".dylibs/libc++.1.0.dylib",
+      "sha256": "5d6d1804537798d3e44fe0d26908d93893b68003bef6c604937e2f1abf2abb25"
+    },
+    {
+      "path": ".dylibs/libdeflate.0.dylib",
+      "sha256": "021f805f8c75f30dde500cc57934035219c14da1e2e21cca748c35c6e848cdec"
+    },
+    {
+      "path": ".dylibs/libfmt.12.2.0.dylib",
+      "sha256": "9ae763324538e09038257c458212e832a610c55ffe7f2f306a61e831a231abd5"
+    },
+    {
+      "path": ".dylibs/libfreeimage.3.18.0.dylib",
+      "sha256": "51c665ac293fee1ff522195f5b07ec616d42cc882aa6aef48c7bc7fb78cbd69c"
+    },
+    {
+      "path": ".dylibs/libfreetype.6.dylib",
+      "sha256": "8b115d55812f3f57997dbaaf2a5ae837292b0c8d542340335b257a2b9c6f2e50"
+    },
+    {
+      "path": ".dylibs/libjpeg.8.3.2.dylib",
+      "sha256": "3c9df133f38f8143889922cb307e6973a17f192c0b3e56abdea73aadae18e06b"
+    },
+    {
+      "path": ".dylibs/libjpegxr.1.1.dylib",
+      "sha256": "1a67fae79753546a5305692673ef55cd694cb58039b9e90fec1cc4cade7d6261"
+    },
+    {
+      "path": ".dylibs/libjxrglue.1.1.dylib",
+      "sha256": "ff29d12ff8485e9944e68cf90be70d16904de5526a7c63aca64b90106e0cba8a"
+    },
+    {
+      "path": ".dylibs/liblcms2.2.dylib",
+      "sha256": "f3ef3641dd49b7a41fc3ad0985be508bc34810c8848ddb56e23cab3f29d7fac0"
+    },
+    {
+      "path": ".dylibs/liblzma.5.dylib",
+      "sha256": "78b06fad2154928d2abff16f9fc71feaf5b5b3d68129fffd869ae933f3382dc6"
+    },
+    {
+      "path": ".dylibs/libopenjp2.2.5.4.dylib",
+      "sha256": "d18653799e0e92649233cc1c0aa14c5840025bff1bd95a6abc17d0cc43aea00c"
+    },
+    {
+      "path": ".dylibs/libopenjph.0.31.0.dylib",
+      "sha256": "cd122877c263f837d889723f9e16de7a666a009804341539b18e2ebbedb114b0"
+    },
+    {
+      "path": ".dylibs/libpng16.16.dylib",
+      "sha256": "bd501d1bdcdd9dab6906d3e89504b8697ca733bfb037d58deb7aac9885b558cf"
+    },
+    {
+      "path": ".dylibs/libraw.25.dylib",
+      "sha256": "53a0095e53500234c02fa66f65f9ad374b9ba654530dfb2804749090a0e9d930"
+    },
+    {
+      "path": ".dylibs/libsharpyuv.0.1.2.dylib",
+      "sha256": "3d3f6c5573a908799b2fb2fd8c56f49a944603b2c4917b9b6b8b939adfb03d85"
+    },
+    {
+      "path": ".dylibs/libtiff.6.dylib",
+      "sha256": "bab3672b3bb4f4696be318e845dbedbdc77d8345dc46f62edbc7bfca1782764f"
+    },
+    {
+      "path": ".dylibs/libwebp.7.2.0.dylib",
+      "sha256": "fb95da722a227a75f38c04d98827c8a9775d138ae6cdef6e83c4096faba11b0b"
+    },
+    {
+      "path": ".dylibs/libwebpmux.3.1.2.dylib",
+      "sha256": "878dc84335650105418652b2f502f8f27ea0c97af36dc432b38e6536b6ded9d6"
+    },
+    {
+      "path": ".dylibs/libz.1.3.2.dylib",
+      "sha256": "a717bf49b343c37f0ff42eadaf24d83a1ad9db522c30c2c67bcaeafb444f84b2"
+    },
+    {
+      "path": ".dylibs/libzstd.1.5.7.dylib",
+      "sha256": "76b75506cdb26346f38f5eee35018e8bc2f75c4ce78580c4c559acf11bf617e2"
+    },
+    {
+      "path": "OCP.cpython-312-darwin.so",
+      "sha256": "9a97e1b121903b7c7ead5f3c6010bdf436ba6979e9217fb5707cf5f42d1b3b6c"
+    }
+  ]
+}

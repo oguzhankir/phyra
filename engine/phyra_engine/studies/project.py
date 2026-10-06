@@ -23,11 +23,11 @@ SELECTION_WHITESPACE = (
 )
 
 
-@lru_cache(maxsize=5)
-def project_validator(version: int = 5) -> Draft7Validator:
+@lru_cache(maxsize=6)
+def project_validator(version: int = 6) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = "project.schema.json" if version == 5 else f"project-v{version}.schema.json"
+    filename = "project.schema.json" if version == 6 else f"project-v{version}.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -93,15 +93,15 @@ def _validate_named_selections(project: dict[str, Any]) -> None:
             )
     # Keep this explicit reference so a malformed geometry cannot silently
     # bypass the schema's geometry-kind validation after an in-memory mutation.
-    if geometry["kind"] not in ("box", "cylinder", "bracket", "profile"):
+    if geometry["kind"] not in ("box", "cylinder", "bracket", "profile", "empty", "cad"):
         raise EngineError("invalid-geometry", "Unsupported geometry kind.")
 
 
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2, 3, 4, 5):
-        raise EngineError("unsupported-version", "Supported project versions are 1, 2, 3, 4 and 5.")
+    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6):
+        raise EngineError("unsupported-version", "Supported project versions are 1 through 6.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -109,25 +109,102 @@ def validate_project(project: Any) -> dict[str, Any]:
         raise EngineError("invalid-project", f"{path}: {error.message}")
     if type(project["revision"]) is not int:
         raise EngineError("invalid-project", "Project revision must be an integer.")
-    if version >= 2 and any(
-        type(project["study"]["solver"]["pinn"][key]) is not int
-        for key in ("layers", "width", "steps", "interiorPoints", "boundaryPoints", "seed")
+    if (
+        version >= 2
+        and project["study"] is not None
+        and any(
+            type(project["study"]["solver"]["pinn"][key]) is not int
+            for key in ("layers", "width", "steps", "interiorPoints", "boundaryPoints", "seed")
+        )
     ):
         raise EngineError("invalid-project", "PINN counts and seed must be integers.")
     if version >= 3:
         _validate_named_selections(project)
-    validate_physical_project(project, version)
+    if version < 6 or (
+        project["geometry"]["kind"] in ("box", "cylinder", "bracket", "profile")
+        and project["study"] is not None
+    ):
+        validate_physical_project(project, version)
+    if project["geometry"]["kind"] == "cad":
+        validate_cad_geometry(project["geometry"])
     return project
+
+
+def validate_numerical_project(project: Any) -> dict[str, Any]:
+    """Admit a real supported physical study, independently of saveable CAD."""
+    project = validate_project(project)
+    if project["study"] is None or project["geometry"]["kind"] == "empty":
+        raise EngineError(
+            "unsupported-study", "Create a compatible physical study before analysis."
+        )
+    view = numerical_view(project)
+    validate_physical_project(view, project["schemaVersion"])
+    return project
+
+
+def numerical_view(project: dict[str, Any]) -> dict[str, Any]:
+    """Derive an exact numerical domain while keeping authored provenance intact.
+
+    Callers must fingerprint and retain the original project. This view only
+    adapts the geometry consumed by existing physical/mesh/field validators.
+    """
+    if project["geometry"]["kind"] != "cad":
+        return project
+    if (
+        project["study"] is None
+        or project["study"]["dimension"] != project["geometry"]["dimension"]
+    ):
+        raise EngineError("unsupported-study", "CAD and study dimensions must agree.")
+    from phyra_engine.geometry.cad.compatibility import lower_geometry
+
+    view = deepcopy(project)
+    view["geometry"] = lower_geometry(project["geometry"])
+    return view
+
+
+def validate_cad_geometry(geometry: Any) -> dict[str, Any]:
+    """Bounded canonical design intent, without implying mesher/solver support."""
+    _finite_tree(geometry)
+    schema = project_validator(6).schema
+    validator = Draft7Validator(
+        {"$ref": "#/definitions/CadGeometry", "definitions": schema["definitions"]}
+    )
+    errors = sorted(validator.iter_errors(geometry), key=lambda e: str(e.path))
+    if errors:
+        raise EngineError("invalid-geometry", f"Invalid CAD definition: {errors[0].message}")
+    assets = {asset["id"] for asset in geometry["assets"]}
+    if (
+        len(assets) != len(geometry["assets"])
+        or sum(asset["byteLength"] for asset in geometry["assets"]) > 64 * 1024 * 1024
+    ):
+        raise EngineError(
+            "resource-limit", "CAD sources must have unique identities and total at most 64 MiB."
+        )
+    features: set[str] = set()
+    for feature in geometry["features"]:
+        if feature["id"] in features:
+            raise EngineError("invalid-geometry", "CAD feature identities must be unique.")
+        for key in ("sketchId", "inputId", "targetId", "toolId", "leftId", "rightId"):
+            if key in feature and feature[key] not in features:
+                raise EngineError(
+                    "invalid-geometry", "CAD dependencies must refer to an earlier feature."
+                )
+        if "assetId" in feature and feature["assetId"] not in assets:
+            raise EngineError("invalid-geometry", "CAD import refers to a missing source.")
+        features.add(feature["id"])
+    if geometry["outputFeatureId"] not in features:
+        raise EngineError("invalid-geometry", "CAD output refers to a missing feature.")
+    return geometry
 
 
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 5:
+    if project["schemaVersion"] == 6:
         return project
     source_version = project["schemaVersion"]
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 5
+    upgraded["schemaVersion"] = 6
     if source_version < 3:
         upgraded["namedSelections"] = []
     if source_version == 1:
@@ -151,7 +228,8 @@ def migrate_project(project: Any) -> dict[str, Any]:
                 },
             },
         )
-    upgraded["study"]["solver"]["pinn"]["formulation"] = "strong-form"
+    if source_version < 5:
+        upgraded["study"]["solver"]["pinn"]["formulation"] = "strong-form"
     return validate_project(upgraded)
 
 
@@ -162,6 +240,14 @@ def fingerprint(project: dict[str, Any]) -> str:
         for key, value in project.items()
         if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
+    # v6 separates CAD documents from studies. Existing numerical definitions
+    # retain exactly the v5 physical contract and its independently checked cache.
+    if (
+        canonical.get("schemaVersion") == 6
+        and canonical["geometry"]["kind"] in ("box", "cylinder", "bracket", "profile")
+        and canonical["study"] is not None
+    ):
+        canonical["schemaVersion"] = 5
     # v3 added only copied boundary sets. A migrated v3 definition retains the
     # same physical contract and may keep its validated cache. New v4 profile or
     # traction inputs keep their own schema version in the physical fingerprint.

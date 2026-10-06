@@ -4,6 +4,16 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+### Added
+
+- Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
+- Separate geometry validity and analysis eligibility, with explicit gates for unsupported designs and exact primitive/profile adapters that retain the authored CAD source through the existing material-to-results workflow.
+
+### Changed
+
+- Project schema v6 separates geometry documents from optional studies. Validated v1–v5 inputs migrate explicitly; unchanged numerical inputs preserve compatible cache fingerprints. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
+
+
 ## 0.4.0
 
 ### Changed

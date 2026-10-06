@@ -7,9 +7,10 @@ from phyra_engine.meshing.types import Mesh, Mesh2D
 
 
 def generate_study_mesh(project: dict[str, Any], progress: Progress | None = None) -> Mesh | Mesh2D:
-    from phyra_engine.studies.project import validate_project
+    from phyra_engine.studies.project import numerical_view, validate_numerical_project
 
-    validate_project(project)
+    validate_numerical_project(project)
+    project = numerical_view(project)
     if project["study"].get("dimension") == "2d":
         from phyra_engine.meshing.plane_stress import generate_rectangle
 

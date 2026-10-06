@@ -40,6 +40,15 @@ SHARED_CONTRACTS = {
 }
 # Cached fields are independently checked against the implemented classical operator.
 SPECIFIC_DEPENDENCIES = {
+    "execution.cad": frozenset(
+        (
+            "geometry.cad",
+            "geometry.cad.kernel",
+            "geometry.cad.topology",
+            "geometry.cad.tessellation",
+            "geometry.cad.compatibility",
+        )
+    ),
     "results.plane_stress_validation": frozenset(
         (
             "methods.classical.plane_stress",

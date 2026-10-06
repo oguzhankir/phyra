@@ -8,6 +8,7 @@ fn explicit_verification_flags_include_energy_and_leave_normal_launch_untouched(
         ("--verify-physicsml", Some("2d-compare")),
         ("--verify-profile", Some("2d-profile")),
         ("--verify-energy", Some("2d-energy")),
+        ("--verify-cad", Some("cad")),
         ("--energy-only", None),
         ("--unknown", None),
     ] {

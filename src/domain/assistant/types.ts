@@ -1,4 +1,4 @@
-import type { Project } from '../contracts/types';
+import type { ProjectDefinition as Project } from '../contracts/types';
 
 export type AssistantProvider = 'gemini' | 'openai' | 'anthropic' | 'compatible' | 'ollama';
 export interface AssistantSettings {

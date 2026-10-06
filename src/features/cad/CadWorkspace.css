@@ -1,0 +1,309 @@
+.cad-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-subtle);
+}
+.cad-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.cad-heading h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+.cad-heading p {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+.cad-heading-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.cad-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  overflow-x: auto;
+}
+.cad-ribbon button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.cad-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(300px, 1fr) 280px;
+}
+.cad-tree,
+.cad-properties {
+  padding: 20px 16px;
+  background: var(--surface);
+  overflow: auto;
+}
+.cad-tree {
+  border-right: 1px solid var(--line);
+}
+.cad-properties {
+  border-left: 1px solid var(--line);
+}
+.cad-tree h2,
+.cad-properties h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0 0 18px;
+}
+.cad-properties h3 {
+  font-size: 12px;
+  margin: 24px 0 12px;
+}
+.cad-properties fieldset {
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+}
+.cad-tree ol {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.cad-tree li button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 9px;
+  text-align: left;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.cad-tree li button.active {
+  background: var(--surface-subtle);
+  box-shadow: inset 2px 0 var(--text);
+}
+.cad-tree li small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.cad-tree li em {
+  display: block;
+  font-style: normal;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
+.cad-entity-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-height: 350px;
+  overflow: auto;
+}
+.cad-entity-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.cad-entity-list small,
+.cad-constraint-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+}
+.cad-canvas-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+.cad-viewport {
+  flex: 1;
+  min-height: 250px;
+  position: relative;
+}
+.cad-graphics {
+  position: absolute;
+  inset: 0;
+}
+.cad-graphics canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cad-fit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  font-size: 10px;
+}
+.cad-empty-overlay {
+  position: absolute;
+  max-width: 350px;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+.cad-empty-overlay strong {
+  color: var(--text);
+  font-size: 18px;
+}
+.cad-empty-overlay p {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.cad-sketch-area {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.cad-sketch-area .sketch-work-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 14px;
+  align-items: start;
+}
+.cad-sketch-area .sketch-canvas {
+  min-height: 220px;
+  height: min(350px, calc(100dvh - 480px));
+}
+.cad-sketch-area .sketch-selection-controls {
+  padding-top: 0;
+}
+.cad-sketch-area .sketch-snap {
+  grid-template-columns: 1fr;
+}
+@media (max-width: 1250px) {
+  .cad-sketch-area .sketch-work-area {
+    grid-template-columns: 1fr;
+  }
+  .cad-sketch-area .sketch-canvas {
+    height: clamp(220px, calc(100dvh - 560px), 400px);
+  }
+}
+.cad-evaluation-status {
+  padding: 12px 18px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.cad-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.cad-error {
+  padding: 15px 20px;
+  color: var(--danger, #a34837);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.cad-error p {
+  margin: 8px 0;
+}
+.cad-shape-summary,
+.cad-export {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 24px;
+}
+.cad-shape-summary dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  font-size: 11px;
+  gap: 10px;
+}
+.cad-shape-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.cad-export {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cad-export h2 {
+  margin-bottom: 0;
+}
+.cad-constraint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 6px 0;
+}
+@media (max-width: 1000px) {
+  .cad-layout {
+    grid-template-columns: 170px minmax(250px, 1fr) 240px;
+  }
+  .cad-heading {
+    gap: 12px;
+    padding: 12px;
+  }
+  .cad-heading h1 {
+    font-size: 14px;
+  }
+}
+
+.cad-view-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.cad-view-toggle button {
+  font-size: 11px;
+  background: transparent;
+  border: 0;
+  padding: 7px 10px;
+  color: var(--muted);
+}
+.cad-view-toggle button.active {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-radius: 4px;
+}
+
+.cad-sketch-area .sketch-modal .sketch-canvas {
+  height: 100%;
+  min-height: 250px;
+}
+
+.cad-sketch-area .sketch-pending-actions:empty {
+  display: none;
+}

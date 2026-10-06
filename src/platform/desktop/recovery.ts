@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Project } from '../../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../../domain/contracts/types';
 export type RecoveryRecord = { id: string; savedAt: number; projectName: string; revision: number };
 export type RecoveryInventory = { records: RecoveryRecord[]; unreadableCount: number };
 export type RecoveryReceipt = { accepted: boolean; savedAt: number; revision: number };

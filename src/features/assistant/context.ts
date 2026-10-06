@@ -1,7 +1,7 @@
 import { textBytes } from '../../domain/assistant/prompt';
 import { version as productVersion } from '../../../package.json';
 import type { AssistantContext, AssistantRunSnapshot } from '../../domain/assistant/types';
-import type { Project, Manifest } from '../../domain/contracts/types';
+import type { ProjectDefinition as Project, Manifest } from '../../domain/contracts/types';
 import type { StudyPreparation } from '../../domain/project/readiness';
 import type { ResultInspection } from '../../domain/results/inspection';
 import {
@@ -83,7 +83,7 @@ const topicAliases: readonly [RegExp, readonly string[]][] = [
 export function retrieveHelp(
   question: string,
   section: HelpContext = 'overview',
-  dimension?: Project['study']['dimension'],
+  dimension?: '2d' | '3d',
 ): HelpArticle[] {
   const query = normalizedTerms(question);
   const terms = new Set(
@@ -166,7 +166,7 @@ export function assistantContext(
   const documents = retrieveHelp(
     question,
     study?.section,
-    includeStudy ? study?.project.study.dimension : undefined,
+    includeStudy ? study?.project.study?.dimension : undefined,
   );
   const sourceIds = documents.map((article) => article.id);
   const definition =
@@ -179,7 +179,7 @@ export function assistantContext(
             ? {
                 state:
                   study.manifest.projectId === study.project.id &&
-                  study.manifest.studyId === study.project.study.id &&
+                  study.manifest.studyId === study.project.study?.id &&
                   study.manifest.revision === study.project.revision
                     ? 'current-for-inputs'
                     : 'stale',
@@ -232,7 +232,7 @@ export function assistantContext(
   return {
     kind: definition ? 'study' : 'help',
     projectId: definition ? study!.project.id : null,
-    studyId: definition ? study!.project.study.id : null,
+    studyId: definition ? (study!.project.study?.id ?? null) : null,
     revision: definition ? study!.project.revision : null,
     sourceIds,
     text,

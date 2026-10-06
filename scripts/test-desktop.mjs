@@ -8,7 +8,8 @@ const only3d = arguments_.includes('--3d-only');
 const onlyPhysicsMl = arguments_.includes('--physicsml-only');
 const onlyProfile = arguments_.includes('--profile-only');
 const onlyEnergy = arguments_.includes('--energy-only');
-if ([only3d, onlyPhysicsMl, onlyProfile, onlyEnergy].filter(Boolean).length > 1)
+const onlyCad = arguments_.includes('--cad-only');
+if ([only3d, onlyPhysicsMl, onlyProfile, onlyEnergy, onlyCad].filter(Boolean).length > 1)
   throw new Error('Choose one verification mode, or omit the mode flags');
 const paths = arguments_.filter((argument) => !argument.startsWith('--'));
 if (
@@ -16,11 +17,13 @@ if (
   arguments_.some(
     (argument) =>
       argument.startsWith('--') &&
-      !['--3d-only', '--physicsml-only', '--profile-only', '--energy-only'].includes(argument),
+      !['--3d-only', '--physicsml-only', '--profile-only', '--energy-only', '--cad-only'].includes(
+        argument,
+      ),
   )
 )
   throw new Error(
-    'Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only|--profile-only|--energy-only]',
+    'Usage: npm run test:desktop -- [executable] [--3d-only|--physicsml-only|--profile-only|--energy-only|--cad-only]',
   );
 const executable = path.resolve(
   paths[0] ??
@@ -198,6 +201,7 @@ function assertPhysicsMl(report, energyMode) {
 }
 
 async function verify(mode) {
+  const cad = mode === 'cad';
   const energy = mode === '2d-energy';
   const physicsMl = mode === '2d-compare' || energy;
   const profile = mode === '2d-profile';
@@ -205,13 +209,15 @@ async function verify(mode) {
   const child = spawn(
     executable,
     [
-      profile
-        ? '--verify-profile'
-        : energy
-          ? '--verify-energy'
-          : physicsMl
-            ? '--verify-physicsml'
-            : '--verify-workflow',
+      cad
+        ? '--verify-cad'
+        : profile
+          ? '--verify-profile'
+          : energy
+            ? '--verify-energy'
+            : physicsMl
+              ? '--verify-physicsml'
+              : '--verify-workflow',
     ],
     {
       cwd: tmpdir(),
@@ -237,13 +243,15 @@ async function verify(mode) {
     child.on('error', reject);
     child.on('exit', resolve);
   }).finally(() => clearTimeout(timer));
-  const prefix = profile
-    ? 'desktop-profile'
-    : energy
-      ? 'desktop-energy'
-      : physicsMl
-        ? 'desktop-physicsml'
-        : 'desktop';
+  const prefix = cad
+    ? 'desktop-cad'
+    : profile
+      ? 'desktop-profile'
+      : energy
+        ? 'desktop-energy'
+        : physicsMl
+          ? 'desktop-physicsml'
+          : 'desktop';
   await writeFile(`artifacts/${prefix}-runtime.log`, `${output}\n${diagnostic}`);
   const location = output.match(/PHYRA_VERIFICATION (.+)/)?.[1]?.trim();
   if (!location)
@@ -304,9 +312,25 @@ async function verify(mode) {
   if (physicsMl) assertPhysicsMl(report, energy);
   else if (report.manifest.operation !== 'solve')
     throw new Error('Classical verification did not return a solve');
+  if (
+    cad &&
+    (report.project.geometry.kind !== 'cad' ||
+      !report.cad?.emptyStart ||
+      !report.cad?.evaluated ||
+      !report.cad?.sourcePreserved ||
+      !report.cad?.unsupportedBlocked ||
+      !report.cad?.undoPreserved ||
+      !report.cad?.meshGenerated ||
+      !report.cad?.previewRendered ||
+      !report.cad?.exportIntegrity ||
+      report.cad?.cancellation !== true)
+  )
+    throw new Error(
+      'CAD authoring, compatibility, rendering, exact export or worker cancellation verification failed',
+    );
   if (report.renderer.viewportPng?.startsWith('data:image/png;base64,')) {
     await writeFile(
-      `artifacts/packaged-${profile ? 'profile-' : energy ? 'energy-' : physicsMl ? 'physicsml-' : ''}viewport.png`,
+      `artifacts/packaged-${cad ? 'cad-' : profile ? 'profile-' : energy ? 'energy-' : physicsMl ? 'physicsml-' : ''}viewport.png`,
       Buffer.from(report.renderer.viewportPng.split(',')[1], 'base64'),
     );
     delete report.renderer.viewportPng;
@@ -318,7 +342,8 @@ async function verify(mode) {
 }
 
 await mkdir('artifacts', { recursive: true });
-if (!onlyPhysicsMl && !onlyProfile && !onlyEnergy) await verify('3d');
-if (!only3d && !onlyProfile && !onlyEnergy) await verify('2d-compare');
-if (!only3d && !onlyPhysicsMl && !onlyEnergy) await verify('2d-profile');
-if (!only3d && !onlyPhysicsMl && !onlyProfile) await verify('2d-energy');
+if (!onlyPhysicsMl && !onlyProfile && !onlyEnergy && !onlyCad) await verify('3d');
+if (!only3d && !onlyProfile && !onlyEnergy && !onlyCad) await verify('2d-compare');
+if (!only3d && !onlyPhysicsMl && !onlyEnergy && !onlyCad) await verify('2d-profile');
+if (!only3d && !onlyPhysicsMl && !onlyProfile && !onlyCad) await verify('2d-energy');
+if (!only3d && !onlyPhysicsMl && !onlyProfile && !onlyEnergy) await verify('cad');

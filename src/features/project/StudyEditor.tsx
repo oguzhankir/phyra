@@ -23,13 +23,29 @@ export default function StudyEditor({ workbench }: { workbench: ProjectInspector
           <span>Dimension</span>
         </label>
         <div className="segmented">
-          <button className={is2D ? 'active' : ''} onClick={() => chooseDimension('2d')}>
+          <button
+            disabled={workbench.sourceCad}
+            className={is2D ? 'active' : ''}
+            onClick={() => chooseDimension('2d')}
+          >
             2D
           </button>
-          <button className={!is2D ? 'active' : ''} onClick={() => chooseDimension('3d')}>
+          <button
+            disabled={workbench.sourceCad}
+            className={!is2D ? 'active' : ''}
+            onClick={() => chooseDimension('3d')}
+          >
             3D
           </button>
         </div>
+        {workbench.sourceCad && (
+          <>
+            <button className="secondary full" onClick={workbench.openCad}>
+              Open authored CAD geometry
+            </button>
+            <p className="property-hint">This study dimension follows its exact CAD source.</p>
+          </>
+        )}
         <div className="info-card">
           <Activity size={18} />
           <div>

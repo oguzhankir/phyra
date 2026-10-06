@@ -4,6 +4,7 @@ import type {
   Manifest,
   Operation,
   Progress,
+  ProjectDefinition,
   Project,
   TrainingMetric,
 } from '../domain/contracts/types';
@@ -14,6 +15,7 @@ import {
   type RunStatus,
 } from '../domain/execution/presentation';
 import { supportsPinn } from '../domain/project/study';
+import { isNumericalProject } from '../domain/project/document';
 import { prepareStudy } from '../domain/project/readiness';
 import type { ResultData } from '../domain/results/fields';
 import type { RunTab } from '../features/runs/RunWorkspace';
@@ -36,8 +38,9 @@ interface Props {
   desktop: boolean;
   verificationRef: RefObject<boolean>;
   activity: WorkbenchActivity;
-  project: Project;
-  projectRef: RefObject<Project>;
+  project: ProjectDefinition;
+  analysisProject?: Project | null;
+  projectRef: RefObject<ProjectDefinition>;
   invalidDraftsRef: RefObject<Map<string, string>>;
   initialData?: ResultData | null;
   onStart: (operation: Operation) => void;
@@ -87,6 +90,7 @@ export function useExecutionSession(props: Props) {
   const execute = async (operation: Operation) => {
     if (
       !desktop ||
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current ||
       confirmationRef.current ||
@@ -96,6 +100,7 @@ export function useExecutionSession(props: Props) {
     )
       return;
     if (
+      activity.native.cad?.current ||
       activity.native.execution.current ||
       activity.native.file.current ||
       activity.native.device.current ||
@@ -106,7 +111,14 @@ export function useExecutionSession(props: Props) {
       );
       return;
     }
-    const preparation = prepareStudy(project, invalidDraftsRef.current.size);
+    const numerical = isNumericalProject(project) ? project : callbacks.current.analysisProject;
+    if (!numerical) {
+      callbacks.current.onError(
+        'This geometry has no supported numerical study. Review CAD compatibility first.',
+      );
+      return;
+    }
+    const preparation = prepareStudy(numerical, invalidDraftsRef.current.size);
     if (operation === 'mesh' ? !preparation.canMesh : !preparation.canRun) {
       callbacks.current.onError(
         preparation.checks.find((check) => check.section === preparation.firstMissing)?.detail ??
@@ -114,7 +126,7 @@ export function useExecutionSession(props: Props) {
       );
       return;
     }
-    if ((operation === 'train' || operation === 'compare') && !supportsPinn(project)) {
+    if ((operation === 'train' || operation === 'compare') && !supportsPinn(numerical)) {
       callbacks.current.onError(
         'PINN training and comparison require a rectangular 2D study with force or pressure loads.',
       );
@@ -122,7 +134,7 @@ export function useExecutionSession(props: Props) {
     }
     const snapshot = structuredClone(project);
     const job = ownership.current.begin(snapshot, operation);
-    setRunExecution({ project: snapshot, operation });
+    setRunExecution({ project: structuredClone(numerical), definition: snapshot, operation });
     setBusy(operation);
     busyRef.current = operation;
     activity.native.execution.current = operation;
@@ -162,7 +174,13 @@ export function useExecutionSession(props: Props) {
           message: `frontend buffer received ${received.buffer.byteLength}`,
         });
       setData(received);
-      setRunExecution({ project: snapshot, operation, jobId: manifest.jobId, manifest });
+      setRunExecution({
+        project: structuredClone(numerical),
+        definition: snapshot,
+        operation,
+        jobId: manifest.jobId,
+        manifest,
+      });
       if (verificationRef.current)
         void invoke('verification_trace', { message: 'frontend result set' });
       callbacks.current.onComplete(manifest);
@@ -283,9 +301,11 @@ export function useExecutionSession(props: Props) {
   const refreshDevices = async () => {
     if (
       !desktop ||
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current ||
       deviceBusyRef.current ||
+      activity.native.cad?.current ||
       activity.native.execution.current ||
       activity.native.file.current ||
       activity.native.device.current
@@ -296,7 +316,11 @@ export function useExecutionSession(props: Props) {
     setDeviceBusy(true);
     try {
       setDeviceError(null);
-      setDevices(await getDevices(structuredClone(projectRef.current)));
+      const numerical = isNumericalProject(projectRef.current)
+        ? projectRef.current
+        : callbacks.current.analysisProject;
+      if (!numerical) return;
+      setDevices(await getDevices(structuredClone(numerical)));
     } catch (cause) {
       setDeviceError(String(cause));
       callbacks.current.onError(`Device detection failed: ${String(cause)}`);

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-export type VerificationConfiguration = '3d' | '2d-compare' | '2d-profile' | '2d-energy' | null;
+export type VerificationConfiguration =
+  '3d' | '2d-compare' | '2d-profile' | '2d-energy' | 'cad' | null;
 type VerificationArguments = {
   verification_mode: undefined;
   verification_configuration: undefined;

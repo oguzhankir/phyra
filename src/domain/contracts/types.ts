@@ -1,6 +1,23 @@
 import type { EngineCapabilities } from './capabilities.generated';
-export type { Project } from './project.generated.ts';
-import type { Project } from './project.generated.ts';
+import type {
+  ProjectDefinition,
+  NumericalGeometry,
+  LinearStaticStudy,
+} from './project.generated.ts';
+export type {
+  ProjectDefinition,
+  NumericalGeometry,
+  LinearStaticStudy,
+  CadGeometry,
+  CadFeature,
+  NativeAssetMetadata,
+} from './project.generated.ts';
+/** The validated numerical slice consumed by the existing mechanics workbench. */
+export type NumericalProject = ProjectDefinition & {
+  geometry: NumericalGeometry;
+  study: LinearStaticStudy;
+};
+export type Project = NumericalProject;
 export type Constraint = Project['study']['constraints'][number];
 export type Load = Project['study']['loads'][number];
 export type PinnConfiguration = Project['study']['solver']['pinn'];

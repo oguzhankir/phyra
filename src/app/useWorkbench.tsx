@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Constraint, Load, Project } from '../domain/contracts/types';
+import type { Constraint, Load, Project, ProjectDefinition } from '../domain/contracts/types';
 import {
   nextSelectionName,
   selectedBoundaries,
@@ -11,6 +11,8 @@ import { changeStudyDimension } from '../domain/project/study';
 import { lengthFactor } from '../domain/units';
 import { useModalFocus } from '../shared/ui/useModalFocus';
 import { useExecutionSession, type ExecutionSession } from './useExecutionSession';
+import { useCadVerificationWorkflow } from './useCadVerificationWorkflow';
+import { useCadSession } from './useCadSession';
 import { useProjectSession } from './useProjectSession';
 import { useRecoverySession } from './useRecoverySession';
 import { useVerificationWorkflow } from './useVerificationWorkflow';
@@ -18,7 +20,9 @@ import { useWorkbenchView, type WorkbenchView } from './useWorkbenchView';
 import { useWorkbenchActivity, type NativeActivity } from './workbenchActivity';
 import type { useTheme } from '../features/workbench/theme';
 import type { ProjectDocumentSeed } from './projectDocuments';
+import { isNumericalProject, documentPreparation } from '../domain/project/document';
 import { prepareStudy } from '../domain/project/readiness';
+import { makeProject } from '../features/examples/projects';
 import { closeProject } from '../platform/desktop/bridge';
 
 const uid = () => crypto.randomUUID();
@@ -52,6 +56,7 @@ export function useWorkbench({
   const executionRef = useRef<ExecutionSession | null>(null);
   const viewRef = useRef<WorkbenchView | null>(null);
   const verificationRef = useRef(false);
+  const cadReport = useRef<Record<string, unknown> | null>(null);
   const clearRecoveryRef = useRef<() => Promise<void>>(async () => {});
   const releaseRecoveryRef = useRef<() => Promise<void>>(async () => {});
   const prepareCloseRef = useRef<() => Promise<void>>(async () => {});
@@ -80,8 +85,8 @@ export function useWorkbench({
     onHistoryNavigate: (next, message) => {
       const currentView = viewRef.current;
       if (!currentView) return;
-      const support = next.study.constraints.find((item) => item.id === currentView.constraintId);
-      const load = next.study.loads.find((item) => item.id === currentView.loadId);
+      const support = next.study?.constraints.find((item) => item.id === currentView.constraintId);
+      const load = next.study?.loads.find((item) => item.id === currentView.loadId);
       const selection = next.namedSelections.find(
         (item) => item.id === currentView.namedSelectionId,
       );
@@ -102,9 +107,9 @@ export function useWorkbench({
       currentView.setAnimate(false);
       setNotice(message);
     },
-    onReplace: (_project, result) => {
+    onReplace: (definition, result) => {
       executionRef.current?.reset(result);
-      viewRef.current?.reset(result);
+      viewRef.current?.reset(result, definition);
       setError(null);
     },
     onReference: (id) => {
@@ -116,6 +121,35 @@ export function useWorkbench({
     onError: setError,
     onNotice: setNotice,
   });
+  const cad = useCadSession({
+    documentId: seed.id,
+    desktop,
+    project: session.project,
+    projectRef: session.projectRef,
+    activity,
+    invalidDraftsRef: session.invalidDraftsRef,
+    edit: session.edit,
+    onError: setError,
+    onNotice: setNotice,
+  });
+  const compatibility = cad.current?.receipt.analysisCompatibility;
+  const analysisProject = useMemo<Project | null>(
+    () =>
+      isNumericalProject(session.project)
+        ? session.project
+        : session.project.geometry.kind === 'cad' &&
+            session.project.study &&
+            compatibility?.state === 'supported' &&
+            session.project.study.dimension === compatibility.dimension &&
+            compatibility.numericalGeometry
+          ? {
+              ...session.project,
+              geometry: structuredClone(compatibility.numericalGeometry),
+              study: session.project.study,
+            }
+          : null,
+    [session.project, compatibility],
+  );
   const execution = useExecutionSession({
     documentId: seed.id,
     initialData: seed.data,
@@ -123,6 +157,7 @@ export function useWorkbench({
     activity,
     verificationRef,
     project: session.project,
+    analysisProject,
     projectRef: session.projectRef,
     invalidDraftsRef: session.invalidDraftsRef,
     onStart: (operation) => {
@@ -141,7 +176,7 @@ export function useWorkbench({
   executionRef.current = execution;
   const view = useWorkbenchView({
     appearance,
-    project: session.project,
+    project: analysisProject ?? session.project,
     currentData: execution.currentData,
     invalidDraftsRef: session.invalidDraftsRef,
     onError: setError,
@@ -149,8 +184,11 @@ export function useWorkbench({
   viewRef.current = view;
   const { project, edit, invalidDraftsRef } = session;
   const preparation = useMemo(
-    () => prepareStudy(project, session.invalidDraftLabels.length),
-    [project, session.invalidDraftLabels.length],
+    () =>
+      analysisProject
+        ? prepareStudy(analysisProject, session.invalidDraftLabels.length)
+        : documentPreparation(project, session.invalidDraftLabels.length),
+    [project, analysisProject, session.invalidDraftLabels.length],
   );
   const {
     section,
@@ -165,30 +203,37 @@ export function useWorkbench({
     setSection,
     setAnimate,
   } = view;
-  const is2D = project.study.dimension === '2d';
-  const isPinn = project.study.solver.kind === 'pinn';
-  const regions = regionNames(
-    project.geometry.kind,
-    project.study.dimension,
-    project.geometry.profile,
-  );
+  const is2D =
+    project.study?.dimension === '2d' ||
+    ((project.geometry.kind === 'empty' || project.geometry.kind === 'cad') &&
+      project.geometry.dimension === '2d');
+  const isPinn = project.study?.solver.kind === 'pinn';
+  const regions = analysisProject
+    ? regionNames(
+        analysisProject.geometry.kind,
+        analysisProject.study.dimension,
+        analysisProject.geometry.profile,
+      )
+    : [];
   const factor = lengthFactor(project.displayUnits);
-  const constraint = project.study.constraints.find((item) => item.id === constraintId);
-  const load = project.study.loads.find((item) => item.id === loadId);
+  const constraint = project.study?.constraints.find((item) => item.id === constraintId);
+  const load = project.study?.loads.find((item) => item.id === loadId);
 
-  const { verification, verified, requestedOperation } = useVerificationWorkflow({
-    desktop: desktop && !!seed.verification,
-    project,
-    currentData: execution.currentData,
-    liveMetrics: execution.liveMetrics,
-    fieldSource: view.fieldSource,
-    fieldId: view.fieldId,
-    replace: session.replace,
-    setDeformation: view.setDeformation,
-    setFieldId: view.setFieldId,
-    setFieldSource: view.setFieldSource,
-    setError,
-  });
+  const { verification, verified, requestedOperation, verificationConfiguration } =
+    useVerificationWorkflow({
+      desktop: desktop && !!seed.verification,
+      project: session.project,
+      cadReport,
+      currentData: execution.currentData,
+      liveMetrics: execution.liveMetrics,
+      fieldSource: view.fieldSource,
+      fieldId: view.fieldId,
+      replace: session.replace,
+      setDeformation: view.setDeformation,
+      setFieldId: view.setFieldId,
+      setFieldSource: view.setFieldSource,
+      setError,
+    });
   verificationRef.current = verification;
   useEffect(() => {
     if (requestedOperation) {
@@ -221,6 +266,7 @@ export function useWorkbench({
     dirty: session.dirty,
     invalidDrafts: session.invalidDraftLabels.length,
     blocked:
+      cad.busy ||
       !!execution.busy ||
       !!session.fileBusy ||
       execution.deviceBusy ||
@@ -240,6 +286,7 @@ export function useWorkbench({
   releaseRecoveryRef.current = recovery.release;
   prepareCloseRef.current = recovery.prepareClose;
   const locked =
+    cad.busy ||
     !!execution.busy ||
     !!session.fileBusy ||
     session.transitioning ||
@@ -247,6 +294,7 @@ export function useWorkbench({
     activity.recovery.current ||
     windowClosing;
   const nativeLocked =
+    !!nativeActivity.cad?.current ||
     !!nativeActivity.execution.current ||
     !!nativeActivity.file.current ||
     nativeActivity.device.current;
@@ -291,6 +339,50 @@ export function useWorkbench({
     execution.setRunTab(seed.referenceId === '2d-compare' ? 'comparison' : 'run');
   }, [seed.referenceId]);
 
+  const numericalEdit = (mutation: (next: Project) => void, physical = true) => {
+    if (!analysisProject) return;
+    edit((next: ProjectDefinition) => {
+      if (isNumericalProject(next)) {
+        mutation(next);
+        return;
+      }
+      if (next.geometry.kind !== 'cad' || !next.study) return;
+      const projection: Project = {
+        ...next,
+        geometry: structuredClone(analysisProject.geometry),
+        study: next.study,
+      };
+      mutation(projection);
+      if (JSON.stringify(projection.geometry) !== JSON.stringify(analysisProject.geometry))
+        throw new Error('Edit the source geometry in the CAD workspace.');
+      next.study = projection.study;
+      next.namedSelections = projection.namedSelections;
+      next.name = projection.name;
+      next.displayUnits = projection.displayUnits;
+    }, physical);
+  };
+  const createStudy = (
+    material: { name: string; young: number; poisson: number },
+    thickness: number,
+    meshSize: number,
+  ) => {
+    if (locked || !compatibility || compatibility.state !== 'supported') return;
+    const template = makeProject(
+      compatibility.dimension === '2d' ? 'plane-stress-tension' : 'cantilever',
+    ).study;
+    template.id = uid();
+    template.material = structuredClone(material);
+    template.thickness = thickness;
+    template.mesh.size = meshSize;
+    template.constraints = [];
+    template.loads = [];
+    template.solver.kind = 'fem';
+    edit((next) => {
+      next.study = template;
+    });
+    setSection('material');
+  };
+
   const addConstraint = (boundaries = selected) => {
     if (locked) return;
     if (invalidDraftsRef.current.size) {
@@ -298,7 +390,7 @@ export function useWorkbench({
       return;
     }
     const id = uid();
-    edit((next) =>
+    numericalEdit((next) =>
       next.study.constraints.push({
         id,
         name: `Support ${next.study.constraints.length + 1}`,
@@ -317,7 +409,7 @@ export function useWorkbench({
       return;
     }
     const id = uid();
-    edit((next) =>
+    numericalEdit((next) =>
       next.study.loads.push({
         id,
         name: `Load ${next.study.loads.length + 1}`,
@@ -340,12 +432,12 @@ export function useWorkbench({
     setSection('loads');
   };
   const editConstraint = (change: (item: Constraint) => void) =>
-    edit((next) => {
+    numericalEdit((next) => {
       const item = next.study.constraints.find((candidate) => candidate.id === constraintId);
       if (item) change(item);
     });
   const editLoad = (change: (item: Load) => void) =>
-    edit((next) => {
+    numericalEdit((next) => {
       const item = next.study.loads.find((candidate) => candidate.id === loadId);
       if (item) change(item);
     });
@@ -358,13 +450,13 @@ export function useWorkbench({
       );
       return;
     }
-    const chosen = selectedBoundaries(project, boundaries);
+    const chosen = analysisProject ? selectedBoundaries(analysisProject, boundaries) : [];
     if (!chosen.length) {
       setError('Select boundaries before creating a named selection.');
       return;
     }
     const id = uid();
-    edit(
+    numericalEdit(
       (next) =>
         next.namedSelections.push({
           id,
@@ -380,23 +472,27 @@ export function useWorkbench({
     setSection('selections');
   };
   const editNamedSelection = (change: (item: NamedSelection) => void) =>
-    edit((next) => {
+    numericalEdit((next) => {
       const item = next.namedSelections.find((candidate) => candidate.id === namedSelectionId);
       if (item) change(item);
     }, false);
   const useNamedSelection = (item: NamedSelection) => {
-    if (!selectionIsCompatible(project, item)) {
+    if (!analysisProject || !selectionIsCompatible(analysisProject, item)) {
       setError('This named selection belongs to another geometry. Repair its boundaries first.');
       return;
     }
     setSelected([...item.regions]);
   };
   const chooseDimension = (dimension: Project['study']['dimension']) => {
+    if (project.geometry.kind === 'cad') {
+      setError('Change the source geometry dimension in the CAD workspace.');
+      return;
+    }
     if (invalidDraftsRef.current.size) {
       setError('Complete or revert the numeric input before changing dimension.');
       return;
     }
-    edit((next) => changeStudyDimension(next, dimension));
+    numericalEdit((next) => changeStudyDimension(next, dimension));
     setSelected([]);
     setConstraintId(null);
     setLoadId(null);
@@ -410,7 +506,7 @@ export function useWorkbench({
       setError('Complete or revert the numeric input before deleting a model item.');
       return;
     }
-    edit((next) => {
+    numericalEdit((next) => {
       if (kind === 'support')
         next.study.constraints = next.study.constraints.filter((item) => item.id !== id);
       else if (kind === 'load')
@@ -423,9 +519,31 @@ export function useWorkbench({
     setSelected([]);
   };
 
+  const cadVerification = useCadVerificationWorkflow({
+    enabled: verificationConfiguration === 'cad',
+    ready: recovery.ready && !locked && !nativeLocked,
+    project,
+    projectRef: session.projectRef,
+    analysisProject,
+    currentData: execution.currentData,
+    cad,
+    report: cadReport,
+    edit,
+    numericalEdit,
+    undo: session.undo,
+    createStudy,
+    execute: execution.execute,
+    error,
+  });
+
   return {
     ...session,
+    cadVerification,
     documentId: seed.id,
+    cad,
+    analysisProject,
+    createStudy,
+    cadBusy: cad.busy,
     ...execution,
     ...view,
     desktop,
@@ -442,6 +560,7 @@ export function useWorkbench({
     isPinn,
     regions,
     factor,
+    numericalEdit,
     constraint,
     load,
     namedSelection,

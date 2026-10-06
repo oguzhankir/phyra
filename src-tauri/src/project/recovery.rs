@@ -292,7 +292,7 @@ fn read_record(path: &Path) -> Result<Record, String> {
     }
     let mut record: Record = serde_json::from_slice(&read_bounded(path, MAX_RECORD_BYTES)?)
         .map_err(|_| "The recovery copy could not be read")?;
-    if record.format_version != 1
+    if !matches!(record.format_version, 1 | 2)
         || record.saved_at == 0
         || record.saved_at > MAX_SEQUENCE
         || record.app_version.len() > 40
@@ -405,7 +405,7 @@ fn write_session_checkpoint(
         .filter(|t| *t > 0 && *t <= MAX_SEQUENCE)
         .ok_or("System clock cannot timestamp recovery")?;
     let record = Record {
-        format_version: 1,
+        format_version: 2,
         saved_at,
         app_version: env!("CARGO_PKG_VERSION").into(),
         project: project.clone(),
@@ -749,6 +749,8 @@ pub(crate) async fn write_recovery(
             return Err("Application is closing".into());
         }
         let restored = restored.unwrap_or(false);
+        validate_project(&project)?;
+        super::assets::verify_sources(&super::assets::asset_root(&app)?, &project)?;
         let active = app.state::<EngineState>();
         let active_guard = if restored {
             let guard = active.active.lock().map_err(|e| e.to_string())?;
@@ -833,6 +835,7 @@ pub(crate) async fn read_recovery(
         } else {
             read_client_record(&root, &recovery, &client_id, &recovery_id)?
         };
+        super::assets::verify_sources(&super::assets::asset_root(&app)?, &record.project)?;
         Ok(json!({"project":record.project,"savedAt":record.saved_at}))
     })
     .await
@@ -914,7 +917,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        assert_eq!(restored.project["schemaVersion"], 5);
+        assert_eq!(restored.project["schemaVersion"], 6);
         assert_eq!(restored.project["namedSelections"], json!([]));
         assert_eq!(restored.project["revision"], previous["revision"]);
         assert_eq!(restored.project["geometry"], previous["geometry"]);
@@ -961,7 +964,7 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
         let mut expected = previous;
-        expected["schemaVersion"] = json!(5);
+        expected["schemaVersion"] = json!(6);
         expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
         assert_eq!(restored.project, expected);
         assert_eq!(restored.saved_at, 100);
@@ -972,12 +975,12 @@ mod tests {
     #[test]
     fn incompatible_journal_versions_are_rejected_without_rewriting_source() {
         let temp = tempfile::tempdir().unwrap();
-        for defect in ["v4-future-field", "v6"] {
+        for defect in ["v4-future-field", "v7"] {
             let path = temp.path().join(format!("{defect}.json"));
             let mut previous: Value =
                 serde_json::from_str(include_str!("../tests/fixtures/project-v4.json")).unwrap();
-            if defect == "v6" {
-                previous["schemaVersion"] = json!(6);
+            if defect == "v7" {
+                previous["schemaVersion"] = json!(7);
             } else {
                 previous["study"]["solver"]["pinn"]["formulation"] = json!("deep-energy");
             }

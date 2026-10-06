@@ -1,0 +1,170 @@
+.canonical-project {
+  min-height: 0;
+}
+.project-overview {
+  flex: 1;
+  overflow: auto;
+  padding: 36px clamp(24px, 4vw, 64px);
+  background: var(--surface-subtle);
+}
+.overview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 30px;
+}
+.overview-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 0 0 8px;
+}
+.overview-heading h1 {
+  font-size: 30px;
+  letter-spacing: -0.04em;
+  margin: 0 0 10px;
+}
+.overview-heading span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.overview-project-name {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 600px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+.overview-project-name input {
+  flex: 1;
+}
+.overview-stages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 16px;
+}
+.overview-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 24px;
+  border-radius: 10px;
+  min-height: 322px;
+}
+.overview-stage.complete {
+  border-color: var(--line-strong, var(--line));
+}
+.overview-stage-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  margin-bottom: 22px;
+}
+.overview-stage-step {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.overview-stage h2 {
+  font-size: 18px;
+  margin: 10px 0;
+  letter-spacing: -0.025em;
+}
+.overview-stage p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  flex: 1;
+  margin: 0 0 24px;
+}
+.overview-stage-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.overview-stage button {
+  font-size: 11px;
+}
+.overview-stage.blocked .overview-stage-icon {
+  color: var(--muted);
+}
+.overview-message {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px 18px;
+  margin-top: 22px;
+  font-size: 12px;
+}
+.overview-message.error {
+  color: var(--danger, #a34837);
+}
+.overview-browser-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 22px;
+}
+@media (max-width: 1100px) {
+  .overview-stages {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+  .overview-heading {
+    align-items: flex-start;
+  }
+}
+
+.overview-study-form {
+  max-width: 650px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 24px;
+  border-radius: 10px;
+  margin-top: 24px;
+}
+.overview-study-form h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+.overview-study-form p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.overview-study-form fieldset {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.overview-study-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.overview-study-form fieldset > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.cad-source-inspector {
+  padding: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.cad-source-inspector h2 {
+  font-size: 15px;
+  color: var(--text);
+}

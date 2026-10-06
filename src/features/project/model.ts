@@ -17,6 +17,9 @@ type Setter<T> = Dispatch<SetStateAction<T>>;
 // The inspector consumes a domain definition and explicit edit/view actions, never application lifecycle internals.
 export interface ProjectInspectorModel {
   sketchTarget?: HTMLElement | null;
+  sourceCad?: boolean;
+  openCad?: () => void;
+  reportDraftValidity?: (id: string, label: string | null) => void;
   section: Section;
   showHelp: (context?: HelpContext) => void;
   locked: boolean;
