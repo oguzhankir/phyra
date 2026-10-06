@@ -1,5 +1,6 @@
 use crate::{
     assistant::{self, AssistantState},
+    cad::{self, CadState},
     execution::{
         self,
         state::{stop_owned, EngineState},
@@ -18,6 +19,14 @@ pub(crate) fn run() {
     trace_verification("native-startup");
     let application = tauri::Builder::default()
         .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                let _ = execution::state::cancel_owned_request(
+                    &webview.app_handle().state::<CadState>().0,
+                    None,
+                );
+            }
             trace_verification(&format!(
                 "page-load:{:?}:{}:{}",
                 payload.event(),
@@ -40,6 +49,7 @@ pub(crate) fn run() {
                     if !VERIFICATION_DONE.load(Ordering::SeqCst) {
                         trace_verification("verification-watchdog-expired");
                         stop_owned(&handle.state::<EngineState>());
+                        stop_owned(&handle.state::<CadState>().0);
                         let _ = finish_verification(
                             &handle,
                             json!({"error":"Native desktop workflow timed out before completion"}),
@@ -50,10 +60,17 @@ pub(crate) fn run() {
             Ok(())
         })
         .manage(EngineState::default())
+        .manage(CadState::default())
         .manage(AssistantState::default())
         .manage(ProjectState::default())
         .manage(project::recovery::RecoveryState::default())
         .invoke_handler(tauri::generate_handler![
+            cad::commands::evaluate_cad,
+            cad::commands::cancel_cad,
+            cad::commands::finish_cad,
+            cad::commands::read_cad_buffer,
+            cad::commands::import_cad_source,
+            cad::commands::export_cad,
             execution::commands::run_job,
             execution::commands::get_devices,
             execution::commands::cancel_job,
@@ -103,6 +120,7 @@ pub(crate) fn run() {
         }
         if matches!(event, tauri::RunEvent::Exit) {
             stop_owned(&app.state::<EngineState>());
+            stop_owned(&app.state::<CadState>().0);
             assistant::stop_owned(&app.state::<AssistantState>());
         }
     });

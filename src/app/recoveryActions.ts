@@ -1,6 +1,6 @@
-import type { Project } from '../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
 import { recoverySnapshot } from '../domain/project/recovery';
-import { inputError } from '../domain/project/validation';
+import { documentError } from '../domain/project/document';
 export type RecoveryReceipt = { accepted: boolean; savedAt: number; revision: number };
 type Ports = {
   read: (id: string) => Promise<{ project: Project }>;
@@ -12,7 +12,7 @@ type Ports = {
 /** Adoption is durable before UI publication; removing the previous copy is best-effort cleanup. */
 export async function restoreRecoveryRecord(id: string, ports: Ports): Promise<void> {
   const { project } = await ports.read(id);
-  const validation = inputError(project);
+  const validation = documentError(project);
   if (validation) throw new Error(`Recovery definition is invalid: ${validation}`);
   const receipt = await ports.checkpoint(recoverySnapshot(project));
   if (!receipt.accepted || receipt.revision !== project.revision)

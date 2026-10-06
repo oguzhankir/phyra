@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Project } from '../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
 import { resultIsCurrent } from '../domain/execution/presentation';
 import {
   createHistory,
@@ -7,7 +7,7 @@ import {
   undo as undoEdit,
   redo as redoEdit,
 } from '../domain/project/history';
-import { inputError } from '../domain/project/validation';
+import { blankProject, documentError, documentSizeError } from '../domain/project/document';
 import type { ResultData } from '../domain/results/fields';
 import { makeProject, type ExampleId } from '../features/examples/projects';
 import { loadReference, type ReferenceId } from '../features/examples/references';
@@ -103,8 +103,8 @@ export function useProjectSession(props: Props) {
   const [confirmation, setConfirmation] = useState(false);
   const confirmResolver = useRef<((choice: 'save' | 'discard' | 'cancel') => void) | null>(null);
   const validation = invalidDraftLabels.length
-    ? `${invalidDraftLabels[0]} has an incomplete or nonfinite numeric draft. Complete it, or press Escape to revert before continuing.`
-    : inputError(project);
+    ? `${invalidDraftLabels[0]} has an unfinished draft. Apply, complete or revert it before continuing.`
+    : documentError(project);
   const fileBusyLabel =
     fileBusy === 'open'
       ? 'Opening project'
@@ -115,6 +115,7 @@ export function useProjectSession(props: Props) {
           : 'Exporting fields';
   const edit = useCallback((change: (next: Project) => void, physical = true) => {
     if (
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current ||
       recoveryBusyRef.current ||
@@ -125,7 +126,22 @@ export function useProjectSession(props: Props) {
       const previous = projectRef.current;
       const next = structuredClone(previous);
       change(next);
+      if (
+        JSON.stringify(previous.geometry) !== JSON.stringify(next.geometry) &&
+        (next.geometry.kind === 'cad' || next.geometry.kind === 'empty')
+      ) {
+        if (next.geometry.kind === 'empty' || next.study?.dimension !== next.geometry.dimension)
+          next.study = null;
+        else if (next.study) {
+          next.study.constraints = [];
+          next.study.loads = [];
+        }
+      }
+      const sizeError = documentSizeError(next);
+      if (sizeError) throw new Error(sizeError);
       const transition = recordEdit(historyRef.current, previous, next, physical);
+      const advancedSizeError = documentSizeError(transition.project);
+      if (advancedSizeError) throw new Error(advancedSizeError);
       if (!transition.changed) return;
       historyRef.current = transition.history;
       projectRef.current = transition.project;
@@ -141,6 +157,7 @@ export function useProjectSession(props: Props) {
   }, []);
   const navigateHistory = useCallback((direction: 'undo' | 'redo') => {
     if (
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current ||
       recoveryBusyRef.current ||
@@ -178,6 +195,7 @@ export function useProjectSession(props: Props) {
     async (saveAs = false, automatic = false): Promise<boolean> => {
       if (
         !desktop ||
+        activity.cad?.current ||
         busyRef.current ||
         fileBusyRef.current ||
         recoveryBusyRef.current ||
@@ -185,7 +203,8 @@ export function useProjectSession(props: Props) {
       )
         return false;
       if (
-        activity.native.execution.current ||
+        !!activity.native.cad?.current ||
+        !!activity.native.execution.current ||
         activity.native.file.current ||
         activity.native.device.current
       )
@@ -280,6 +299,7 @@ export function useProjectSession(props: Props) {
       blocked: () =>
         !!busyRef.current ||
         !!fileBusyRef.current ||
+        !!activity.native.cad?.current ||
         !!activity.native.execution.current ||
         !!activity.native.file.current ||
         activity.native.device.current ||
@@ -316,6 +336,7 @@ export function useProjectSession(props: Props) {
     // completion can clear the next document's dirty state or recovery journal.
     if (automaticSave.current && pendingSave.current) await pendingSave.current;
     if (
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current ||
       confirmationRef.current ||
@@ -388,24 +409,14 @@ export function useProjectSession(props: Props) {
     }
   };
   const create = useCallback(
-    async (
-      example?: ExampleId,
-      name?: string,
-      dimension: Project['study']['dimension'] = '3d',
-    ): Promise<boolean> => {
+    async (example?: ExampleId, name?: string, dimension: '2d' | '3d' = '3d'): Promise<boolean> => {
       if (transitionPending.current || deviceBusyRef.current) return false;
       transitionPending.current = true;
       setTransitioning(true);
       try {
         if (!(await canReplace())) return false;
         await callbacks.current.clearRecovery();
-        let next = makeProject(example);
-        if (!example && dimension === '2d') {
-          next = makeProject('plane-stress-tension');
-          next.study.constraints = [];
-          next.study.loads = [];
-          next.namedSelections = [];
-        }
+        const next = example ? makeProject(example) : blankProject(name, dimension);
         if (name?.trim()) next.name = name.trim();
         replace(next);
         setDirty(true);
@@ -429,7 +440,8 @@ export function useProjectSession(props: Props) {
       if (!(await canReplace())) return false;
       if (busyRef.current || fileBusyRef.current || recoveryBusyRef.current) return false;
       if (
-        activity.native.execution.current ||
+        !!activity.native.cad?.current ||
+        !!activity.native.execution.current ||
         activity.native.file.current ||
         activity.native.device.current
       )
@@ -507,12 +519,14 @@ export function useProjectSession(props: Props) {
       !desktop ||
       !currentData ||
       !resultIsCurrent(projectRef.current, currentData) ||
+      activity.cad?.current ||
       busyRef.current ||
       fileBusyRef.current
     )
       return;
     if (
-      activity.native.execution.current ||
+      !!activity.native.cad?.current ||
+      !!activity.native.execution.current ||
       activity.native.file.current ||
       activity.native.device.current
     )

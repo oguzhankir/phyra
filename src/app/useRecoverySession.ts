@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Project } from '../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
 import { recoveryEligible, recoverySnapshot } from '../domain/project/recovery';
-import { inputError } from '../domain/project/validation';
+import { documentError } from '../domain/project/document';
 import { createRecoveryClient, type RecoveryRecord } from '../platform/desktop/recovery';
 import { restoreRecoveryRecord } from './recoveryActions';
 type Props = {
@@ -180,7 +180,7 @@ export function useRecoverySession({
       ? 'Checking recovery'
       : failed
         ? 'Recovery unavailable · save manually'
-        : invalidDrafts || inputError(project)
+        : invalidDrafts || documentError(project)
           ? 'Recovery paused · invalid inputs'
           : !dirty
             ? null

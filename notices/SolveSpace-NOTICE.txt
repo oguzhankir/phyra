@@ -1,0 +1,19 @@
+The bundled local CAD sketch constraint solver uses SolveSpace libslvs 3.2.
+SolveSpace is distributed under GNU GPL version 3. Preserve its COPYRIGHT
+notices and COPYING.txt; do not rely on the Python package's MIT classifier.
+
+Official source: https://github.com/solvespace/solvespace
+Pinned revision: 27b6a080c8b669421bd4d444650c3b8eddec5687
+Exact source dependency revisions are recorded in scripts/sketch-solver.lock.json.
+
+The managed build links the source-pinned mimalloc allocator (MIT) and uses
+source-pinned Eigen headers (retain its per-file notices and COPYING files).
+The target-specific dependency audit and original license files accompany the
+managed build. The numerical SolveSpace source is not modified.
+
+scripts/build-sketch-solver.mjs produces a full target-specific Corresponding
+Source archive under artifacts/sketch-solver, including the exact upstream
+trees, original notices and reconstruction instructions. Distributing a Phyra
+binary requires making that complete source available alongside Phyra's own
+source and build instructions, according to the applicable license terms.
+An upstream repository link or this notice alone is not a source offer.

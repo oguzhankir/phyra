@@ -15,6 +15,22 @@ const target =
       ? 'windows-x64'
       : null;
 assert.ok(target, 'Only verified release target architectures may stage installers');
+const dependencies = JSON.parse(
+  await readFile('src-tauri/resources/licenses/resolved-dependencies.json', 'utf8'),
+);
+const cadAudit = dependencies.native?.find(
+  (item) => item.name === 'OCP/OCCT native dependency audit',
+);
+assert.equal(
+  cadAudit?.auditStatus,
+  'audited',
+  'Installer staging requires a target-specific native CAD dependency audit; development builds remain available',
+);
+assert.equal(
+  cadAudit?.exactSourceStatus,
+  'verified',
+  `Public installer staging requires exact CAD source provenance: ${cadAudit?.sourceProvenanceLimitation ?? 'target source review is incomplete'}`,
+);
 const destination = path.resolve('artifacts/release');
 await mkdir(destination, { recursive: true });
 assert.equal((await readdir(destination)).length, 0, 'Release staging directory must be empty');

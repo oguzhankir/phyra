@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
-import type { Project } from '../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
 import type { RegionId } from '../domain/project/regions';
 import {
   extractField,
@@ -14,6 +14,12 @@ import type { Section } from '../features/workbench/navigation';
 import type { SelectionMode } from '../features/viewport/selection';
 import { selectionIsCompatible } from '../domain/project/namedSelections';
 import type { useTheme } from '../features/workbench/theme';
+import { isNumericalProject } from '../domain/project/document';
+
+type WorkspaceMode = 'overview' | 'cad' | 'analysis';
+export function adoptedWorkspaceMode(project: Project): WorkspaceMode {
+  return isNumericalProject(project) ? 'analysis' : 'overview';
+}
 
 interface Props {
   appearance: ReturnType<typeof useTheme>;
@@ -32,8 +38,14 @@ export function useWorkbenchView({
   onError,
   appearance,
 }: Props) {
-  const is2D = project.study.dimension === '2d';
+  const is2D =
+    project.study?.dimension === '2d' ||
+    ((project.geometry.kind === 'empty' || project.geometry.kind === 'cad') &&
+      project.geometry.dimension === '2d');
   const [section, setSection] = useState<Section>('study');
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() =>
+    adoptedWorkspaceMode(project),
+  );
   const [selected, setSelected] = useState<RegionId[]>([]);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('replace');
   const [constraintId, setConstraintId] = useState<string | null>(null);
@@ -72,7 +84,8 @@ export function useWorkbenchView({
           fieldSource !== 'difference' &&
           fieldSource !== 'relative')),
   );
-  const reset = (result: ResultData | null) => {
+  const reset = (result: ResultData | null, definition: Project = project) => {
+    setWorkspaceMode(adoptedWorkspaceMode(definition));
     setSelected([]);
     setConstraintId(null);
     setLoadId(null);
@@ -124,11 +137,11 @@ export function useWorkbenchView({
     setSection(next);
     if (next === 'constraints' && id) {
       setConstraintId(id);
-      setSelected(project.study.constraints.find((item) => item.id === id)?.regions ?? []);
+      setSelected(project.study?.constraints.find((item) => item.id === id)?.regions ?? []);
     }
     if (next === 'loads' && id) {
       setLoadId(id);
-      setSelected(project.study.loads.find((item) => item.id === id)?.regions ?? []);
+      setSelected(project.study?.loads.find((item) => item.id === id)?.regions ?? []);
     }
     if (next === 'selections' && id) {
       setNamedSelectionId(id);
@@ -143,6 +156,8 @@ export function useWorkbenchView({
       setFieldId('displacement-mag');
   };
   return {
+    workspaceMode,
+    setWorkspaceMode,
     section,
     setSection,
     selectSection,

@@ -1,5 +1,5 @@
 import schema from '../../../contracts/project.schema.json';
-import type { Project } from '../contracts/types';
+import type { ProjectDefinition as Project, NumericalProject } from '../contracts/types';
 
 const MAX_STEPS = 80;
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -19,25 +19,25 @@ export interface HistoryEntry {
 }
 export interface EditHistory {
   readonly projectId: string;
-  readonly studyId: string;
+  readonly studyId: string | null;
   readonly revision: number;
   readonly past: readonly HistoryEntry[];
   readonly future: readonly HistoryEntry[];
   readonly limits: HistoryLimits;
 }
-export interface HistoryChange {
+export interface HistoryChange<T extends Project = NumericalProject> {
   readonly history: EditHistory;
-  readonly project: Project;
+  readonly project: T;
   readonly changed: boolean;
   readonly notice?: string;
 }
 
 // The canonical definition is the only history payload. Workspace fields, trained weights,
 // native file associations and selection state are deliberately outside this boundary.
-function snapshot(project: Project): Project {
+function snapshot<T extends Project>(project: T): T {
   return structuredClone(
     Object.fromEntries(definitionKeys.map((key) => [key, project[key]])),
-  ) as unknown as Project;
+  ) as unknown as T;
 }
 function definitionKey(project: Project): string {
   const definition = snapshot(project);
@@ -53,7 +53,7 @@ function definitionKey(project: Project): string {
   );
 }
 function assertIdentity(history: EditHistory, project: Project): void {
-  if (history.projectId !== project.id || history.studyId !== project.study.id)
+  if (history.projectId !== project.id || history.studyId !== (project.study?.id ?? null))
     throw new Error('Reset edit history before replacing a project or study.');
   if (!Number.isSafeInteger(project.revision) || project.revision < 0)
     throw new Error('Project revision is outside the supported integer range.');
@@ -74,14 +74,14 @@ function nextRevision(current: Project, physical: boolean): number {
 function describeEdit(before: Project, after: Project): string {
   const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
   if (changed(before.geometry, after.geometry)) return 'Edit geometry';
-  if (before.study.dimension !== after.study.dimension) return 'Change study dimension';
-  if (changed(before.study.material, after.study.material)) return 'Edit material';
-  if (changed(before.study.mesh, after.study.mesh)) return 'Edit mesh';
-  if (changed(before.study.constraints, after.study.constraints)) return 'Edit supports';
-  if (changed(before.study.loads, after.study.loads)) return 'Edit loads';
-  if (before.study.thickness !== after.study.thickness) return 'Edit thickness';
-  if (changed(before.study.solver, after.study.solver))
-    return before.study.solver.kind !== after.study.solver.kind
+  if (before.study?.dimension !== after.study?.dimension) return 'Change study dimension';
+  if (changed(before.study?.material, after.study?.material)) return 'Edit material';
+  if (changed(before.study?.mesh, after.study?.mesh)) return 'Edit mesh';
+  if (changed(before.study?.constraints, after.study?.constraints)) return 'Edit supports';
+  if (changed(before.study?.loads, after.study?.loads)) return 'Edit loads';
+  if (before.study?.thickness !== after.study?.thickness) return 'Edit thickness';
+  if (changed(before.study?.solver, after.study?.solver))
+    return before.study?.solver.kind !== after.study?.solver.kind
       ? 'Change solution method'
       : 'Edit training configuration';
   if (changed(before.namedSelections, after.namedSelections)) return 'Edit named selections';
@@ -105,7 +105,7 @@ export function createHistory(
     throw new Error('Edit history limits exceed the supported bounds.');
   const history: EditHistory = {
     projectId: project.id,
-    studyId: project.study.id,
+    studyId: project.study?.id ?? null,
     revision: project.revision,
     past: [],
     future: [],
@@ -115,17 +115,17 @@ export function createHistory(
   return history;
 }
 
-export function recordEdit(
+export function recordEdit<T extends Project>(
   history: EditHistory,
-  before: Project,
-  edited: Project,
+  before: T,
+  edited: T,
   physical: boolean,
   label?: string,
-): HistoryChange {
+): HistoryChange<T> {
   assertCursor(history, before);
   const after = snapshot(edited);
   after.id = before.id;
-  after.study.id = before.study.id;
+  if (after.study && before.study) after.study.id = before.study.id;
   after.revision = before.revision;
   if (definitionKey(before) === definitionKey(after))
     return { history, project: snapshot(before), changed: false };
@@ -153,21 +153,28 @@ export function recordEdit(
   while (past.length > history.limits.steps || retainedBytes > history.limits.bytes)
     retainedBytes -= past.shift()!.bytes;
   return {
-    history: { ...history, revision: after.revision, past, future: [] },
+    history: {
+      ...history,
+      studyId: after.study?.id ?? null,
+      revision: after.revision,
+      past,
+      future: [],
+    },
     project: after,
     changed: true,
   };
 }
 
-export function undo(history: EditHistory, current: Project): HistoryChange {
+export function undo<T extends Project>(history: EditHistory, current: T): HistoryChange<T> {
   assertCursor(history, current);
   const entry = history.past.at(-1);
   if (!entry) return { history, project: snapshot(current), changed: false };
-  const project = snapshot(entry.before);
+  const project = snapshot(entry.before) as T;
   project.revision = nextRevision(current, entry.physical);
   return {
     history: {
       ...history,
+      studyId: project.study?.id ?? null,
       revision: project.revision,
       past: history.past.slice(0, -1),
       future: [...history.future, entry],
@@ -177,15 +184,16 @@ export function undo(history: EditHistory, current: Project): HistoryChange {
   };
 }
 
-export function redo(history: EditHistory, current: Project): HistoryChange {
+export function redo<T extends Project>(history: EditHistory, current: T): HistoryChange<T> {
   assertCursor(history, current);
   const entry = history.future.at(-1);
   if (!entry) return { history, project: snapshot(current), changed: false };
-  const project = snapshot(entry.after);
+  const project = snapshot(entry.after) as T;
   project.revision = nextRevision(current, entry.physical);
   return {
     history: {
       ...history,
+      studyId: project.study?.id ?? null,
       revision: project.revision,
       past: [...history.past, entry],
       future: history.future.slice(0, -1),

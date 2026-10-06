@@ -1,5 +1,6 @@
 use super::{
-    archive::{read_archive_details, write_archive},
+    archive::{read_archive_details_with_assets, write_archive_with_assets},
+    assets::asset_root,
     state::{document_identity, ProjectState},
     validation::validate_project,
 };
@@ -41,13 +42,15 @@ pub(crate) async fn open_project(
             return Ok(None);
         };
         let directory = job_directory(&app)?;
-        let result = open_archive_for_document(
+        let sources = asset_root(&app)?;
+        let result = open_archive_for_document_with_assets(
             &app.state::<ProjectState>(),
             &state,
             owner_id.as_deref(),
             document,
             path,
             &directory,
+            Some(&sources),
             |project| {
                 worker(
                     &app,
@@ -74,6 +77,7 @@ pub(crate) async fn open_project(
 // Reading/validating a cache may acquire the numerical worker. Do not retain
 // the document lock across it: recovery restore holds the worker lock while
 // clearing its file association. Publication rechecks ownership afterwards.
+#[cfg(test)]
 fn open_archive_for_document(
     project_state: &ProjectState,
     state: &EngineState,
@@ -81,6 +85,29 @@ fn open_archive_for_document(
     document: &str,
     path: PathBuf,
     directory: &Path,
+    validate_cache: impl FnOnce(&Value) -> Result<Value, String>,
+) -> Result<Value, String> {
+    open_archive_for_document_with_assets(
+        project_state,
+        state,
+        owner,
+        document,
+        path,
+        directory,
+        None,
+        validate_cache,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_archive_for_document_with_assets(
+    project_state: &ProjectState,
+    state: &EngineState,
+    owner: Option<&str>,
+    document: &str,
+    path: PathBuf,
+    directory: &Path,
+    sources: Option<&Path>,
     validate_cache: impl FnOnce(&Value) -> Result<Value, String>,
 ) -> Result<Value, String> {
     let generation = {
@@ -95,7 +122,7 @@ fn open_archive_for_document(
         }
         documents.generation(document)
     };
-    let opened = read_archive_details(&path, directory)?;
+    let opened = read_archive_details_with_assets(&path, directory, sources)?;
     let manifest = if directory.join("manifest.json").is_file() {
         Some(validate_cache(&opened.project)?)
     } else {
@@ -219,7 +246,7 @@ pub(crate) async fn save_project(
         {
             return Err("This project file is already open in another tab".into());
         }
-        write_archive(&path, &project, cache.as_deref())?;
+        write_archive_with_assets(&path, &project, cache.as_deref(), Some(&asset_root(&app)?))?;
         documents.associate(document, project["id"].as_str().unwrap(), path.clone())?;
         Ok(Some(path.to_string_lossy().into_owned()))
     })
@@ -257,7 +284,8 @@ pub(crate) async fn close_project(
     let mut documents = state.documents.lock().map_err(|e| e.to_string())?;
     documents.require_owner(owner_id.as_deref())?;
     documents.close(&document_id)?;
-    retire_document_result(&app.state::<EngineState>(), &document_id)
+    retire_document_result(&app.state::<EngineState>(), &document_id)?;
+    retire_document_result(&app.state::<crate::cad::CadState>().0, &document_id)
 }
 
 // Automatic writes may only use the association selected by the application.
@@ -286,6 +314,7 @@ fn save_destination(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::archive::write_archive;
 
     // Opaque transport bytes exercise native archive/ownership transactions;
     // this fixture does not claim to be a numerical field or worker validation.

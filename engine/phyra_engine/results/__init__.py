@@ -3,13 +3,13 @@
 from typing import Any
 
 from phyra_engine.errors import EngineError
-from phyra_engine.studies.project import validate_project
+from phyra_engine.studies.project import validate_numerical_project
 
 
 def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict[str, Any]:
     """Validate old/current cached fields or return a structured malformed-cache failure."""
     try:
-        validate_project(project)
+        validate_numerical_project(project)
         if project["study"].get("dimension") == "2d":
             from phyra_engine.results.plane_stress import validate_cached as validate_plane
 

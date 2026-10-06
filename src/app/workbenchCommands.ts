@@ -1,3 +1,4 @@
+import { isNumericalProject } from '../domain/project/document';
 import { primaryOperation, supportsPinn } from '../domain/project/study';
 import type { CommandAction } from '../features/workbench/CommandPalette';
 import {
@@ -98,9 +99,9 @@ export function createWorkbenchCommands(model: CommandModel): CommandAction[] {
       description: 'Compute fields for the current physical inputs.',
       group: 'Solve',
       disabled: !canCompute,
-      action: () => void execute(primaryOperation(project)),
+      action: () => void execute(isNumericalProject(project) ? primaryOperation(project) : 'solve'),
     },
-    ...(supportsPinn(project)
+    ...(isNumericalProject(project) && supportsPinn(project)
       ? [
           {
             id: 'compare',

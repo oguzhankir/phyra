@@ -1,4 +1,5 @@
-import type { Project } from '../contracts/types';
+import type { ProjectDefinition as Project } from '../contracts/types';
+import { isNumericalProject } from './document';
 import { regionNames, type RegionId } from './regions';
 
 export type NamedSelection = Project['namedSelections'][number];
@@ -16,6 +17,7 @@ export function selectionNameKey(name: string): string {
 }
 
 export function selectionIsCompatible(project: Project, selection: NamedSelection): boolean {
+  if (!isNumericalProject(project)) return false;
   const available = new Set(
     regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile).map(
       ({ id }) => id,
@@ -51,6 +53,7 @@ export function nextSelectionName(project: Project): string {
 }
 
 export function selectedBoundaries(project: Project, regions: readonly RegionId[]): RegionId[] {
+  if (!isNumericalProject(project)) return [];
   const chosen = new Set(regions);
   return regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile)
     .map(({ id }) => id)

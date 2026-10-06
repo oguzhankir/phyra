@@ -1,0 +1,25 @@
+{
+  "version": "3.2",
+  "repository": "https://github.com/solvespace/solvespace.git",
+  "revision": "27b6a080c8b669421bd4d444650c3b8eddec5687",
+  "submodules": [
+    {
+      "path": "extlib/eigen",
+      "repository": "https://gitlab.com/libeigen/eigen.git",
+      "revision": "3147391d946bb4b6c68edd901f2add6ac1f31f8c"
+    },
+    {
+      "path": "extlib/mimalloc",
+      "repository": "https://github.com/microsoft/mimalloc",
+      "revision": "f81bf1b31af819a31195e08f9546dc80f8931587"
+    }
+  ],
+  "macosMinimum": "14.0",
+  "abi": {
+    "pointerBytes": 8,
+    "paramBytes": 16,
+    "entityBytes": 56,
+    "constraintBytes": 56,
+    "systemBytes": 88
+  }
+}

@@ -134,12 +134,12 @@ export function validateReference(
       !Object.hasOwn(source.study.solver.pinn, 'formulation'),
       'invalid legacy training settings.',
     );
-    project.schemaVersion = 5;
     project.study.solver.pinn.formulation = 'strong-form';
   }
+  if ([4, 5].includes(source.schemaVersion as number)) project.schemaVersion = 6;
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 5 && project.study.dimension === dimension,
+    project.schemaVersion === 6 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(

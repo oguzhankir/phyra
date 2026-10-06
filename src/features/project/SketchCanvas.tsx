@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useCallback, useId, useRef, useState, type PointerEvent } from 'react';
 import {
   Maximize2,
   MousePointer2,
@@ -35,10 +35,12 @@ type Tool = 'select' | 'rectangle' | 'polyline' | 'hole' | 'slot';
 type Selection = { kind: 'vertex' | 'edge' | 'hole'; index: number } | null;
 type Props = {
   profile: Profile;
+  planeLabel?: string;
   factor: number;
   unit: 'mm' | 'm';
   reservedIds: string[];
   onApply: (profile: Profile) => boolean;
+  onDraftChange?: (dirty: boolean) => void;
   onSelectBoundary: (id: string) => void;
 };
 const tools: { id: Tool; label: string; icon: typeof Square; hint: string }[] = [
@@ -78,7 +80,16 @@ export default function SketchCanvas(props: Props) {
   // A profile update from history or a numeric editor starts a new draft.
   return <SketchDraft key={JSON.stringify(props.profile)} {...props} />;
 }
-function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoundary }: Props) {
+function SketchDraft({
+  profile,
+  planeLabel,
+  factor,
+  unit,
+  reservedIds,
+  onApply,
+  onSelectBoundary,
+  onDraftChange,
+}: Props) {
   const [draft, setDraft] = useState<Profile>(() => structuredClone(profile));
   const [view, setView] = useState(() => sketchBounds(profile));
   const [tool, setTool] = useState<Tool>('select');
@@ -116,6 +127,12 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   const error = profileError(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile);
   const numericError = invalidNumbers.size > 0;
+  const draftCallback = useRef(onDraftChange);
+  draftCallback.current = onDraftChange;
+  useEffect(() => {
+    draftCallback.current?.(dirty || numericError || pending.length > 0);
+    return () => draftCallback.current?.(false);
+  }, [dirty, numericError, pending.length]);
   const canApply = dirty && !error && !numericError && pending.length === 0;
   const cancelTool = () => {
     setPending([]);
@@ -614,7 +631,7 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
           <text x="16" y="26" className="sketch-coordinate">
             {cursor
               ? `X ${formatValue(cursor[0] * factor)} · Y ${formatValue(cursor[1] * factor)} ${unit}`
-              : `XY plane · ${unit}`}
+              : `${planeLabel ?? 'XY plane'} · ${unit}`}
           </text>
         </svg>
         <div className="sketch-selection-controls">
@@ -805,8 +822,8 @@ function SketchDraft({ profile, factor, unit, reservedIds, onApply, onSelectBoun
   return (
     <div className="profile-sketch">
       <p className="property-hint">
-        Draft on the XY plane; Apply records one geometry edit. Leaving Geometry discards unapplied
-        changes. Replacing the loop requires boundary assignment repair.
+        Draft on the {planeLabel ?? 'XY plane'}; Apply records one geometry edit. Apply or revert
+        changes before leaving this editor. Replacing the loop requires boundary assignment repair.
       </p>
       {expanded ? (
         <div className="modal-backdrop">

@@ -45,6 +45,8 @@ import { useModalFocus } from '../shared/ui/useModalFocus';
 import Select from '../shared/ui/Select';
 
 import PropertyInspector from '../features/project/PropertyInspector';
+import CanonicalProjectWorkspace from './CanonicalProjectWorkspace';
+import { isNumericalProject } from '../domain/project/document';
 import { useWorkbench } from './useWorkbench';
 import { createWorkbenchCommands } from './workbenchCommands';
 import WorkbenchOverlays from './WorkbenchOverlays';
@@ -97,6 +99,10 @@ export default function ProjectDocumentWorkspace({
     onRecoveryRestored,
     onRecoveryFailed,
   });
+  const { workspaceMode, setWorkspaceMode } = workbench;
+  useEffect(() => {
+    if (workbench.cadVerification.workspace) setWorkspaceMode(workbench.cadVerification.workspace);
+  }, [workbench.cadVerification.workspace]);
   const probeOwner = useRef<OwnedResultProbe | null>(null);
   const resultSelection = useMemo<ResultFieldSelection | null>(
     () =>
@@ -118,14 +124,16 @@ export default function ProjectDocumentWorkspace({
   );
   const inspection = useMemo(
     () =>
-      inspectResultField(
-        workbench.project,
-        resultSelection,
-        workbench.probe && probeOwner.current?.probe === workbench.probe
-          ? probeOwner.current
-          : null,
-      ),
-    [workbench.project, resultSelection, workbench.probe],
+      workbench.analysisProject
+        ? inspectResultField(
+            workbench.analysisProject,
+            resultSelection,
+            workbench.probe && probeOwner.current?.probe === workbench.probe
+              ? probeOwner.current
+              : null,
+          )
+        : null,
+    [workbench.analysisProject, resultSelection, workbench.probe],
   );
   useEffect(() => {
     if (probeOwner.current && !sameResultSelection(probeOwner.current.selection, resultSelection)) {
@@ -165,6 +173,7 @@ export default function ProjectDocumentWorkspace({
       historyBlocked: workbench.historyBlocked,
       locked: workbench.locked,
       nativeLocked: workbench.nativeLocked,
+      cadBusy: workbench.cadBusy,
       preparation: workbench.preparation,
       recoveryReady: workbench.recovery.ready,
       recoveryPending: workbench.recovery.pending,
@@ -179,7 +188,7 @@ export default function ProjectDocumentWorkspace({
     selectionMode,
     setSelectionMode,
     reportDraftValidity,
-    project,
+    project: definition,
     path,
     dirty,
     locked,
@@ -252,7 +261,11 @@ export default function ProjectDocumentWorkspace({
   const menusBlocked =
     modalBlocked || commandsOpen || help || confirmation || workbench.recovery.prompt;
   const [sketchTarget, setSketchTarget] = useState<HTMLDivElement | null>(null);
-  const editingSketch = section === 'geometry' && project.geometry.kind === 'profile';
+  const project = workbench.analysisProject ?? definition;
+  const editingSketch =
+    definition.geometry.kind !== 'cad' &&
+    section === 'geometry' &&
+    project.geometry.kind === 'profile';
   const stage = stageForSection(section);
   const missingCheck = workbench.preparation.checks.find(
     (check) =>
@@ -345,6 +358,19 @@ export default function ProjectDocumentWorkspace({
     },
     open: onOpen,
   });
+  if (workspaceMode !== 'analysis' || !isNumericalProject(project))
+    return (
+      <NumericDraftContext.Provider value={reportDraftValidity}>
+        <CanonicalProjectWorkspace
+          workbench={workbench}
+          mode={workspaceMode === 'cad' ? 'cad' : 'overview'}
+          active={active}
+          documentId={seed.id}
+          onMode={setWorkspaceMode}
+          onAnalysis={() => setWorkspaceMode('analysis')}
+        />
+      </NumericDraftContext.Provider>
+    );
   return (
     <NumericDraftContext.Provider value={reportDraftValidity}>
       <section
@@ -368,6 +394,7 @@ export default function ProjectDocumentWorkspace({
           />
         }
         <nav className="workbench-workflow" aria-label="Analysis workflow">
+          <button onClick={() => setWorkspaceMode('overview')}>Project overview</button>
           {workflowStages.map((item) => (
             <button
               key={item.id}
@@ -412,10 +439,32 @@ export default function ProjectDocumentWorkspace({
                 onSelectBoundaries={setSelected}
               />
             </div>
-            <PropertyInspector
-              workbench={{ ...workbench, sketchTarget: editingSketch ? sketchTarget : null }}
-              panelId={`properties-panel-${seed.id}`}
-            />
+            {definition.geometry.kind === 'cad' && section === 'geometry' ? (
+              <div className="cad-source-inspector">
+                <h2>Authored CAD geometry</h2>
+                <p>The study uses an exact supported projection of the saved CAD definition.</p>
+                <button
+                  className="secondary"
+                  disabled={locked}
+                  onClick={() => setWorkspaceMode('cad')}
+                >
+                  Open CAD workspace
+                </button>
+                <p>Dimension changes require a compatible source geometry.</p>
+              </div>
+            ) : (
+              <PropertyInspector
+                workbench={{
+                  ...workbench,
+                  project,
+                  sourceCad: definition.geometry.kind === 'cad',
+                  openCad: () => setWorkspaceMode('cad'),
+                  edit: workbench.numericalEdit,
+                  sketchTarget: editingSketch ? sketchTarget : null,
+                }}
+                panelId={`properties-panel-${seed.id}`}
+              />
+            )}
           </aside>
           <div
             className="panel-splitter"
@@ -474,7 +523,14 @@ export default function ProjectDocumentWorkspace({
                   </button>
                 ) : stage.id === 'prepare' ? (
                   <>
-                    <button className="secondary" onClick={() => selectSection('geometry')}>
+                    <button
+                      className="secondary"
+                      onClick={() =>
+                        definition.geometry.kind === 'cad'
+                          ? setWorkspaceMode('cad')
+                          : selectSection('geometry')
+                      }
+                    >
                       Edit geometry
                     </button>
                     <button className="primary" onClick={() => selectSection(reviewSection)}>

@@ -687,7 +687,7 @@ def test_v5_formulation_upgrade_preserves_old_digest_and_keeps_energy_distinct(v
     original = deepcopy(old)
     current = migrate_project(old)
     assert old == original
-    assert current["schemaVersion"] == 5
+    assert current["schemaVersion"] == 6
     assert current["study"]["solver"]["pinn"]["formulation"] == "strong-form"
     assert fingerprint(current) == fingerprint(old)
     current["study"]["solver"]["pinn"]["formulation"] = "potential-energy"

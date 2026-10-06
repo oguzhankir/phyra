@@ -21,6 +21,13 @@ fn profile_region_id(value: &str) -> bool {
 }
 
 fn validate_version(project: &Value, version: u64) -> Result<(), String> {
+    if serde_json::to_vec(project)
+        .map_err(|e| e.to_string())?
+        .len() as u64
+        > crate::platform::files::MAX_JSON
+    {
+        return Err("Project definition exceeds the cumulative 1 MiB limit".into());
+    }
     if project["schemaVersion"].as_u64() != Some(version) {
         return Err("Unsupported project schema version".into());
     }
@@ -29,7 +36,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         2 => include_str!("../../../contracts/project-v2.schema.json"),
         3 => include_str!("../../../contracts/project-v3.schema.json"),
         4 => include_str!("../../../contracts/project-v4.schema.json"),
-        5 => include_str!("../../../contracts/project.schema.json"),
+        5 => include_str!("../../../contracts/project-v5.schema.json"),
+        6 => include_str!("../../../contracts/project.schema.json"),
         _ => return Err("Unsupported project schema version".into()),
     };
     let schema: Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
@@ -39,6 +47,9 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         .map_err(|e| format!("Invalid version {version} project: {e}"))?;
     if version >= 3 {
         validate_named_selections(project)?;
+    }
+    if version == 6 && project["geometry"]["kind"] == "cad" {
+        validate_cad_references(&project["geometry"])?;
     }
     Ok(())
 }
@@ -90,7 +101,79 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
 }
 
 pub(crate) fn validate_project(project: &Value) -> Result<(), String> {
-    validate_version(project, 5)
+    validate_version(project, 6)
+}
+
+// An archive validates design intent, not a promise that a selected solver can
+// execute it. Numerical requests have a separate enforced admission boundary.
+pub(crate) fn validate_numerical_project(project: &Value) -> Result<(), String> {
+    validate_project(project)?;
+    if project["study"].is_null()
+        || !matches!(
+            project["geometry"]["kind"].as_str(),
+            Some("box" | "cylinder" | "bracket" | "profile" | "cad")
+        )
+    {
+        return Err("This geometry is definition-only. Create a supported analysis before meshing or solving.".into());
+    }
+    Ok(())
+}
+
+fn validate_cad_references(geometry: &Value) -> Result<(), String> {
+    let mut assets = HashSet::new();
+    let mut total = 0u64;
+    for asset in geometry["assets"].as_array().ok_or("Missing CAD assets")? {
+        if !assets.insert(asset["id"].as_str().ok_or("Missing CAD asset identity")?) {
+            return Err("CAD asset identities must be unique".into());
+        }
+        total = total
+            .checked_add(
+                asset["byteLength"]
+                    .as_u64()
+                    .ok_or("Invalid CAD asset size")?,
+            )
+            .ok_or("CAD asset size exceeds its limit")?;
+        if total > super::assets::MAX_CAD_ASSETS {
+            return Err("CAD source assets exceed 64 MiB".into());
+        }
+    }
+    let mut features = HashSet::new();
+    for feature in geometry["features"]
+        .as_array()
+        .ok_or("Missing CAD features")?
+    {
+        let id = feature["id"]
+            .as_str()
+            .ok_or("Missing CAD feature identity")?;
+        if features.contains(id) {
+            return Err("CAD feature identities must be unique".into());
+        }
+        for key in [
+            "sketchId", "inputId", "targetId", "toolId", "leftId", "rightId",
+        ] {
+            if let Some(reference) = feature[key].as_str() {
+                if !features.contains(reference) {
+                    return Err(format!(
+                        "CAD feature {id} refers to a missing or later feature"
+                    ));
+                }
+            }
+        }
+        if let Some(asset) = feature["assetId"].as_str() {
+            if !assets.contains(asset) {
+                return Err("CAD import refers to a missing source asset".into());
+            }
+        }
+        features.insert(id);
+    }
+    if !features.contains(
+        geometry["outputFeatureId"]
+            .as_str()
+            .ok_or("Missing CAD output identity")?,
+    ) {
+        return Err("CAD output refers to a missing feature".into());
+    }
+    Ok(())
 }
 
 pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), String> {
@@ -98,7 +181,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     validate_version(&project, version)?;
-    if version == 5 {
+    if version == 6 {
         return Ok((project, false));
     }
     if version == 1 {
@@ -113,8 +196,10 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
     if version < 3 {
         project["namedSelections"] = json!([]);
     }
-    project["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
-    project["schemaVersion"] = json!(5);
+    if version < 5 {
+        project["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
+    }
+    project["schemaVersion"] = json!(6);
     validate_project(&project)?;
     Ok((project, true))
 }

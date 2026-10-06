@@ -1,7 +1,8 @@
 use crate::{
     execution::{
         commands::cancel_job,
-        state::{owned_directory, EngineState},
+        events::RunRequestId,
+        state::{cancel_owned_request, finish_run, owned_directory, register_run, EngineState},
         worker::worker,
     },
     platform::files::{read_bounded, MAX_BLOB, MAX_JSON},
@@ -17,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 use tauri::Manager;
@@ -34,7 +35,9 @@ pub(crate) fn verification_configuration() -> Option<&'static str> {
 }
 
 pub(crate) fn configuration_from_arguments(arguments: &[String]) -> Option<&'static str> {
-    if arguments
+    if arguments.iter().any(|argument| argument == "--verify-cad") {
+        Some("cad")
+    } else if arguments
         .iter()
         .any(|argument| argument == "--verify-profile")
     {
@@ -292,6 +295,39 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
     }
     let project = report["project"].clone();
     validate_project(&project)?;
+    if verification_configuration() == Some("cad") {
+        let job = report["cad"]["jobId"]
+            .as_str()
+            .ok_or("CAD verification has no geometry job")?
+            .to_owned();
+        let geometry = owned_directory(&app.state::<crate::cad::CadState>().0, &job)?;
+        let receipt: Value =
+            serde_json::from_slice(&read_bounded(&geometry.join("receipt.json"), MAX_JSON)?)
+                .map_err(|e| e.to_string())?;
+        if receipt["projectId"] != project["id"]
+            || receipt["outputFeatureId"] != project["geometry"]["outputFeatureId"]
+        {
+            return Err("CAD verification returned an unrelated geometry artifact".into());
+        }
+        for (key, name) in [
+            ("brep", "output.brep"),
+            ("step", "output.step"),
+            ("stepMm", "output-mm.step"),
+        ] {
+            let bytes = read_bounded(&geometry.join(name), MAX_BLOB)?;
+            if receipt["assets"][key]["byteLength"].as_u64() != Some(bytes.len() as u64)
+                || receipt["assets"][key]["sha256"].as_str()
+                    != Some(crate::project::assets::source_hash(&bytes).as_str())
+            {
+                return Err("CAD verification exact geometry export integrity failed".into());
+            }
+        }
+        report["cad"]["exportIntegrity"] = json!(true);
+        report["cad"]["kernel"] = receipt["kernel"].clone();
+        report["cad"]["geometryFingerprint"] = receipt["geometryFingerprint"].clone();
+        verify_cad_cancellation(app, &project, &job, &geometry)?;
+        report["cad"]["cancellation"] = json!(true);
+    }
     let state = app.state::<EngineState>();
     let id = report["manifest"]["jobId"]
         .as_str()
@@ -383,6 +419,99 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
     restored.close().map_err(|e| e.to_string())?;
     verify_owned_runs(app, &project, report, &directory)?;
     report["workerStopped"] = json!(state.active.lock().map_err(|e| e.to_string())?.is_none());
+    Ok(())
+}
+
+fn verify_cad_cancellation(
+    app: &tauri::AppHandle,
+    project: &Value,
+    productive_job: &str,
+    productive_directory: &Path,
+) -> Result<(), String> {
+    let temporary = tempfile::Builder::new()
+        .prefix("verification-cad-cancel-")
+        .tempdir()
+        .map_err(|e| e.to_string())?;
+    let sources = temporary.path().join("sources");
+    fs::create_dir_all(&sources).map_err(|e| e.to_string())?;
+    let output = temporary.path().join("worker");
+    let state = app.state::<crate::cad::CadState>();
+    let request = RunRequestId::parse(uuid::Uuid::new_v4().to_string())?;
+    register_run(&state.0, &request)?;
+    let handle = app.clone();
+    let snapshot = project.clone();
+    let worker_request = request.clone();
+    let published = Arc::new(AtomicBool::new(false));
+    let publication = published.clone();
+    trace_verification("verification-cad-cancel-start");
+    let task = std::thread::spawn(move || {
+        let state = handle.state::<crate::cad::CadState>();
+        crate::cad::worker::evaluate(
+            &handle,
+            &state.0,
+            &snapshot,
+            &output,
+            &sources,
+            &uuid::Uuid::new_v4().to_string(),
+            &worker_request,
+            |receipt| {
+                publication.store(true, Ordering::SeqCst);
+                // This verification never retains a candidate or changes document ownership.
+                Ok(receipt)
+            },
+        )
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut observed_child = None;
+    while std::time::Instant::now() < deadline && !task.is_finished() {
+        let candidate = state
+            .0
+            .active
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_ref()
+            .filter(|active| active.request_id.as_ref() == Some(&request))
+            .map(|active| active.child.clone());
+        if let Some(child) = candidate {
+            let running = child
+                .lock()
+                .map_err(|e| e.to_string())?
+                .try_wait()
+                .map_err(|e| e.to_string())?
+                .is_none();
+            if running {
+                observed_child = Some(child);
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    trace_verification("verification-cad-cancel-request");
+    let acknowledgement = cancel_owned_request(&state.0, Some(&request));
+    let outcome = task.join();
+    let lease_closed = finish_run(&state.0, &request);
+    let outcome = outcome.map_err(|_| "CAD cancellation worker thread panicked".to_string())?;
+    lease_closed?;
+    let reaped = match observed_child {
+        Some(child) => child
+            .lock()
+            .map_err(|e| e.to_string())?
+            .try_wait()
+            .map_err(|e| e.to_string())?
+            .is_some(),
+        None => false,
+    };
+    let cancelled = reaped
+        && acknowledgement == Ok(true)
+        && outcome.is_err()
+        && !published.load(Ordering::SeqCst)
+        && state.0.active.lock().map_err(|e| e.to_string())?.is_none()
+        && owned_directory(&state.0, productive_job)? == productive_directory;
+    temporary.close().map_err(|e| e.to_string())?;
+    if !cancelled {
+        return Err("A running CAD worker was not cancelled/reaped without publication".into());
+    }
+    trace_verification("verification-cad-cancel-acknowledged");
     Ok(())
 }
 

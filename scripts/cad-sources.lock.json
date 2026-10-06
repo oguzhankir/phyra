@@ -1,0 +1,193 @@
+{
+  "version": "8.0.1.1.0",
+  "target": "darwin-arm64",
+  "sources": [
+    {
+      "filename": "OCCT-b8f597c.tar.gz",
+      "url": "https://codeload.github.com/Open-Cascade-SAS/OCCT/tar.gz/b8f597c677811d1f9f4d8a97f5ae2825c0353a42",
+      "sha256": "dba62b81078dd43cec23feba89432be301582341001edad1b93342ad8bda35ea"
+    },
+    {
+      "filename": "ocp-build-eace4e4.tar.gz",
+      "url": "https://codeload.github.com/CadQuery/ocp-build-system/tar.gz/eace4e42cfa2c162ac39bc36864534fe5f5787a6",
+      "sha256": "b6757cee2698380d4b16cc50f296d2ae3264b464685e7d3a984c382e5a02a9f4"
+    },
+    {
+      "filename": "OCP_src_stubs_OSX.zip",
+      "url": "https://github.com/CadQuery/OCP/releases/download/8.0.1.1/OCP_src_stubs_OSX.zip",
+      "sha256": "9b811c378ab7360a004af45f7f254226ac724b7189f8eabafcd8ffafcf278f0e"
+    },
+    {
+      "filename": "FreeImage3180.zip",
+      "url": "https://downloads.sourceforge.net/freeimage/FreeImage3180.zip",
+      "sha256": "f41379682f9ada94ea7b34fe86bf9ee00935a3147be41b6569c9605a53e438fd"
+    },
+    {
+      "filename": "LibRaw-0.22.2.tar.gz",
+      "url": "https://github.com/LibRaw/LibRaw/archive/0.22.2.tar.gz",
+      "sha256": "627928088300ecde6ca91ffd202e189203f04ad61ad12f0fe9dc57b9a7a0fb3c"
+    },
+    {
+      "filename": "LibRaw-cmake-eb98e4.tar.gz",
+      "url": "https://github.com/LibRaw/LibRaw-cmake/archive/eb98e4325aef2ce85d2eb031c2ff18640ca616d3.tar.gz",
+      "sha256": "3cd218bf6d1254de86e27269541277fbfc5bae57a9002ce0b46fbe2a97088b43"
+    },
+    {
+      "filename": "OCP-a6d078c.tar.gz",
+      "url": "https://codeload.github.com/CadQuery/OCP/tar.gz/a6d078cfda3e5e695c68d2bfbfe38e91b0ccb566",
+      "sha256": "78e4d0e97d8b64dab1dace69b82f7cc653c7f1fe119983f1becbe5676c4b1f61"
+    },
+    {
+      "filename": "pybind11-2.13.6.tar.gz",
+      "url": "https://codeload.github.com/pybind/pybind11/tar.gz/v2.13.6",
+      "sha256": "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20"
+    },
+    {
+      "filename": "rapidjson-1.1.0.tar.gz",
+      "url": "https://codeload.github.com/Tencent/rapidjson/tar.gz/v1.1.0",
+      "sha256": "bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e"
+    }
+  ],
+  "nativePackages": [
+    {
+      "filename": "fmt-12.2.0-h99e4e11_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/fmt-12.2.0-h99e4e11_1.conda",
+      "sha256": "d2de3d3aef29e8ca37589228c76b3c1dd7f6d8ccbdd40160b8a6f34e3dd72199",
+      "infoFilename": "info-fmt-12.2.0-h99e4e11_1.tar.zst",
+      "infoSha256": "0c926182042292dd03adda77e5e2e4891fb414fbcf2435f3d573843259635f9a"
+    },
+    {
+      "filename": "freeimage-3.18.0-h87663b4_25.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/freeimage-3.18.0-h87663b4_25.conda",
+      "sha256": "3223ff0cb9719748f86b1d5644fb60302a9d8c656b568b0821bba673f1eaae65",
+      "infoFilename": "info-freeimage-3.18.0-h87663b4_25.tar.zst",
+      "infoSha256": "c46ec006704e314203f0d2d54ccfa53fbd30d38636192014444e74317097c75d"
+    },
+    {
+      "filename": "imath-3.2.2-h13e8271_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/imath-3.2.2-h13e8271_0.conda",
+      "sha256": "18986a94213497b9e60880fbbb71c54ac4f34adf948373d8298af8316fab17fc",
+      "infoFilename": "info-imath-3.2.2-h13e8271_0.tar.zst",
+      "infoSha256": "459f2829ab33fb5a98c138b434f69b5c28cc04e4161c5368b0140f9cef3ba01e"
+    },
+    {
+      "filename": "jxrlib-1.1-h93a5062_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/jxrlib-1.1-h93a5062_3.conda",
+      "sha256": "c9e0d3cf9255d4585fa9b3d07ace3bd934fdc6a67ef4532e5507282eff2364ab",
+      "infoFilename": "info-jxrlib-1.1-h93a5062_3.tar.zst",
+      "infoSha256": "7dfdde16c369421297c6be5fb6f4be4c93743847f5cd006918a97c957d71dff5"
+    },
+    {
+      "filename": "lcms2-2.19.1-hce41798_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda",
+      "sha256": "5f9b511f918e13dfddb8495c1764aec894b66c5a88359737aa302b8899ae25fa",
+      "infoFilename": "info-lcms2-2.19.1-hce41798_3.tar.zst",
+      "infoSha256": "8aa5f08e48e632428932e93ed1bf6ebd362efcc1c55029e3eecfe9781650bf4f"
+    },
+    {
+      "filename": "lerc-4.2.0-h1eee2c3_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lerc-4.2.0-h1eee2c3_0.conda",
+      "sha256": "c97aa17d16d2ac332ba9f184e82ce8f72dcb10e9a10c5f299030be2d44e191b9",
+      "infoFilename": "info-lerc-4.2.0-h1eee2c3_0.tar.zst",
+      "infoSha256": "39721bf6016d9d2185f29a8107f9b65cd158d9f35655b99da9c47325737e2f24"
+    },
+    {
+      "filename": "libjpeg-turbo-3.2.0-h84a0fba_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libjpeg-turbo-3.2.0-h84a0fba_1.conda",
+      "sha256": "05006418f9392c9b723e8428808db106de0350a497832f95f921b85ff1072310",
+      "infoFilename": "info-libjpeg-turbo-3.2.0-h84a0fba_1.tar.zst",
+      "infoSha256": "ffe83e535696b1fff15a77f1fb77b3210d1c5ee7474059eecca3cb422f0c97ca"
+    },
+    {
+      "filename": "liblzma-5.8.3-h8088a28_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/liblzma-5.8.3-h8088a28_1.conda",
+      "sha256": "23d0630046a3e8b164d8f80f2b74ed2605af2e7050ab9913018056402fae4311",
+      "infoFilename": "info-liblzma-5.8.3-h8088a28_1.tar.zst",
+      "infoSha256": "d8f3b78a6f58336c5febeba77c1a5fbb935d2390ccd0aa9493f03b3fb5f675eb"
+    },
+    {
+      "filename": "libpng-1.6.59-hf5e6511_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libpng-1.6.59-hf5e6511_0.conda",
+      "sha256": "4de4dc4cb7432c328c1eaf4f7cc9c6b48c073eab1e9c6723d4533e6d57e7d595",
+      "infoFilename": "info-libpng-1.6.59-hf5e6511_0.tar.zst",
+      "infoSha256": "813e500c2d53306fc597bd4728a1c72c96998f968600cfa949d3c391c0b12dc8"
+    },
+    {
+      "filename": "libraw-0.22.2-h2d05ff4_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libraw-0.22.2-h2d05ff4_0.conda",
+      "sha256": "e3e654527f10346ca39fe628bb6f81dadf946647e5c081f84703ab654ae15a45",
+      "infoFilename": "info-libraw-0.22.2-h2d05ff4_0.tar.zst",
+      "infoSha256": "3b2f8a3367fe3a9d3c104010b3c14358f234d2bf51694e27c1b92af9ce974110"
+    },
+    {
+      "filename": "libtiff-4.7.2-hf67920b_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libtiff-4.7.2-hf67920b_1.conda",
+      "sha256": "847d22a86ae28f66d3888702698254d25bb4eac3a0f64c1fabfb1842ac00be4c",
+      "infoFilename": "info-libtiff-4.7.2-hf67920b_1.tar.zst",
+      "infoSha256": "a05e1c9ba0cba4208deef5d8a3cd3b92adb5f5922aeb07775a97de9ccea1119c"
+    },
+    {
+      "filename": "libwebp-base-1.6.0-h202fb40_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libwebp-base-1.6.0-h202fb40_1.conda",
+      "sha256": "0ff54650d470c7e54cbeffdd53a8c063e055a7bcf784388c0385ce5c4741b0f4",
+      "infoFilename": "info-libwebp-base-1.6.0-h202fb40_1.tar.zst",
+      "infoSha256": "1a127b65a2a7ebf1769c17661b0b61e93eee1767715d085d861ccb4e842053af"
+    },
+    {
+      "filename": "libzlib-1.3.2-h8088a28_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libzlib-1.3.2-h8088a28_3.conda",
+      "sha256": "a18fa5d5bac452401459f966cf0d872224e8080c4ff93c77e168d43ab42ef9d7",
+      "infoFilename": "info-libzlib-1.3.2-h8088a28_3.tar.zst",
+      "infoSha256": "7a82198106f2ebece797093589c15ec6ae9245b137c80bdec5b207d7fbac54e3"
+    },
+    {
+      "filename": "openexr-3.4.15-h3105456_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openexr-3.4.15-h3105456_0.conda",
+      "sha256": "eaca051eac49700b2d06b3d55fb8c15eb04e641f52959edf47130b90b7e5d919",
+      "infoFilename": "info-openexr-3.4.15-h3105456_0.tar.zst",
+      "infoSha256": "e82cc180a9f429d0244a8e6c2141d4842132d2bbe20f2a7825bb5c50d31ae9dc"
+    },
+    {
+      "filename": "openjpeg-2.5.4-h4d1e80c_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjpeg-2.5.4-h4d1e80c_2.conda",
+      "sha256": "e71bd04b5d0e39f39a3c039d021d3b76cd65bee3032e7f859ab7082f0ace8be5",
+      "infoFilename": "info-openjpeg-2.5.4-h4d1e80c_2.tar.zst",
+      "infoSha256": "278c8871c5dd8ee78472a6f69a7a790569a6d176cf33d385e19907646b2f7c72"
+    },
+    {
+      "filename": "openjph-0.31.0-h2a4d681_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjph-0.31.0-h2a4d681_0.conda",
+      "sha256": "853c41f0e041a5c1acce60490ec065e4ca1b43d7b63fbad504980de3a822f719",
+      "infoFilename": "info-openjph-0.31.0-h2a4d681_0.tar.zst",
+      "infoSha256": "b4c614cc965c59f5909339bfde831cccb3f3a58cc5a7604779a401901566b80f"
+    },
+    {
+      "filename": "zstd-1.5.7-hf451053_7.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda",
+      "sha256": "da867f5092eb0cb746d353694f0098031fd9817a4ce7d5743121209ae0f406ca",
+      "infoFilename": "info-zstd-1.5.7-hf451053_7.tar.zst",
+      "infoSha256": "090f38f5bf88966dab440f3faa592bdcff226194cda781b139649a9d018bdf92"
+    },
+    {
+      "filename": "libcxx-23.1.2-h55c6f16_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcxx-23.1.2-h55c6f16_0.conda",
+      "sha256": "087a610bacee7901d259ef72c6f060d795ab26831bd7541ba75ced786a5a63f9",
+      "infoFilename": "info-libcxx-23.1.2-h55c6f16_0.tar.zst",
+      "infoSha256": "6770ed2430f705dcf490cd692dafe48c1a47768792c2891c76ba9e467e6fed4f"
+    },
+    {
+      "filename": "libdeflate-1.25-he7e0567_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libdeflate-1.25-he7e0567_1.conda",
+      "sha256": "d896f4aa4ce4c590c2838678cb1917356fdb461d2a189991c0280c818c362172",
+      "infoFilename": "info-libdeflate-1.25-he7e0567_1.tar.zst",
+      "infoSha256": "8b48723ad2e125a683624b51138949f98ad76cebbb658ebc4388e4027d9ddaed"
+    },
+    {
+      "filename": "freetype-2.12.1-hadb7bae_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/osx-arm64/freetype-2.12.1-hadb7bae_2.conda",
+      "sha256": "791673127e037a2dc0eebe122dc4f904cb3f6e635bb888f42cbe1a76b48748d9",
+      "infoFilename": "info-freetype-2.12.1-hadb7bae_2.tar.zst",
+      "infoSha256": "76176362b256fccfa65d84a71b9eeee173ac23e99adac76353d5f64f723162a7"
+    }
+  ]
+}

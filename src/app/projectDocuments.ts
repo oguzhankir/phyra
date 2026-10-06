@@ -1,11 +1,12 @@
 import type { RefObject } from 'react';
-import type { Project } from '../domain/contracts/types';
+import type { ProjectDefinition as Project } from '../domain/contracts/types';
 import type { ResultData } from '../domain/results/fields';
 import type { ResultInspection } from '../domain/results/inspection';
 import { makeProject, type ExampleId } from '../features/examples/projects';
 import type { ReferenceId } from '../features/examples/references';
 import type { RecoveryRecord } from '../platform/desktop/recovery';
 import type { Workbench } from './useWorkbench';
+import { blankProject } from '../domain/project/document';
 
 export interface ProjectDocumentSeed {
   id: string;
@@ -47,6 +48,7 @@ export type ProjectDocumentSnapshot = Pick<
   | 'historyBlocked'
   | 'locked'
   | 'nativeLocked'
+  | 'cadBusy'
   | 'preparation'
 > & {
   documentId: string;
@@ -173,12 +175,6 @@ export function newProjectDocument(
   dimension: '2d' | '3d' = '3d',
   example?: ExampleId,
 ): ProjectDocumentSeed {
-  const project = makeProject(example ?? (dimension === '2d' ? 'plane-stress-tension' : undefined));
-  if (!example) {
-    project.name = name?.trim() || 'Untitled project';
-    project.study.constraints = [];
-    project.study.loads = [];
-    project.namedSelections = [];
-  }
+  const project = example ? makeProject(example) : blankProject(name, dimension);
   return { id: crypto.randomUUID(), project, dirty: true };
 }

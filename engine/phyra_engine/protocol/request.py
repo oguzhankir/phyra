@@ -7,7 +7,7 @@ from typing import Any, BinaryIO, Literal, cast
 
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_REQUEST_BYTES
-from phyra_engine.studies.project import validate_project
+from phyra_engine.studies.project import validate_numerical_project
 
 PROTOCOL_VERSION = 1
 Operation = Literal["mesh", "solve", "validate", "train", "compare", "devices"]
@@ -34,7 +34,7 @@ class StudyRequest:
         job_id = job_identity(payload["jobId"])
         validate_version(payload["protocolVersion"])
         operation = validate_operation(payload["operation"])
-        project = validate_project(payload["project"])
+        project = validate_numerical_project(payload["project"])
         snapshot = json.dumps(project, separators=(",", ":"), allow_nan=False).encode("utf-8")
         return cls(job_id, operation, snapshot)
 

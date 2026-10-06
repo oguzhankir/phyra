@@ -28,7 +28,7 @@ export function assistantStudyContext(
   const matches =
     !!runManifest &&
     runManifest.projectId === active.project.id &&
-    runManifest.studyId === active.project.study.id &&
+    runManifest.studyId === active.project.study?.id &&
     runManifest.revision === active.project.revision;
   const state: AssistantRunSnapshot['state'] =
     active.runStatus === 'running' || active.runStatus === 'preparing'
@@ -40,25 +40,27 @@ export function assistantStudyContext(
           : matches
             ? 'current'
             : 'stale';
-  const run: AssistantRunSnapshot | null = jobId
-    ? {
-        jobId,
-        studyId:
-          active.runExecution?.project.study.id ?? runManifest?.studyId ?? active.project.study.id,
-        inputFingerprint: runManifest?.fingerprint ?? null,
-        state,
-        summary: JSON.stringify({
-          operation: active.runExecution?.operation ?? runManifest?.operation,
-          status: active.runStatus,
-          revision: active.runExecution?.project.revision ?? runManifest?.revision,
-          progress: active.progress,
-          error: active.error,
-          statistics: runManifest?.statistics ?? null,
-          summary: runManifest?.summary ?? null,
-          inspection: active.inspection?.jobId === jobId ? active.inspection : null,
-        }),
-      }
-    : null;
+  const runStudyId =
+    active.runExecution?.project.study.id ?? runManifest?.studyId ?? active.project.study?.id;
+  const run: AssistantRunSnapshot | null =
+    jobId && runStudyId
+      ? {
+          jobId,
+          studyId: runStudyId,
+          inputFingerprint: runManifest?.fingerprint ?? null,
+          state,
+          summary: JSON.stringify({
+            operation: active.runExecution?.operation ?? runManifest?.operation,
+            status: active.runStatus,
+            revision: active.runExecution?.project.revision ?? runManifest?.revision,
+            progress: active.progress,
+            error: active.error,
+            statistics: runManifest?.statistics ?? null,
+            summary: runManifest?.summary ?? null,
+            inspection: active.inspection?.jobId === jobId ? active.inspection : null,
+          }),
+        }
+      : null;
   return {
     documentId: active.documentId,
     project: active.project,

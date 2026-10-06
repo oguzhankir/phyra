@@ -66,7 +66,7 @@ def test_version_three_upgrade_preserves_sets_and_physical_digest():
     prior["namedSelections"] = [selection()]
     expected_fingerprint = fingerprint(prior)
     upgraded = migrate_project(prior)
-    assert upgraded["schemaVersion"] == 5
+    assert upgraded["schemaVersion"] == 6
     assert upgraded["namedSelections"] == prior["namedSelections"]
     assert fingerprint(upgraded) == expected_fingerprint
 
@@ -156,7 +156,7 @@ def test_version_two_migration_preserves_exact_independent_canonical_digest():
     ).hexdigest()
     upgraded = migrate_project(prior)
     assert prior == prior_copy
-    assert upgraded["schemaVersion"] == 5
+    assert upgraded["schemaVersion"] == 6
     assert upgraded["namedSelections"] == []
     expected_study = deepcopy(prior["study"])
     expected_study["solver"]["pinn"]["formulation"] = "strong-form"

@@ -10,8 +10,9 @@ import {
   invokeVerification as invoke,
   type VerificationConfiguration,
 } from '../platform/desktop/verification';
-import type { Project, TrainingMetric } from '../domain/contracts/types';
+import type { ProjectDefinition, TrainingMetric } from '../domain/contracts/types';
 import type { ResultData, FieldId, FieldSource } from '../domain/results/fields';
+import { blankProject } from '../domain/project/document';
 import { makeProject } from '../features/examples/projects';
 
 export function verificationProject(configuration: NonNullable<VerificationConfiguration>) {
@@ -41,12 +42,13 @@ function isComparison(configuration: VerificationConfiguration) {
 }
 type Props = {
   desktop: boolean;
-  project: Project;
+  project: ProjectDefinition | null;
+  cadReport?: RefObject<Record<string, unknown> | null>;
   currentData: ResultData | null;
   liveMetrics: RefObject<TrainingMetric[]>;
   fieldSource: FieldSource;
   fieldId: FieldId;
-  replace: (project: Project, data?: ResultData | null) => void;
+  replace: (project: ProjectDefinition, data?: ResultData | null) => void;
   setDeformation: Dispatch<SetStateAction<'off' | 'actual' | 'auto' | 'custom'>>;
   setFieldId: Dispatch<SetStateAction<FieldId>>;
   setFieldSource: Dispatch<SetStateAction<FieldSource>>;
@@ -55,6 +57,7 @@ type Props = {
 export function useVerificationWorkflow({
   desktop,
   project,
+  cadReport,
   currentData,
   liveMetrics,
   fieldSource,
@@ -82,7 +85,11 @@ export function useVerificationWorkflow({
           void invoke('verification_trace', {
             message: `frontend verification configuration: ${configuration}`,
           });
-          replace(verificationProject(configuration));
+          replace(
+            configuration === 'cad'
+              ? blankProject('CAD desktop verification')
+              : verificationProject(configuration),
+          );
           setDeformation('actual');
           setVerificationConfiguration(configuration);
           setVerification(true);
@@ -96,7 +103,13 @@ export function useVerificationWorkflow({
       });
   }, [desktop]);
   const verified = (report: Record<string, unknown>) => {
-    if (!verification || verificationSent.current || !currentData) return;
+    if (
+      !verification ||
+      verificationSent.current ||
+      !currentData ||
+      (verificationConfiguration === 'cad' && !cadReport?.current)
+    )
+      return;
     void invoke('verification_trace', { message: `frontend rendered ${fieldId}` });
     if (isComparison(verificationConfiguration)) {
       const reports = verificationReports.current;
@@ -144,6 +157,7 @@ export function useVerificationWorkflow({
     void invoke('verification_complete', {
       report: {
         project,
+        ...(verificationConfiguration === 'cad' ? { cad: cadReport?.current } : {}),
         manifest: currentData.manifest,
         renderer: verificationDisplacement.current,
         stressRenderer: { ...report, viewportPng: null },
@@ -151,10 +165,10 @@ export function useVerificationWorkflow({
     }).catch((cause) => setError(String(cause)));
   };
   const requestedOperation: 'solve' | 'compare' | null =
-    verification && verificationConfiguration
+    verification && verificationConfiguration && verificationConfiguration !== 'cad'
       ? isComparison(verificationConfiguration)
         ? 'compare'
         : 'solve'
       : null;
-  return { verification, verified, requestedOperation };
+  return { verification, verified, requestedOperation, verificationConfiguration };
 }

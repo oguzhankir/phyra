@@ -58,7 +58,7 @@ describe('project archive publication', () => {
       persistProjectSnapshot(snapshot({ path: null, automatic: true }), io),
     ).rejects.toThrow('Save this project once');
     const invalid = snapshot();
-    invalid.project.geometry.length = 0;
+    invalid.project.study!.material.young = 0;
     await expect(persistProjectSnapshot(invalid, io)).rejects.toThrow();
     expect(io.write).not.toHaveBeenCalled();
     expect(io.clearRecovery).not.toHaveBeenCalled();

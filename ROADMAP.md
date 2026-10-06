@@ -1,6 +1,6 @@
 # Phyra — Product Vision and Roadmap
 
-**Reviewed:** 3 October 2026
+**Reviewed:** 6 October 2026
 
 This is Phyra's single product roadmap. It describes the current foundation, the product destination, and the evidence required before capabilities are presented as supported. It is organized by reusable engineering capabilities and dependency order, not by intermediate release promises or delivery dates.
 
@@ -56,7 +56,7 @@ The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM
 | Capability | Current status | Verified scope and remaining limit |
 |---|---|---|
 | Desktop and local execution | Completed, limited | Tauri 2, React/TypeScript and Three.js; isolated Python workers, cancellation, cleanup and run ownership |
-| Geometry-to-results workflow | Completed, limited | Parametric box, cylinder and connected bracket solids; rectangular and bounded line/arc/circular-hole 2D profiles; central sketch drafts including exact slots and split straight edges; no general constrained sketcher or imported CAD |
+| Geometry-to-results workflow | Completed, limited | Parametric box, cylinder and connected bracket solids; rectangular and bounded line/arc/circular-hole 2D profiles; central sketch drafts including exact slots and split straight edges; exact CAD authoring is separate from the bounded numerical domain adapters |
 | 3D classical elasticity | Completed, limited | Homogeneous isotropic, small-strain linear static solids with first-order tetrahedra |
 | 2D classical elasticity | Completed, limited | Rectangle/profile plane stress with constant-strain triangles, physical thickness and independent Kirsch checks for the matching quarter-plate case |
 | Supports and loads | Completed, limited | Component restraints, prescribed displacement, total force and pressure; typed affine/Kirsch spatial traction for 2D FEM and potential-energy PINN |
@@ -68,7 +68,7 @@ The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM
 | Project tabs and preparation | Implemented, bounded | Up to 32 isolated documents, adjacent tree/properties, boundary/object context actions and compact workflow/checks; meshed worker restraint validation remains authoritative |
 | Device coverage | Partial | CPU reference and measured Apple MPS PINN path on available hardware; CUDA remains unverified |
 | Desktop distribution | Partial | Hosted package/workflow evidence on macOS 15 Apple Silicon and Windows Server 2022 x64; minimum-version, clean consumer installation and production distribution evidence remain open |
-| CAD authoring and neutral import | Planned | No constrained sketcher, feature history, general B-rep editing or neutral CAD import |
+| CAD authoring and neutral import | Implemented, bounded | Local exact box/cylinder, constrained line/arc/circle sketch, extrusion, revolution, Boolean, fillet/chamfer and STEP import/export; bounded feature recipes and topology inspection. Advanced surfaces, assemblies and general imported-solid analyses remain open. |
 | Broader classical physics and materials | Planned | No unrestricted CAD domains, multiple-material regions, thermal, nonlinear, dynamic or contact solver |
 | Reusable Physics ML models | Planned / research | No validated operator, mesh/graph or geometry-conditioned product workflow |
 | BYOK documentation/study assistant | Implemented, limited | Independent saved provider connections, account-discovered model selection in chat, OS credential storage, automatic bounded study context on deliberate Send and cited local history; broader provider/platform workflow evidence remains open |
@@ -77,7 +77,7 @@ The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM
 
 Baseline evidence is in the [independent engine references](engine/tests), [frontend domain and feature tests](src/domain), [native lifecycle and persistence tests](src-tauri/src/tests), and [packaged workflow verifier](scripts/test-desktop.mjs). Hosted verification at [commit 3498f34](https://github.com/oguzhankir/phyra/actions/runs/36761517423) passed 168 frontend, 234 quick Python, 3 slow numerical and 38 macOS / 37 Windows native tests. Packaged FEM/PINN, rendering, save/reopen, cancellation, recovery and device workflows were exercised on the hosted macOS and Windows targets. This does not establish representative-user usability, minimum macOS 14 execution, manual consumer installation or untested GPU support.
 
-The current project archive schema is version 5, including explicit Physics ML formulation, bounded exact profiles and typed traction. Existing v1/v2/v3/v4 data is validated against frozen schemas before migration; compatible primitive caches pass normal fingerprint/field validation and v1 caches are discarded. Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit. Raising limits is not a scalability milestone; memory, rendering, persistence and numerical behavior must be measured together. The hosted baseline above predates subsequent profile, tab, sketch and assistant changes and does not verify those later workflows.
+The current project archive schema is version 6, separating empty/CAD documents from optional studies and preserving exact source recipes. Existing v1/v2/v3/v4/v5 data is validated against frozen schemas before migration; compatible primitive caches pass normal fingerprint/field validation and v1 caches are discarded. Current safety limits include 12,000 nodes, 50,000 cells, 100,000 surface triangles, a 64 MiB binary-buffer limit and a 1 MiB JSON limit. Raising limits is not a scalability milestone; memory, rendering, persistence and numerical behavior must be measured together. The hosted baseline above predates subsequent profile, tab, sketch and assistant changes and does not verify those later workflows.
 
 ## 3. Capability status and product contract
 

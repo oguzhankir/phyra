@@ -40,7 +40,12 @@ from phyra_engine.results.plane_stress_validation import (
     validate_result,
     validate_training,
 )
-from phyra_engine.studies.project import _finite_tree, fingerprint, validate_project
+from phyra_engine.studies.project import (
+    _finite_tree,
+    fingerprint,
+    numerical_view,
+    validate_numerical_project,
+)
 
 QUALITY = "triangle mean ratio: 4 sqrt(3) A / sum(edge length squared)"
 
@@ -104,6 +109,8 @@ def write_output(
     started_at: str | None = None,
     duration_seconds: float | None = None,
 ) -> dict[str, Any]:
+    source_project = project
+    project = numerical_view(project)
     values = {
         "positions": mesh.positions,
         "cells": mesh.cells,
@@ -139,7 +146,7 @@ def write_output(
         "projectId": project["id"],
         "studyId": project["study"]["id"],
         "revision": project["revision"],
-        "fingerprint": fingerprint(project),
+        "fingerprint": fingerprint(source_project),
         "jobId": job_id,
         "meshId": mesh_id(mesh),
         "operation": operation,
@@ -208,7 +215,7 @@ def write_output(
     if pinn and result:
         manifest["comparison"] = comparison(result, pinn)
         manifest["pinnSummary"] = pinn["summary"]
-    validate_cached(project, manifest, bytes(blob))
+    validate_cached(source_project, manifest, bytes(blob))
     output.mkdir(parents=True, exist_ok=True)
     for name, content in (
         ("buffer.bin", bytes(blob)),
@@ -221,13 +228,15 @@ def write_output(
 
 
 def validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict[str, Any]:
-    validate_project(project)
+    validate_numerical_project(project)
+    source_project = project
+    project = numerical_view(project)
     _finite_tree(manifest)
     expected = {
         "protocolVersion": 1,
         "projectId": project["id"],
         "studyId": project["study"]["id"],
-        "fingerprint": fingerprint(project),
+        "fingerprint": fingerprint(source_project),
         "status": "succeeded",
         "coordinateFrame": "cartesian-global-SI",
         "stressComponents": STRESS_COMPONENTS,

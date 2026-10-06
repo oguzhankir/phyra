@@ -12,6 +12,7 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.events import Cancellation, Metrics, Progress
 from phyra_engine.meshing.types import Mesh, Mesh2D
 from phyra_engine.results.comparison import MAPPING
+from phyra_engine.studies.project import numerical_view
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ METHODS = (
 
 
 def methods_for_operation(project: dict[str, Any], operation: str) -> tuple[Method, ...]:
+    project = numerical_view(project)
     dimension = project["study"].get("dimension", "3d")
     formulation = project["study"].get("formulation", "solid")
     if operation == "mesh":
