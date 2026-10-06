@@ -99,13 +99,16 @@ export const helpArticles: readonly HelpArticle[] = [
         title: 'Create and evaluate geometry',
         steps: [
           'Create an empty 2D or 3D project, then open Geometry from the project overview.',
-          'Create a box/cylinder or draft a line/arc/circle sketch. Sketch constraints belong to the authored graph; Apply commits drafts into the project definition.',
-          'Add extrusion, revolution, Boolean, fillet or chamfer operations. Select evaluated, unambiguous edges before adding an edge treatment.',
+          'Create a box/cylinder, or choose New sketch and its plane. Draw line/arc/circle geometry and define loops. Sketch constraints belong to the authored graph.',
+          'Use Solve constraints to inspect native DOF or conflict IDs while a sketch is still open. Successful solving updates authored coordinates in one undoable edit. Finish sketch, then select the sketch for Extrude or Revolve.',
+          'Add extrusion, revolution, Boolean, fillet, chamfer or Move / rotate operations. Select evaluated, unambiguous edges before adding an edge treatment.',
           'Evaluate geometry in the local isolated worker. Inspect exact shape measurements, faces/edges/bodies and sketch degrees of freedom. Fix conflicting constraints or failed operations before proceeding.',
         ],
         paragraphs: [
           'OpenCASCADE evaluates the exact shape; SolveSpace libslvs solves bounded sketch constraints. Display triangles are a rendering approximation and never become the FEM mesh. Underconstrained sketches may evaluate with their current coordinates; zero degrees of freedom means fully constrained, not that the design is physically valid.',
           'A recipe supports up to 128 features. Each sketch supports 256 points/curves, 512 constraints and 64 loops; the complete project definition has a cumulative 1 MiB limit. Imported source bytes are stored separately. Oversized edits are rejected while preserving the previous definition.',
+          'The sketch canvas provides Select, Line, connected Polyline, Rectangle, Circle and 3-point arc. Endpoint/origin/grid snapping and horizontal/vertical guides help create explicit graph connections and constraints. Shift-click extends selection; drag points in Select to edit coordinates. Wheel zooms, middle-button or Space-drag pans, and Fit restores the sketch view. These are drawing aids; native constraint solving remains an explicit action.',
+          'Auto rebuild updates closed modeling edits after a short pause and pauses during sketch editing. Rebuild geometry remains available for deliberate evaluation. Standard model views and Fit change the camera; Move / rotate creates an authored rigid-transform feature. Translation uses the displayed length unit, angles are displayed in degrees and stored in radians.',
         ],
       },
       {
@@ -118,8 +121,17 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Analysis gate and topology repair',
         paragraphs: [
-          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. General STEP, revolution, Boolean and edge-treatment outputs remain editable CAD until a matching numerical adapter exists.',
+          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. General STEP, revolution, Boolean, edge-treatment and Move / rotate outputs remain editable CAD until a matching numerical adapter exists.',
           'Content references identify unchanged geometry entities. Changed or coincident ambiguous entities require explicit repair. Geometry edits invalidate incompatible assignments and old results; selecting a face does not assign a physical law or establish solver support. Thermal, multilayer materials, inverse material estimation and space-environment studies remain roadmap work.',
+        ],
+      },
+      {
+        title: 'Sketch constraints and assistant guidance',
+        paragraphs: [
+          'Authored sketch constraints include fixed point, coincident points, point distance, horizontal/vertical line, curve diameter, equal line length, parallel/perpendicular lines and equal curve radius. Values remain SI metres; fixed points explicitly hold authored coordinates. Geometry constraints are separate from analysis supports and loads.',
+          'Solve constraints works on an open sketch independently of exact-shape rebuilding. Drawing and dragging do not continuously run the native solver. Successful solving updates authored coordinates; a failed solve retains them and exposes its constraint diagnostics. An underconstrained sketch may move when explicit constraints are added; no hidden anchors are added.',
+          'Rebuild evaluates the selected output and its dependencies. The reported DOF and constraint status describe that evaluation; later sketch edits need another solve/rebuild. Constraint solving alone does not prove that loops form a valid closed profile, that an operation makes a solid, or that a numerical adapter supports the output.',
+          'Open the assistant to plan a sketch, interpret the current evaluation or ask why the selected output cannot proceed to analysis. It can read the authored definition and bounded kernel evidence supplied with your question, including the output feature, evaluated measurements, DOF and eligibility reason. It provides guidance; you apply changes and rebuild in the CAD workspace.',
         ],
       },
       {
@@ -1395,8 +1407,8 @@ The reported normalized potential is strain energy minus external work. It may b
   },
   {
     id: 'assistant',
-    title: 'Ask the documentation and study assistant',
-    summary: 'Connect your providers, choose a model, and ask about the active study.',
+    title: 'Ask the CAD and analysis assistant',
+    summary: 'Connect your providers, choose a model, and ask about the active project.',
     category: 'Get started',
     kind: 'Guide',
     keywords: [
@@ -1423,7 +1435,7 @@ The reported normalized potential is strain energy minus external work. It may b
           'Open AI assistant with the assistant icon or Ctrl/⌘ J, then open Connections.',
           'Choose Gemini, OpenAI, Anthropic, an OpenAI-compatible HTTPS endpoint, or a user-managed Ollama/local loopback endpoint. Remote connections use your own provider key.',
           'Paste your key and Connect. The app checks the models reported by that account before saving the connection. Connect several providers independently; each connection keeps its own endpoint and model catalog. Connecting another provider does not replace the model selected in an existing chat.',
-          'Choose a model in the composer from your connected providers. Write your question and Send. Sending authorizes that turn to use the selected provider with relevant offline help and the active study snapshot; there is no separate context attachment or repeated sharing dialog.',
+          'Choose a model in the composer from your connected providers. Write your question and Send. Sending authorizes that turn to use the selected provider with relevant offline help and the active project snapshot; there is no separate context attachment or repeated sharing dialog.',
         ],
         paragraphs: [
           'The implemented transport supports streaming text: Gemini streamGenerateContent, OpenAI Responses, Anthropic Messages, and OpenAI-compatible Chat Completions for compatible/Ollama endpoints. This assistant does not invoke model tools, browse the web, edit a definition, start numerical work or export fields. Model limits and usage are shown only when the provider supplies them; pricing and cost estimates are unknown.',
@@ -1433,9 +1445,10 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'What the context contains',
         paragraphs: [
-          'Documentation context retrieves articles from this installed application’s offline help. Study context adds the exact SI definition, preparation status, available run/result summaries, measured diagnostics and project/study/revision identity. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
+          'Documentation context retrieves articles from this installed application’s offline help. Project context works before an analysis exists. It adds the authored SI definition, current preparation and project/revision identity. CAD context includes the selected output and bounded evaluated measurements, kernel/job/fingerprint, sketch DOF/status and solver-compatibility reason when available. Only the selected output dependency closure was evaluated; unsupported CAD is not a numerical solution. Large definitions become explicitly marked summaries that omit curve/constraint details rather than implying those details were read.',
+          'Study context also adds available run/result summaries and measured diagnostics. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
           'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. Those messages may contain an earlier study explanation. Start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
-          'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
+          'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source. Geometry explanations should cite project/revision and feature IDs; evaluated CAD values should cite their CAD job/evaluated revision/fingerprint. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
         ],
         note: {
           tone: 'warning',
@@ -1453,7 +1466,7 @@ The reported normalized potential is strain energy minus external work. It may b
         ],
       },
     ],
-    related: ['local-mcp', 'scope', 'runs', 'scientific-references', 'about'],
+    related: ['cad', 'local-mcp', 'scope', 'runs', 'scientific-references', 'about'],
   },
   {
     id: 'local-mcp',
@@ -1477,12 +1490,13 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Choose tools and connect a client',
         steps: [
-          'Open Integrations in the assistant header. In Tools, enable or disable Inspect capabilities, Search product help, Read study definition and Inspect analysis results independently.',
+          'Open Integrations in the assistant header. In Tools, enable or disable Inspect capabilities, Search product help, Read project and CAD and Inspect analysis results independently.',
           'Choose Start MCP, then Connect client. Open in VS Code uses its official installation handler so you can review and install the server there. Copy configuration offers the VS Code servers format or the mcpServers format used by Claude and compatible desktop clients.',
           'Keep Phyra open and start the server in your client. Access log shows allowed and denied requests. Changing the enabled tools invalidates older clients; use the updated configuration and restart their Phyra server. Stop MCP revokes access.',
         ],
         paragraphs: [
           'The implemented server is pinned to MCP protocol 2025-11-25. It exposes versioned capability/help/project/run inspection and resources, with project/revision and run provenance where the enabled tools permit them. Access follows the active project tab; the client should inspect each returned identity before using a snapshot.',
+          'The project tool includes the validated authored CAD graph and bounded evaluation summary, including selected output, sketch DOF and analysis eligibility where available. It works for empty or CAD-only projects with no study. CAD evidence is accessible only under the project tool permission; help, capabilities and analysis-result tools do not return it. Source files, preview arrays and arbitrary paths remain excluded.',
           'Consent is native-enforced and refreshed by the active application session. Its lease expires after 90 seconds without refresh, and closing/releasing the session revokes it. Starting MCP authorizes that local client to read the enabled tool snapshots until revoked or expired; a client’s own provider may handle data under its separate configuration.',
           'The current MCP surface has no model mutations, geometry changes, mesh/run/export actions, arbitrary file reads, general shell or public network listener. Approved agent workflows and parameter sweeps remain future work. Read-only access does not establish that an external client’s interpretation is scientifically correct.',
         ],

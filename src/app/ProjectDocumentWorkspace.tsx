@@ -142,6 +142,14 @@ export default function ProjectDocumentWorkspace({
     } else if (!workbench.probe) probeOwner.current = null;
   }, [resultSelection, workbench.probe, workbench.setProbe]);
   const controller = useRef<typeof workbench | null>(null);
+  const cadSnapshot = useMemo(
+    () => ({
+      busy: workbench.cad.busy,
+      receipt: workbench.cad.current?.receipt ?? null,
+      sketchSolve: workbench.cad.sketchSolve,
+    }),
+    [workbench.cad.busy, workbench.cad.current?.receipt, workbench.cad.sketchSolve],
+  );
   controller.current = workbench;
   useEffect(() => documents.register(seed.id, controller), [documents, seed.id]);
   useEffect(() => {
@@ -174,6 +182,7 @@ export default function ProjectDocumentWorkspace({
       locked: workbench.locked,
       nativeLocked: workbench.nativeLocked,
       cadBusy: workbench.cadBusy,
+      cad: cadSnapshot,
       preparation: workbench.preparation,
       recoveryReady: workbench.recovery.ready,
       recoveryPending: workbench.recovery.pending,

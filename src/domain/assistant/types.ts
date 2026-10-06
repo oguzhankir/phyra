@@ -31,7 +31,7 @@ export interface AssistantUsage {
   totalTokens: number | null;
 }
 export interface AssistantContext {
-  kind: 'help' | 'study';
+  kind: 'help' | 'project' | 'study';
   projectId: string | null;
   studyId: string | null;
   revision: number | null;
@@ -102,12 +102,38 @@ export interface AssistantRunSnapshot {
   state: 'current' | 'stale' | 'running' | 'cancelled' | 'failed';
   summary: string;
 }
+/** Bounded CAD evidence only: no source bytes, preview arrays or arbitrary paths. */
+export interface AssistantCadSnapshot {
+  state: 'unevaluated' | 'busy' | 'current';
+  dimension: '2d' | '3d';
+  outputFeatureId: string | null;
+  featureCount: number;
+  sketchCount: number;
+  assetCount: number;
+  sketchSolve?: {
+    featureId: string;
+    status: string;
+    degreesOfFreedom: number | null;
+    failedConstraintIds: string[];
+    failedConstraintCount: number;
+    kernel: string;
+    sourceCommit: string;
+  } | null;
+  evaluation: {
+    jobId: string;
+    revision: number;
+    geometryFingerprint: string;
+    outputFeatureId: string;
+    summary: string;
+  } | null;
+}
 export interface AssistantSnapshot {
   sessionId: string;
   projectId: string | null;
   revision: number | null;
   project: Project | null;
   run: AssistantRunSnapshot | null;
+  cad?: AssistantCadSnapshot | null;
   help: { id: string; title: string; content: string }[];
   capabilities: { id: string; description: string; available: boolean }[];
 }

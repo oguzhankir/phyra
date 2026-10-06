@@ -82,7 +82,7 @@ export default function AssistantComposer({
           ref={composer}
           value={question}
           maxLength={16000}
-          placeholder={connected ? 'Ask anything about your study…' : 'Ask a question…'}
+          placeholder={connected ? 'Ask about your geometry or analysis…' : 'Ask a question…'}
           rows={3}
           disabled={!desktop}
           onChange={(event) => onQuestion(event.target.value)}

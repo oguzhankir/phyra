@@ -61,6 +61,8 @@ export default function AssistantTranscript({
     }
   }, [conversation.id, conversation.messages, pending]);
   const setUiError = onError;
+  const cadContext =
+    !!study?.cad && (!study.project.study || ['cad', 'geometry'].includes(study.section));
   return (
     <div
       ref={viewport}
@@ -77,24 +79,38 @@ export default function AssistantTranscript({
           <span className="assistant-welcome-mark">
             <Sparkles size={27} />
           </span>
-          <h3>{study ? 'Let’s explore your study' : 'Your engineering assistant'}</h3>
+          <h3>
+            {cadContext
+              ? 'Let’s build your geometry'
+              : study
+                ? 'Let’s explore your study'
+                : 'Your engineering assistant'}
+          </h3>
           <p>
-            {study
-              ? 'Ask about your setup, the governing equations or what your results mean.'
-              : 'Explore the mechanics, plan a study or find your way around Phyra.'}
+            {cadContext
+              ? 'Plan a sketch, review its constraints and find the next supported analysis step.'
+              : study
+                ? 'Ask about your setup, the governing equations or what your results mean.'
+                : 'Explore the mechanics, plan a study or find your way around Phyra.'}
           </p>
           <div>
-            {(study
+            {(cadContext
               ? [
-                  'What have I defined, and what is missing?',
-                  'Explain the governing equations for this study.',
-                  'How should I interpret the current result?',
+                  'How do I draw a constrained sketch and turn it into a solid?',
+                  'What does my selected CAD output support for analysis?',
+                  'Explain my sketch degrees of freedom and constraints to review.',
                 ]
-              : [
-                  'How do I start a structural study?',
-                  'Explain the elasticity formulation.',
-                  'What can this version of Phyra do?',
-                ]
+              : study
+                ? [
+                    'What have I defined, and what is missing?',
+                    'Explain the governing equations for this study.',
+                    'How should I interpret the current result?',
+                  ]
+                : [
+                    'How do I start a structural study?',
+                    'Explain the elasticity formulation.',
+                    'What can this version of Phyra do?',
+                  ]
             ).map((prompt) => (
               <button
                 type="button"
