@@ -247,6 +247,7 @@ def test_general_cad_remains_saveable_but_cannot_enter_numerical_execution():
     with pytest.raises(EngineError) as error:
         study_request(source)
     assert error.value.code == "unsupported-cad-study"
+
     shifted = geometry(
         [
             rectangle_sketch(),
@@ -333,9 +334,43 @@ def test_rollback_uses_only_output_closure_and_headless_cad_validity(tmp_path):
     with pytest.raises(EngineError) as error:
         study_request(source)
     assert error.value.code == "unsupported-cad-study"
+
     source["geometry"] = geometry([{**box, "length": 1e-50, "width": 1e-50, "height": 1e-50}])
     assert validate_project(source) == source
     with pytest.raises(EngineError):
+        study_request(source)
+
+
+@pytest.mark.parametrize("translation,angle", [([0, 0, 0], 0), ([0.1, 0.2, 0.3], 0.5)])
+def test_rigid_placement_never_falls_back_to_unplaced_numerical_primitive(translation, angle):
+    source = project(
+        geometry(
+            [
+                {
+                    "id": "box",
+                    "name": "Box",
+                    "kind": "box",
+                    "length": 0.1,
+                    "width": 0.05,
+                    "height": 0.02,
+                },
+                {
+                    "id": "placed",
+                    "name": "Placed box",
+                    "kind": "transform",
+                    "inputId": "box",
+                    "translation": translation,
+                    "axisOrigin": [0, 0, 0],
+                    "axisDirection": [0, 0, 1],
+                    "angle": angle,
+                },
+            ]
+        )
+    )
+    assert validate_project(source) == source
+    assert properties(build(source["geometry"], {}).shape, "body")[0] == pytest.approx(0.0001)
+    assert eligibility(source["geometry"])["state"] == "unsupported"
+    with pytest.raises(EngineError, match="rigidly placed"):
         study_request(source)
 
 

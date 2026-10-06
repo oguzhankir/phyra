@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ProjectDefinition } from '../domain/contracts/types';
 import { cadDefinitionError } from '../domain/project/document';
 import { assertCadNumericalGeometry } from '../domain/geometry/cadCompatibility';
+import { sameSketchDefinition, type SketchSolveReport } from '../domain/geometry/sketchSolution';
 import { type CadPreview } from '../domain/geometry/cadPreview';
 import {
   evaluateCad,
+  solveCadSketch,
   readCadBuffer,
   decodeCadDisplay,
   finishCad,
@@ -19,7 +21,7 @@ type Lease = {
   id: string;
   snapshot: ProjectDefinition;
   cancelled: boolean;
-  operation: 'evaluate' | 'import' | 'export';
+  operation: 'evaluate' | 'solve-sketch' | 'import' | 'export';
 };
 interface Props {
   documentId: string;
@@ -43,6 +45,12 @@ export function useCadSession(props: Props) {
     receipt: CadReceipt;
     preview: CadPreview;
     source: string;
+  } | null>(null);
+  const [retainedSketch, setRetainedSketch] = useState<{
+    projectId: string;
+    featureId: string;
+    source: string;
+    report: SketchSolveReport;
   } | null>(null);
   const live = useRef(true);
   const current =
@@ -103,7 +111,8 @@ export function useCadSession(props: Props) {
       const request = lease.current;
       if (request) {
         request.cancelled = true;
-        if (request.operation === 'evaluate') void cancelCad(request.id).catch(() => {});
+        if (['evaluate', 'solve-sketch'].includes(request.operation))
+          void cancelCad(request.id).catch(() => {});
         release(request);
       }
     };
@@ -160,9 +169,63 @@ export function useCadSession(props: Props) {
       release(request);
     }
   };
+  const solveSketch = async (featureId: string) => {
+    const p = callbacks.current,
+      request = acquire('solve-sketch');
+    if (!request) return;
+    try {
+      const solution = await solveCadSketch(request.snapshot, featureId, request.id, p.documentId);
+      if (!owns(request)) return;
+      // Release the native edit gate before one canonical history transaction.
+      release(request);
+      const authored =
+        request.snapshot.geometry.kind === 'cad'
+          ? request.snapshot.geometry.features.find((item) => item.id === featureId)
+          : null;
+      if (
+        ['solved', 'redundant'].includes(solution.report.status) &&
+        authored?.kind === 'sketch' &&
+        !sameSketchDefinition(authored.sketch, solution.sketch)
+      ) {
+        p.edit((next) => {
+          if (next.geometry.kind === 'cad') {
+            const feature = next.geometry.features.find((item) => item.id === featureId);
+            if (feature?.kind === 'sketch') feature.sketch = structuredClone(solution.sketch);
+          }
+        });
+      }
+      const project = callbacks.current.projectRef.current;
+      const feature =
+        project.geometry.kind === 'cad'
+          ? project.geometry.features.find((item) => item.id === featureId)
+          : null;
+      if (
+        !live.current ||
+        project.id !== request.snapshot.id ||
+        feature?.kind !== 'sketch' ||
+        !sameSketchDefinition(feature.sketch, solution.sketch)
+      )
+        return;
+      setRetainedSketch({
+        projectId: project.id,
+        featureId,
+        source: JSON.stringify(feature.sketch),
+        report: solution.report,
+      });
+      p.onNotice(
+        solution.report.status === 'solved'
+          ? `Sketch solved · ${solution.report.degreesOfFreedom} degrees of freedom.`
+          : `Sketch solver: ${solution.report.status}. Review its constraint diagnostics.`,
+      );
+    } catch (error) {
+      if (owns(request)) p.onError(String(error));
+    } finally {
+      release(request);
+    }
+  };
   const cancel = async () => {
     const request = lease.current;
-    if (!request || request.operation !== 'evaluate') return;
+    if (!request || !['evaluate', 'solve-sketch'].includes(request.operation)) return;
     request.cancelled = true;
     try {
       await cancelCad(request.id);
@@ -229,6 +292,7 @@ export function useCadSession(props: Props) {
     ? {
         preview: current.preview,
         kernel: `${current.receipt.kernel.name} ${current.receipt.kernel.version}`,
+        analysisCompatibility: current.receipt.analysisCompatibility,
         ...current.receipt.statistics,
         sketches: current.receipt.features.flatMap((feature) => {
           const report = feature.sketch;
@@ -248,5 +312,34 @@ export function useCadSession(props: Props) {
         }),
       }
     : null;
-  return { busy, current, evaluation, evaluate, cancel, importSource, exportShape };
+  const retainedPreview =
+    retained?.receipt.projectId === props.project.id && props.project.geometry.kind === 'cad'
+      ? retained.preview
+      : null;
+  const sketchSolve = useMemo(() => {
+    const solvedFeature =
+      props.project.geometry.kind === 'cad'
+        ? props.project.geometry.features.find(
+            (feature) => feature.id === retainedSketch?.featureId,
+          )
+        : null;
+    return retainedSketch?.projectId === props.project.id &&
+      solvedFeature?.kind === 'sketch' &&
+      retainedSketch.source === JSON.stringify(solvedFeature.sketch)
+      ? { featureId: retainedSketch.featureId, report: retainedSketch.report }
+      : null;
+  }, [retainedSketch, props.project.id, props.project.geometry]);
+  return {
+    busy,
+    cancellable: !!lease.current && ['evaluate', 'solve-sketch'].includes(lease.current.operation),
+    current,
+    evaluation,
+    retainedPreview,
+    sketchSolve,
+    solveSketch,
+    evaluate,
+    cancel,
+    importSource,
+    exportShape,
+  };
 }

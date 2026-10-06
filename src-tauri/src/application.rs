@@ -42,6 +42,10 @@ pub(crate) fn run() {
                     std::thread::sleep(std::time::Duration::from_secs(
                         if verification_uses_training() {
                             240
+                        } else if verification::verification_configuration() == Some("cad") {
+                            // Open-sketch solving and three exact rebuilds precede
+                            // the normal solve/persistence/cancellation checks.
+                            180
                         } else {
                             75
                         },
@@ -66,6 +70,7 @@ pub(crate) fn run() {
         .manage(project::recovery::RecoveryState::default())
         .invoke_handler(tauri::generate_handler![
             cad::commands::evaluate_cad,
+            cad::commands::solve_cad_sketch,
             cad::commands::cancel_cad,
             cad::commands::finish_cad,
             cad::commands::read_cad_buffer,

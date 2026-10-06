@@ -82,6 +82,78 @@ pub(crate) async fn evaluate_cad(
 }
 
 #[tauri::command]
+pub(crate) async fn solve_cad_sketch(
+    app: tauri::AppHandle,
+    project: Value,
+    feature_id: String,
+    request_id: String,
+    document_id: String,
+    owner_id: String,
+) -> Result<Value, String> {
+    let request = RunRequestId::parse(request_id)?;
+    register_run(&app.state::<CadState>().0, &request)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CadState>();
+        let result = (|| {
+            validate_project(&project)?;
+            if feature_id.len() > 200
+                || !project["geometry"]["features"]
+                    .as_array()
+                    .is_some_and(|features| {
+                        features.iter().any(|feature| {
+                            feature["id"] == feature_id && feature["kind"] == "sketch"
+                        })
+                    })
+            {
+                return Err("Select an existing sketch to solve its constraints".into());
+            }
+
+            let document = document_identity(Some(&document_id))?;
+            let project_state = app.state::<ProjectState>();
+            let generation = {
+                let mut documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+                documents.activate_owner(Some(&owner_id))?;
+                documents.require_open(document)?;
+                activate_result_owner(&state.0, Some(&owner_id))?;
+                documents.generation(document)
+            };
+            let directory = job_directory(&app)?;
+            let job_id = uuid::Uuid::new_v4().to_string();
+            let result = worker::solve_sketch(
+                &app,
+                &state.0,
+                &project,
+                &directory,
+                &asset_root(&app)?,
+                &job_id,
+                &request,
+                &feature_id,
+                |receipt| {
+                    let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
+                    documents.require_owner(Some(&owner_id))?;
+                    documents.require_open(document)?;
+                    if documents.generation(document) != generation {
+                        return Err("Sketch solve belongs to an earlier document generation".into());
+                    }
+                    Ok(receipt)
+                },
+            );
+            let cleanup = fs::remove_dir_all(&directory);
+            if let Err(error) = cleanup {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!("Sketch worker cleanup failed: {error}"));
+                }
+            }
+            result
+        })();
+        finish_run(&state.0, &request)?;
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub(crate) fn cancel_cad(state: State<CadState>, request_id: String) -> Result<bool, String> {
     cancel_owned_request(&state.0, Some(&RunRequestId::parse(request_id)?))
 }

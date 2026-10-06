@@ -865,6 +865,82 @@
         }
       }
     },
+    "CadTransformFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "inputId",
+        "translation",
+        "axisOrigin",
+        "axisDirection",
+        "angle"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "const": "transform"
+        },
+        "inputId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "translation": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -1000,
+            "maximum": 1000
+          }
+        },
+        "axisOrigin": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -1000,
+            "maximum": 1000
+          }
+        },
+        "axisDirection": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -1000,
+            "maximum": 1000
+          },
+          "not": {
+            "items": {
+              "const": 0
+            }
+          }
+        },
+        "angle": {
+          "type": "number",
+          "minimum": -6.283185307179586,
+          "maximum": 6.283185307179586
+        }
+      }
+    },
     "CadFilletFeature": {
       "type": "object",
       "additionalProperties": false,
@@ -973,6 +1049,9 @@
         },
         {
           "$ref": "#/definitions/CadBooleanFeature"
+        },
+        {
+          "$ref": "#/definitions/CadTransformFeature"
         },
         {
           "$ref": "#/definitions/CadFilletFeature"

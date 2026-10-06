@@ -64,6 +64,7 @@ from OCP.TopTools import TopTools_FormatVersion_VERSION_3  # type: ignore[import
 
 from phyra_engine.errors import EngineError
 from phyra_engine.geometry.cad.recipe import output_features
+from phyra_engine.geometry.cad.sketch import sketch_face
 from phyra_engine.geometry.cad.topology import KERNEL_PER_METRE, entities, selected_edges, subshapes
 from phyra_engine.geometry.profile import arc_data, validate_profile
 
@@ -224,10 +225,7 @@ def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
                 shape, units = import_step(assets[feature["assetId"]], feature["scaleFactor"])
                 details["sourceUnits"] = units
             elif kind == "sketch":
-                from phyra_engine.geometry.sketch_constraints import build_profile
-
-                profile, sketch_metadata = build_profile(feature["sketch"])
-                shape = profile_face(profile, feature["plane"])
+                shape, sketch_metadata = sketch_face(feature["sketch"], feature["plane"])
                 planes[identifier] = feature["plane"]
                 details["sketch"] = sketch_metadata
             elif kind == "extrude":
@@ -280,6 +278,43 @@ def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
                     for source_id in (feature["leftId"], feature["rightId"])
                     for face in entities(shapes[source_id], source_id, "face")
                 ]
+            elif kind == "transform":
+                source_id = feature["inputId"]
+                direction = feature["axisDirection"]
+                magnitude = math.hypot(*direction)
+                if magnitude == 0 or not math.isfinite(magnitude):
+                    raise EngineError(
+                        "invalid-cad-transform", "A rigid transform needs a finite nonzero axis."
+                    )
+                rotation = gp_Trsf()
+                rotation.SetRotation(
+                    gp_Ax1(
+                        gp_Pnt(*(value * KERNEL_PER_METRE for value in feature["axisOrigin"])),
+                        gp_Dir(*(value / magnitude for value in direction)),
+                    ),
+                    feature["angle"],
+                )
+                translation = gp_Trsf()
+                translation.SetTranslation(
+                    gp_Vec(*(value * KERNEL_PER_METRE for value in feature["translation"]))
+                )
+                # OCCT PreMultiply computes T * R: rotate about the authored
+                # global axis first, then translate in global SI directions.
+                rotation.PreMultiply(translation)
+                operation = BRepBuilderAPI_Transform(shapes[source_id], rotation, True)
+                if not operation.IsDone():
+                    raise EngineError("cad-feature-failed", "The rigid transform did not complete.")
+                shape = operation.Shape()
+                details["history"] = [
+                    {
+                        "sourceId": source_id,
+                        "faceId": face.reference,
+                        "modified": len(list(operation.Modified(face.shape))),
+                        "generated": len(list(operation.Generated(face.shape))),
+                        "deleted": operation.IsDeleted(face.shape),
+                    }
+                    for face in entities(shapes[source_id], source_id, "face")
+                ]
             elif kind in ("fillet", "chamfer"):
                 source_id = feature["inputId"]
                 copied = BRepBuilderAPI_Copy(shapes[source_id], True, False).Shape()
@@ -300,7 +335,9 @@ def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
             else:
                 raise EngineError("unsupported-cad-feature", "The CAD feature is not implemented.")
             valid_shape(shape)
-            if kind not in ("sketch", "import-step") and not subshapes(shape, TopAbs_SOLID):
+            if kind not in ("sketch", "import-step", "transform") and not subshapes(
+                shape, TopAbs_SOLID
+            ):
                 raise EngineError(
                     "invalid-cad-solid", "The solid feature produced no closed volume."
                 )

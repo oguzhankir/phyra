@@ -74,8 +74,12 @@ export default function CanonicalProjectWorkspace({
             draftBlocked: w.invalidDraftLabels.length > 0,
             dark: w.theme === 'dark',
             busy: w.cad.busy,
+            cancellable: w.cad.cancellable,
             error: w.error,
             evaluation: w.cad.evaluation,
+            retainedPreview: w.cad.retainedPreview,
+            sketchSolve: w.cad.sketchSolve,
+            solveSketch: w.cad.solveSketch,
             editGeometry: (change) =>
               w.edit((next) => {
                 if (next.geometry.kind === 'cad') change(next.geometry);

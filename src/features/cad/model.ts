@@ -1,4 +1,5 @@
 import type { ProjectDefinition, CadGeometry } from '../../domain/contracts/types';
+import type { SketchSolveReport } from '../../domain/geometry/sketchSolution';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
 
 export interface CadWorkspaceModel {
@@ -9,10 +10,19 @@ export interface CadWorkspaceModel {
   draftBlocked: boolean;
   dark: boolean;
   busy: boolean;
+  cancellable: boolean;
   error: string | null;
+  retainedPreview?: CadPreview | null;
+  sketchSolve?: { featureId: string; report: SketchSolveReport } | null;
+  solveSketch: (featureId: string) => Promise<void>;
   evaluation: {
     preview: CadPreview;
     kernel: string;
+    analysisCompatibility: {
+      state: 'supported' | 'unsupported';
+      reason: string;
+      methodIds: string[];
+    };
     faceCount: number;
     edgeCount: number;
     bodyCount: number;

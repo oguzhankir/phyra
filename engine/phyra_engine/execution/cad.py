@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import sys
+from copy import deepcopy
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Iterator, cast
@@ -17,10 +18,6 @@ import numpy as np
 
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_BUFFER_BYTES, MAX_REQUEST_BYTES
-from phyra_engine.geometry.cad.compatibility import eligibility
-from phyra_engine.geometry.cad.kernel import build, export_brep, export_step
-from phyra_engine.geometry.cad.tessellation import tessellate
-from phyra_engine.geometry.cad.topology import bounds, properties
 from phyra_engine.protocol.cad import CadRequest, read_cad_request
 from phyra_engine.protocol.stdio import emit
 
@@ -111,6 +108,13 @@ def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:
 
 
 def execute(request: CadRequest, output: Path) -> dict[str, Any]:
+    if request.operation == "solve-sketch":
+        return execute_sketch(request)
+    from phyra_engine.geometry.cad.compatibility import eligibility
+    from phyra_engine.geometry.cad.kernel import build, export_brep, export_step
+    from phyra_engine.geometry.cad.tessellation import tessellate
+    from phyra_engine.geometry.cad.topology import bounds, properties
+
     geometry = request.geometry_definition()
     assets = _read_assets(request)
     with kernel_log_to_stderr():
@@ -243,6 +247,56 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         temporary = output / (name + ".tmp")
         temporary.write_bytes(payload)
         temporary.replace(output / name)
+    return manifest
+
+
+def execute_sketch(request: CadRequest) -> dict[str, Any]:
+    """Solve an authoring graph without requiring a closed profile or creating files."""
+    from phyra_engine.geometry.sketch_constraints import decode_sketch, solve_sketch
+
+    feature = next(
+        item
+        for item in request.geometry_definition()["features"]
+        if item["id"] == request.feature_id
+    )
+    authored = feature["sketch"]
+    with kernel_log_to_stderr():
+        result = solve_sketch(authored)
+    solved = deepcopy(authored)
+    if result.status in ("solved", "redundant"):
+        positions = {point.id: list(point.position) for point in result.points}
+        radii = {entity.id: entity.radius for entity in result.entities if entity.kind == "circle"}
+        for point in solved["points"]:
+            point["position"] = positions[point["id"]]
+        for entity in solved["entities"]:
+            if entity["kind"] == "circle":
+                entity["radius"] = radii[entity["id"]]
+    # Revalidate finite coordinates, radii, graph bounds and exact references
+    # before transport. Conflicting/nonconverged results retain authored values.
+    decode_sketch(solved)
+    manifest = {
+        "protocolVersion": 1,
+        "status": "succeeded",
+        "operation": "solve-sketch",
+        "projectId": request.project_id,
+        "revision": request.revision,
+        "jobId": request.job_id,
+        "featureId": request.feature_id,
+        "geometryFingerprint": hashlib.sha256(request._geometry_json).hexdigest(),
+        "sketch": solved,
+        "report": {
+            "kernel": result.kernel,
+            "sourceCommit": result.source_commit,
+            "status": result.status,
+            "degreesOfFreedom": result.degrees_of_freedom,
+            "failedConstraintIds": list(result.failed_constraint_ids),
+        },
+    }
+    if (
+        len(json.dumps(manifest, separators=(",", ":"), allow_nan=False).encode("utf-8"))
+        > MAX_REQUEST_BYTES
+    ):
+        raise EngineError("cad-resource-limit", "Sketch solve response exceeds 1 MiB.")
     return manifest
 
 

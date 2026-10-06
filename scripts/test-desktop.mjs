@@ -205,7 +205,7 @@ async function verify(mode) {
   const energy = mode === '2d-energy';
   const physicsMl = mode === '2d-compare' || energy;
   const profile = mode === '2d-profile';
-  const timeoutMs = physicsMl ? 270000 : 90000;
+  const timeoutMs = physicsMl ? 270000 : cad ? 210000 : 90000;
   const child = spawn(
     executable,
     [
@@ -316,6 +316,7 @@ async function verify(mode) {
     cad &&
     (report.project.geometry.kind !== 'cad' ||
       !report.cad?.emptyStart ||
+      !report.cad?.openSketchSolved ||
       !report.cad?.evaluated ||
       !report.cad?.sourcePreserved ||
       !report.cad?.unsupportedBlocked ||

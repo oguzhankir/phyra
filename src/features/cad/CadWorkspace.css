@@ -307,3 +307,212 @@
 .cad-sketch-area .sketch-pending-actions:empty {
   display: none;
 }
+.cad-layout.editing-sketch {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+.cad-sketch-session {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.cad-sketch-session > div {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.cad-sketch-session strong {
+  font-size: 13px;
+}
+.cad-sketch-session span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.cad-auto-rebuild {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cad-model-tools {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  pointer-events: none;
+}
+.cad-model-tools > * {
+  pointer-events: auto;
+}
+.cad-tool-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.cad-tool-group > svg {
+  margin: 0 5px;
+  color: var(--muted);
+}
+.cad-model-tools button {
+  font-size: 11px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  background: var(--surface);
+}
+.cad-model-tools button[aria-pressed='true'] {
+  background: var(--surface-subtle);
+  color: var(--text);
+  box-shadow: inset 0 -2px var(--text);
+}
+.cad-model-tools select {
+  font-size: 11px;
+  max-width: 140px;
+  background: var(--surface);
+}
+.cad-view-footer {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.cad-stale-banner {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cad-edge-task {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.cad-edge-task > div:first-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cad-edge-task strong {
+  font-size: 13px;
+}
+.cad-edge-task span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.cad-edge-task .property-control {
+  max-width: 150px;
+}
+.cad-plane-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 25%);
+}
+.cad-plane-dialog {
+  width: min(500px, calc(100% - 32px));
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 48px rgb(0 0 0 / 15%);
+}
+.cad-plane-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+.cad-plane-dialog p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.cad-plane-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 24px 0;
+}
+.cad-plane-options button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 20px;
+}
+.cad-plane-options button.active {
+  background: var(--surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+.cad-plane-options span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cad-plane-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.cad-analysis-support {
+  margin-top: 24px;
+  padding: 16px 12px;
+  border-radius: 6px;
+  background: var(--success-soft);
+  color: var(--success);
+}
+.cad-analysis-support.unsupported {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.cad-analysis-support h2 {
+  margin-bottom: 12px;
+}
+.cad-analysis-support strong {
+  font-size: 12px;
+}
+.cad-analysis-support p,
+.cad-analysis-support span {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.cad-guide-banner {
+  position: absolute;
+  bottom: 40px;
+  left: 16px;
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 11px;
+  pointer-events: none;
+}

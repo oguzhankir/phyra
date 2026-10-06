@@ -6,6 +6,8 @@ import type { useCadSession } from './useCadSession';
 
 type Phase =
   | 'start'
+  | 'sketch'
+  | 'sketch-solved'
   | 'base'
   | 'base-evaluated'
   | 'unsupported'
@@ -15,6 +17,7 @@ type Phase =
   | 'study'
   | 'mesh'
   | 'solve'
+  | 'solved'
   | 'complete'
   | 'failed';
 interface Props {
@@ -49,6 +52,7 @@ export function useCadVerificationWorkflow(props: Props) {
     previewRendered = useRef(false);
   const evidence = useRef({
     emptyStart: false,
+    openSketchSolved: false,
     evaluated: false,
     sourcePreserved: false,
     unsupportedBlocked: false,
@@ -58,6 +62,7 @@ export function useCadVerificationWorkflow(props: Props) {
   });
   const failed = async (message: string) => {
     setPhase('failed');
+    await invokeVerification('verification_trace', { message: `CAD workflow failed: ${message}` });
     await invokeVerification('verification_complete', {
       report: {
         error: `CAD verification: ${message}`,
@@ -91,6 +96,69 @@ export function useCadVerificationWorkflow(props: Props) {
             next.geometry = {
               kind: 'cad',
               dimension: '3d',
+              assets: [],
+              outputFeatureId: 'verification-sketch',
+              features: [
+                {
+                  id: 'verification-sketch',
+                  name: 'Open sketch',
+                  kind: 'sketch',
+                  plane: 'xy',
+                  sketch: {
+                    points: [
+                      { id: 'a', position: [0, 0] },
+                      { id: 'b', position: [0.1, 0.02] },
+                    ],
+                    entities: [
+                      { id: 'line', name: 'Line', kind: 'line', startId: 'a', endId: 'b' },
+                    ],
+                    constraints: [
+                      { id: 'origin', kind: 'fixedPoint', pointId: 'a' },
+                      { id: 'horizontal', kind: 'horizontal', lineId: 'line' },
+                      {
+                        id: 'length',
+                        kind: 'distance',
+                        firstPointId: 'a',
+                        secondPointId: 'b',
+                        value: 0.08,
+                      },
+                    ],
+                    loops: [],
+                  },
+                },
+              ],
+            };
+          });
+          trace('empty document -> open constrained sketch');
+          nextPhase = 'sketch';
+          break;
+        }
+        case 'sketch':
+          await p.cad.solveSketch('verification-sketch');
+          nextPhase = 'sketch-solved';
+          break;
+        case 'sketch-solved': {
+          const definition = p.projectRef.current;
+          const feature =
+            definition.geometry.kind === 'cad' ? definition.geometry.features[0] : null;
+          const report = p.cad.sketchSolve;
+          evidence.current.openSketchSolved =
+            feature?.kind === 'sketch' &&
+            feature.sketch.loops.length === 0 &&
+            feature.sketch.constraints.length === 3 &&
+            Math.abs(feature.sketch.points[1].position[0] - 0.08) < 1e-10 &&
+            Math.abs(feature.sketch.points[1].position[1]) < 1e-10 &&
+            report?.report.status === 'solved' &&
+            report.report.degreesOfFreedom === 0 &&
+            p.cad.current === null;
+          if (!evidence.current.openSketchSolved) {
+            if (p.error) throw new Error(p.error);
+            throw new Error('Open sketch solve did not publish owned coordinates and DOF.');
+          }
+          p.edit((next) => {
+            next.geometry = {
+              kind: 'cad',
+              dimension: '3d',
               features: [
                 {
                   id: 'verification-box',
@@ -106,7 +174,7 @@ export function useCadVerificationWorkflow(props: Props) {
             };
           });
           base.current = JSON.stringify(p.projectRef.current.geometry);
-          trace('empty document -> authored box');
+          trace('actual open sketch DOF/coordinates -> authored box');
           nextPhase = 'base';
           break;
         }
@@ -242,9 +310,16 @@ export function useCadVerificationWorkflow(props: Props) {
           };
           trace('CAD source -> mesh -> solve');
           await p.execute('solve');
-          nextPhase = 'complete';
+          nextPhase = 'solved';
           break;
         }
+        case 'solved':
+          if (!p.currentData || p.currentData.manifest.operation !== 'solve') {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          nextPhase = 'complete';
+          break;
       }
     })()
       .catch((error) => {
@@ -278,7 +353,11 @@ export function useCadVerificationWorkflow(props: Props) {
     phase,
     rendered,
     workspace: props.enabled
-      ? phase === 'study' || phase === 'mesh' || phase === 'solve' || phase === 'complete'
+      ? phase === 'study' ||
+        phase === 'mesh' ||
+        phase === 'solve' ||
+        phase === 'solved' ||
+        phase === 'complete'
         ? 'analysis'
         : 'cad'
       : null,

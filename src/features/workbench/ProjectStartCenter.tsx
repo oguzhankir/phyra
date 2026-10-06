@@ -307,7 +307,7 @@ export default function ProjectStartCenter(props: Props) {
               />
             </label>
             <fieldset>
-              <legend>Analysis type</legend>
+              <legend>Geometry dimension</legend>
               <div className="start-dimension-options">
                 {(['3d', '2d'] as const).map((value) => (
                   <button
@@ -317,8 +317,10 @@ export default function ProjectStartCenter(props: Props) {
                     className={dimension === value ? 'selected' : ''}
                     onClick={() => setDimension(value)}
                   >
-                    <strong>{value === '3d' ? '3D solid' : '2D plane stress'}</strong>
-                    <small>Static structural</small>
+                    <strong>{value === '3d' ? '3D solid' : '2D plane geometry'}</strong>
+                    <small>
+                      {value === '3d' ? 'Sketch, model or import a part' : 'Draw a planar profile'}
+                    </small>
                   </button>
                 ))}
               </div>
