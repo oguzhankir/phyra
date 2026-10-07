@@ -47,6 +47,7 @@ SPECIFIC_DEPENDENCIES = {
             "geometry.cad.topology",
             "geometry.cad.tessellation",
             "geometry.cad.compatibility",
+            "geometry.cad.native_output",
             "geometry.sketch_constraints",
         )
     ),

@@ -1,7 +1,6 @@
 """One isolated CAD job, native-managed assets, bounded binary display publication."""
 
 import argparse
-import contextlib
 import hashlib
 import io
 import json
@@ -12,65 +11,15 @@ import sys
 from copy import deepcopy
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any, Iterator, cast
+from typing import Any, cast
 
 import numpy as np
 
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_BUFFER_BYTES, MAX_REQUEST_BYTES
+from phyra_engine.geometry.cad.native_output import cad_log_to_stderr, kernel_log_to_stderr
 from phyra_engine.protocol.cad import CadRequest, read_cad_request
 from phyra_engine.protocol.stdio import emit
-
-
-def _native_fflush() -> Any:
-    """Bind the application's CRT, without a project-selected library path.
-
-    Python and OCCT's supported MSVC wheels use the system UCRT on Windows.
-    The legacy msvcrt.dll can refer to a different set of buffered streams.
-    https://learn.microsoft.com/en-us/cpp/windows/universal-crt-deployment
-    https://docs.python.org/3.12/library/ctypes.html#loading-shared-libraries
-    """
-    import ctypes
-
-    library = (
-        ctypes.CDLL("ucrtbase.dll", winmode=0x00000800)  # LOAD_LIBRARY_SEARCH_SYSTEM32
-        if sys.platform == "win32"
-        else ctypes.CDLL(None)
-    )
-    flush = library.fflush
-    flush.argtypes = [ctypes.c_void_p]
-    flush.restype = ctypes.c_int
-    return flush
-
-
-@contextlib.contextmanager
-def kernel_log_to_stderr() -> Iterator[None]:
-    """OCCT's C++ stdout must never contaminate the versioned JSON wire protocol."""
-    flush = _native_fflush()
-    sys.stdout.flush()
-    original = os.dup(1)
-    try:
-        os.dup2(2, 1)
-        try:
-            yield
-        finally:
-            # Flush both success and failure paths while stdout still targets
-            # stderr. Python redirect_stdout cannot capture native C/C++ logs.
-            # fflush(NULL) flushes this CRT's open output streams; nonzero is a
-            # real write failure, not a CAD success with silently lost output.
-            # https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush
-            try:
-                sys.stdout.flush()
-            finally:
-                if flush(None) != 0:
-                    raise EngineError(
-                        "cad-log-flush-failed", "The native CAD log could not be flushed."
-                    )
-    finally:
-        try:
-            os.dup2(original, 1)
-        finally:
-            os.close(original)
 
 
 def _read_assets(request: CadRequest) -> dict[str, bytes]:
@@ -143,19 +92,25 @@ def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:
 def execute(request: CadRequest, output: Path) -> dict[str, Any]:
     if request.operation == "solve-sketch":
         return execute_sketch(request)
-    from phyra_engine.geometry.cad.compatibility import eligibility
-    from phyra_engine.geometry.cad.kernel import build, export_brep, export_step
-    from phyra_engine.geometry.cad.tessellation import tessellate
-    from phyra_engine.geometry.cad.topology import bounds, properties
-
     geometry = request.geometry_definition()
     assets = _read_assets(request)
-    with kernel_log_to_stderr():
+    with cad_log_to_stderr():
+        # Align both CRT and process handles before loading native shape DLLs.
+        from phyra_engine.geometry.cad.compatibility import eligibility
+        from phyra_engine.geometry.cad.kernel import build, export_brep, export_step
+        from phyra_engine.geometry.cad.tessellation import tessellate
+        from phyra_engine.geometry.cad.topology import bounds, properties
+
         result = build(geometry, assets)
         brep = export_brep(result.shape)
         step = export_step(result.shape)
         step_mm = export_step(result.shape, "mm")
         display = tessellate(result.shape, result.output_feature_id, result.body_instances)
+        analysis_compatibility = eligibility(
+            geometry,
+            [entity.metadata() for entity in display.faces],
+            [entity.metadata() for entity in display.edges],
+        )
     buffer, descriptors = _pack(display.arrays)
     if any(not 0 < len(payload) <= MAX_BUFFER_BYTES for payload in (brep, step, step_mm)):
         raise EngineError("cad-resource-limit", "An exact CAD artifact exceeds 64 MiB.")
@@ -238,11 +193,7 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         "edges": [entity.metadata() for entity in display.edges],
         "bodies": [entity.metadata() for entity in display.bodies],
         "features": list(result.feature_metadata),
-        "analysisCompatibility": eligibility(
-            geometry,
-            [entity.metadata() for entity in display.faces],
-            [entity.metadata() for entity in display.edges],
-        ),
+        "analysisCompatibility": analysis_compatibility,
         "diagnostics": diagnostics,
         "statistics": {
             "bounds": bounds(result.shape),
