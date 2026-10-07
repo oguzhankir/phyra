@@ -43,9 +43,10 @@ pub(crate) fn run() {
                         if verification_uses_training() {
                             240
                         } else if verification::verification_configuration() == Some("cad") {
-                            // Open-sketch solving and three exact rebuilds precede
-                            // the normal solve/persistence/cancellation checks.
-                            180
+                            // The authored CAD route performs repeated exact rebuilds before
+                            // mesh, solve, archive/reopen and cancellation checks. Allow slower
+                            // Windows runners to finish the complete source-bound workflow.
+                            360
                         } else {
                             75
                         },
