@@ -2,7 +2,9 @@
 
 Gmsh imports a private dimensionless BRep; no native pointer crosses OCCT
 implementations. Boundary identifiers belong to this mesh only, never to the
-authored CAD topology. No shape repair, contact or analysis admission is inferred.
+authored CAD topology. Exact face correspondence is separate, conservative
+evidence scoped to unchanged geometry. No shape repair, contact or analysis
+admission is inferred.
 https://gmsh.info/doc/texinfo/gmsh.html#Boolean-operations
 https://gmsh.info/doc/texinfo/gmsh.html#Mesh-options
 """
@@ -31,7 +33,14 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.events import Progress
 from phyra_engine.execution.limits import MAX_BUFFER_BYTES, MAX_CELLS, MAX_NODES, MAX_TRIANGLES
 from phyra_engine.geometry.cad.kernel import valid_shape
-from phyra_engine.geometry.cad.topology import KERNEL_PER_METRE, bounds, properties, subshapes
+from phyra_engine.geometry.cad.topology import (
+    KERNEL_PER_METRE,
+    bounds,
+    entities,
+    properties,
+    subshapes,
+)
+from phyra_engine.meshing.cad_correspondence import CadCorrespondence, verify_cad_correspondence
 from phyra_engine.meshing.solid import collect_solid_mesh, tetra_volumes
 from phyra_engine.meshing.types import Mesh
 
@@ -44,6 +53,7 @@ class CadMesh:
     exact_volume: float
     exact_surface_area: float
     target_size: float
+    correspondence: CadCorrespondence
 
 
 def _single_solid(shape: Any) -> Any:
@@ -65,7 +75,13 @@ def _single_solid(shape: Any) -> Any:
     return solid
 
 
-def generate_cad_mesh(shape: Any, target_size: float, progress: Progress | None = None) -> CadMesh:
+def generate_cad_mesh(
+    shape: Any,
+    target_size: float,
+    progress: Progress | None = None,
+    *,
+    owner_id: str = "inspection",
+) -> CadMesh:
     """Mesh one valid kernel-unit solid; callers own worker isolation/cancellation."""
     if (
         isinstance(target_size, bool)
@@ -105,7 +121,8 @@ def generate_cad_mesh(shape: Any, target_size: float, progress: Progress | None 
     transform = gp_Trsf()
     transform.SetScale(gp_Pnt(), 1 / (KERNEL_PER_METRE * scale))
     transform.SetTranslationPart(gp_Vec(*(-low / scale)))
-    normalized = BRepBuilderAPI_Transform(solid, transform, True).Shape()
+    normalization = BRepBuilderAPI_Transform(solid, transform, True)
+    normalized = normalization.Shape()
     valid_shape(normalized)
     stream = io.BytesIO()
     BRepTools.Write_s(normalized, stream, False, False, TopTools_FormatVersion_VERSION_3)
@@ -136,6 +153,9 @@ def generate_cad_mesh(shape: Any, target_size: float, progress: Progress | None 
             )
         tags = {tag: index for index, (_, tag) in enumerate(boundaries)}
         regions = tuple(f"mesh-face-{index + 1}" for index in range(len(tags)))
+        correspondence = verify_cad_correspondence(
+            entities(shape, owner_id, "face"), normalization, tuple(tags)
+        )
         gmsh.option.setNumber("Mesh.MinimumCircleNodes", 24)
         gmsh.option.setNumber("Mesh.MeshSizeMin", 0)
         gmsh.option.setNumber("Mesh.MeshSizeMax", size)
@@ -191,7 +211,7 @@ def generate_cad_mesh(shape: Any, target_size: float, progress: Progress | None 
             )
         if progress:
             progress("mesh-ready", 1)
-        return CadMesh(mesh, volume, area, target_size)
+        return CadMesh(mesh, volume, area, target_size, correspondence)
     except EngineError:
         raise
     except Exception as error:

@@ -252,7 +252,7 @@ def execute_mesh(request: CadRequest, output: Path) -> dict[str, Any]:
     """Inspect one exact solid without creating a study, shape receipt or physical fields."""
     assets = _read_assets(request)
     with cad_log_to_stderr():
-        from phyra_engine.geometry.cad.kernel import build
+        from phyra_engine.geometry.cad.kernel import build, export_step
         from phyra_engine.meshing.cad import generate_cad_mesh
         from phyra_engine.results.cad_mesh import write_cad_mesh
 
@@ -264,7 +264,14 @@ def execute_mesh(request: CadRequest, output: Path) -> dict[str, Any]:
             )
         if request.target_size is None:
             raise EngineError("invalid-cad-mesh", "A mesh inspection target size is required.")
-        inspected = generate_cad_mesh(result.shape, request.target_size)
+        # Exact CAD receipts identify topology after the bounded STEP transfer,
+        # which can clear OCCT's Checked cache flags. Preserve those existing
+        # content references by performing the same preparation here. The bytes
+        # are not published and confer no exact-export ownership on this job.
+        export_step(result.shape)
+        inspected = generate_cad_mesh(
+            result.shape, request.target_size, owner_id=result.output_feature_id
+        )
         return write_cad_mesh(
             output,
             inspected,

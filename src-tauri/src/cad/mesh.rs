@@ -73,6 +73,65 @@ fn cross(a: &[f64], b: &[f64]) -> [f64; 3] {
     ]
 }
 
+fn validate_correspondence(receipt: &Value, regions: &[Value]) -> Result<(), String> {
+    let correspondence = receipt["correspondence"]
+        .as_object()
+        .ok_or("Missing CAD mesh correspondence evidence")?;
+    let verified = match correspondence.get("status").and_then(Value::as_str) {
+        Some("verified") => true,
+        Some("unavailable") => false,
+        _ => return Err("Invalid CAD mesh correspondence status".into()),
+    };
+    if correspondence.len() != if verified { 3 } else { 4 }
+        || receipt["correspondence"]["scope"] != "unchanged-geometry"
+        || receipt["correspondence"]["method"] != "exact-brep-round-trip"
+        || (verified && correspondence.contains_key("reason"))
+        || (!verified
+            && receipt["correspondence"]["reason"]
+                .as_str()
+                .is_none_or(|reason| reason.trim().is_empty() || reason.len() > 500))
+    {
+        return Err("Invalid CAD mesh correspondence scope or explanation".into());
+    }
+    let output = receipt["outputFeatureId"]
+        .as_str()
+        .filter(|id| !id.is_empty() && id.chars().count() <= 100)
+        .ok_or("Invalid CAD mesh source feature")?;
+    // Match topology.py's bounded owner token. These remain inspection links
+    // to this exact geometry; a valid token cannot establish physical support.
+    let owner = if output.len() <= 100 {
+        output.to_owned()
+    } else {
+        format!("feature-{}", &source_hash(output.as_bytes())[..24])
+    };
+    let prefix = format!("{owner}/face/");
+    let mut seen = HashSet::new();
+    for region in regions {
+        if !verified {
+            if region.get("cadFaceId").is_some() {
+                return Err("Unverified CAD mesh boundaries cannot reference exact faces".into());
+            }
+            continue;
+        }
+        let reference = region["cadFaceId"]
+            .as_str()
+            .filter(|id| id.len() <= 200)
+            .ok_or("Verified CAD mesh boundary is missing its source face")?;
+        let signature = reference
+            .strip_prefix(&prefix)
+            .ok_or("CAD mesh face reference belongs to another source feature")?;
+        if signature.len() != 24
+            || !signature
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || !seen.insert(reference)
+        {
+            return Err("CAD mesh face correspondence is ambiguous or duplicated".into());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn validate(receipt: &Value, bytes: &[u8], target_size: f64) -> Result<(), String> {
     validate_target_size(target_size)?;
     if receipt["protocolVersion"] != 1
@@ -176,6 +235,7 @@ pub(crate) fn validate(receipt: &Value, bytes: &[u8], target_size: f64) -> Resul
     if regions.is_empty() || regions.len() > 2048 {
         return Err("CAD mesh boundary region limit exceeded".into());
     }
+    validate_correspondence(receipt, regions)?;
     for (index, region) in regions.iter().enumerate() {
         if region["id"] != format!("mesh-face-{}", index + 1)
             || region["identity"] != "mesh-scoped"
@@ -396,9 +456,9 @@ mod tests {
         let quality = 12.0 * 0.5_f64.powf(2.0 / 3.0) / 9.0;
         bytes.extend(quality.to_le_bytes());
         let area = 1.5 + 3_f64.sqrt() / 2.0;
-        let regions = (0..4).map(|index| json!({"id":format!("mesh-face-{}",index+1),"name":format!("Surface {}",index+1),"identity":"mesh-scoped","triangleCount":1,"area":if index == 0 {3_f64.sqrt()/2.0} else {0.5}})).collect::<Vec<_>>();
+        let regions = (0..4).map(|index| json!({"id":format!("mesh-face-{}",index+1),"name":format!("Surface {}",index+1),"identity":"mesh-scoped","cadFaceId":format!("output/face/{index:024x}"),"triangleCount":1,"area":if index == 0 {3_f64.sqrt()/2.0} else {0.5}})).collect::<Vec<_>>();
         (
-            json!({"protocolVersion":1,"operation":"mesh-cad","status":"succeeded","purpose":"inspection-only","coordinateFrame":"cartesian-global-SI","geometryFingerprint":"a".repeat(64),"meshId":mesh_id,"targetSize":0.1,"mesher":{"name":"Gmsh","version":"4.test-fixture","element":"tetra4"},"byteLength":bytes.len(),"bufferHash":source_hash(&bytes),"regions":regions,
+            json!({"protocolVersion":1,"operation":"mesh-cad","status":"succeeded","purpose":"inspection-only","coordinateFrame":"cartesian-global-SI","geometryFingerprint":"a".repeat(64),"outputFeatureId":"output","correspondence":{"status":"verified","scope":"unchanged-geometry","method":"exact-brep-round-trip"},"meshId":mesh_id,"targetSize":0.1,"mesher":{"name":"Gmsh","version":"4.test-fixture","element":"tetra4"},"byteLength":bytes.len(),"bufferHash":source_hash(&bytes),"regions":regions,
             "arrays":{
                 "positions":{"offset":0,"byteLength":96,"dtype":"float64","shape":[4,3],"association":"node","units":"m"},
                 "cells":{"offset":96,"byteLength":16,"dtype":"uint32","shape":[1,4],"association":"cell","units":"1"},
@@ -495,5 +555,97 @@ mod tests {
             assert!(validate_target_size(size).is_err());
         }
         assert!(validate_target_size(0.001).is_ok());
+    }
+
+    #[test]
+    fn face_correspondence_requires_complete_unique_source_owned_evidence() {
+        let (receipt, bytes) = fixture();
+        for defect in [
+            "missing-evidence",
+            "unknown-status",
+            "scope",
+            "method",
+            "reason-on-success",
+            "extra-field",
+            "missing-face",
+            "duplicate-face",
+            "another-feature",
+            "ambiguous-face",
+            "invalid-signature",
+            "invalid-fingerprint",
+        ] {
+            let mut bad = receipt.clone();
+            match defect {
+                "missing-evidence" => {
+                    bad.as_object_mut().unwrap().remove("correspondence");
+                }
+                "unknown-status" => bad["correspondence"]["status"] = json!("matched"),
+                "scope" => bad["correspondence"]["scope"] = json!("persistent"),
+                "method" => bad["correspondence"]["method"] = json!("nearest-face"),
+                "reason-on-success" => bad["correspondence"]["reason"] = json!("partial"),
+                "extra-field" => bad["correspondence"]["approved"] = json!(true),
+                "missing-face" => {
+                    bad["regions"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("cadFaceId");
+                }
+                "duplicate-face" => {
+                    bad["regions"][1]["cadFaceId"] = bad["regions"][0]["cadFaceId"].clone();
+                }
+                "another-feature" => {
+                    bad["regions"][0]["cadFaceId"] =
+                        json!(format!("other/face/{}", "a".repeat(24)));
+                }
+                "ambiguous-face" => {
+                    bad["regions"][0]["cadFaceId"] =
+                        json!(format!("output/face/{}/ambiguous-1", "a".repeat(24)));
+                }
+                "invalid-signature" => {
+                    bad["regions"][0]["cadFaceId"] =
+                        json!(format!("output/face/{}", "G".repeat(24)));
+                }
+                "invalid-fingerprint" => bad["geometryFingerprint"] = json!("not-a-digest"),
+                _ => unreachable!(),
+            }
+            assert!(validate(&bad, &bytes, 0.1).is_err(), "{defect}");
+        }
+    }
+
+    #[test]
+    fn unavailable_correspondence_preserves_mesh_without_suggesting_exact_face_identity() {
+        let (mut receipt, bytes) = fixture();
+        receipt["correspondence"] = json!({"status":"unavailable","scope":"unchanged-geometry","method":"exact-brep-round-trip","reason":"The exact face round trip did not preserve a unique correspondence."});
+        assert!(validate(&receipt, &bytes, 0.1).is_err());
+        for region in receipt["regions"].as_array_mut().unwrap() {
+            region.as_object_mut().unwrap().remove("cadFaceId");
+        }
+        validate(&receipt, &bytes, 0.1).unwrap();
+        for reason in [Value::Null, json!("  "), json!("a".repeat(501))] {
+            let mut bad = receipt.clone();
+            bad["correspondence"]["reason"] = reason;
+            assert!(validate(&bad, &bytes, 0.1).is_err());
+        }
+        receipt["regions"][0]["cadFaceId"] = Value::Null;
+        assert!(validate(&receipt, &bytes, 0.1).is_err());
+    }
+
+    #[test]
+    fn unicode_source_feature_uses_the_same_bounded_content_owner_as_the_kernel() {
+        let (mut receipt, bytes) = fixture();
+        let output = "部".repeat(60);
+        receipt["outputFeatureId"] = json!(output);
+        let owner = format!("feature-{}", &source_hash(output.as_bytes())[..24]);
+        for (index, region) in receipt["regions"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            region["cadFaceId"] = json!(format!("{owner}/face/{index:024x}"));
+        }
+        validate(&receipt, &bytes, 0.1).unwrap();
+        receipt["regions"][0]["cadFaceId"] = json!(format!("{output}/face/{}", "a".repeat(24)));
+        assert!(validate(&receipt, &bytes, 0.1).is_err());
     }
 }

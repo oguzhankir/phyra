@@ -114,6 +114,37 @@ def array(receipt, buffer, name):
     ).reshape(layout["shape"])
 
 
+def assert_exact_receipt_faces(payload, receipt, output):
+    exact_request = deepcopy(payload)
+    exact_request["operation"] = "cad"
+    del exact_request["targetSize"]
+    exact_receipt = execute(CadRequest.from_payload(exact_request), output)
+    assert receipt["correspondence"]["status"] == "verified"
+    assert {region["cadFaceId"] for region in receipt["regions"]} == {
+        face["id"] for face in exact_receipt["faces"]
+    }
+
+
+@pytest.mark.parametrize(
+    "curved,translated", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_mesh_face_ids_match_current_exact_receipt_without_changing_existing_reference_rules(
+    tmp_path, curved, translated
+):
+    geometry = definition(translated=translated)
+    if curved:
+        geometry["features"][0] = {
+            "id": "box",
+            "kind": "cylinder",
+            "name": "Cylinder",
+            "length": 0.1,
+            "radius": 0.02,
+        }
+    payload = request(tmp_path, geometry)
+    receipt = execute(CadRequest.from_payload(payload), tmp_path / "mesh")
+    assert_exact_receipt_faces(payload, receipt, tmp_path / "exact")
+
+
 @pytest.mark.parametrize("translated", [False, True])
 def test_brep_box_volume_units_complete_boundary_and_placement(translated):
     authored = definition(translated=translated)
@@ -245,6 +276,12 @@ def test_mesh_receipt_is_separate_bounded_and_contains_only_validated_inspection
         statistics["bounds"], [positions.min(axis=0), positions.max(axis=0)]
     )
     assert all(region["identity"] == "mesh-scoped" for region in receipt["regions"])
+    assert receipt["correspondence"] == {
+        "status": "verified",
+        "scope": "unchanged-geometry",
+        "method": "exact-brep-round-trip",
+    }
+    assert_exact_receipt_faces(payload, receipt, tmp_path / "exact")
     assert receipt["meshId"] == hashlib.sha256(positions.tobytes() + cells.tobytes()).hexdigest()
 
 
@@ -299,6 +336,9 @@ def test_imported_step_meshes_without_enabling_analysis_and_rejects_tampered_ass
     assert receipt["statistics"]["exactVolume"] == pytest.approx(
         0.1 * (0.05 * 0.02 - math.pi * 0.005**2), rel=1e-10
     )
+    assert receipt["correspondence"]["status"] == "verified"
+    assert all(region["cadFaceId"].startswith("import/face/") for region in receipt["regions"])
+    assert_exact_receipt_faces(request(tmp_path, imported), receipt, tmp_path / "import-exact")
     with pytest.raises(EngineError) as unavailable:
         lower_geometry(imported)
     assert unavailable.value.code == "unsupported-cad-study"

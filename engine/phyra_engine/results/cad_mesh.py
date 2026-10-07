@@ -73,6 +73,15 @@ def write_cad_mesh(
     ]
     if any(region["triangleCount"] == 0 or region["area"] <= 0 for region in regions):
         raise EngineError("invalid-cad-mesh", "Every mesh boundary region must contain triangles.")
+    if result.correspondence.face_ids:
+        if result.correspondence.reason or len(result.correspondence.face_ids) != len(regions):
+            raise EngineError("invalid-cad-mesh", "Exact face correspondence is incomplete.")
+        for region, face_id in zip(regions, result.correspondence.face_ids, strict=True):
+            region["cadFaceId"] = face_id
+    elif not result.correspondence.reason:
+        raise EngineError(
+            "invalid-cad-mesh", "Exact face correspondence has no verified source faces."
+        )
     volume = float(tetra_volumes(mesh.positions, mesh.cells).sum())
     manifest = {
         "protocolVersion": 1,
@@ -92,6 +101,7 @@ def write_cad_mesh(
         "bufferHash": hashlib.sha256(buffer).hexdigest(),
         "arrays": descriptors,
         "regions": regions,
+        "correspondence": result.correspondence.metadata(),
         "statistics": {
             "bounds": [mesh.positions.min(axis=0).tolist(), mesh.positions.max(axis=0).tolist()],
             "nodes": len(mesh.positions),
