@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from phyra_engine.errors import EngineError
+from phyra_engine.geometry import sketch_constraints as sketch_solver
 from phyra_engine.geometry.profile import profile_area
 from phyra_engine.geometry.sketch_constraints import build_profile, decode_sketch, solve_sketch
 from phyra_engine.studies.project import validate_cad_geometry
@@ -213,6 +214,194 @@ def test_redundant_constraint_is_reported_separately_from_conflict():
     result = solve_sketch(sketch)
     assert result.status == "redundant" and result.degrees_of_freedom == 0
     assert {"h-bottom", "duplicate-horizontal"}.issubset(result.failed_constraint_ids)
+
+
+@pytest.fixture
+def truncated_redundant_diagnostics(monkeypatch):
+    """Use the real library while reproducing its zero-ms diagnostic timeout."""
+    library = sketch_solver._load_library()
+    calls = []
+    primary = []
+
+    class TruncatedDiagnostics:
+        def Slvs_Solve(self, pointer, group):
+            library.Slvs_Solve(pointer, group)
+            system = pointer._obj
+            calls.append((system.calculateFaileds, system.result, system.dof))
+            if system.calculateFaileds:
+                primary[:] = [parameter.val for parameter in system.param[: system.params]]
+            if system.result == 4:
+                system.faileds = 0
+
+    monkeypatch.setattr(sketch_solver, "_load_library", TruncatedDiagnostics)
+    return calls, primary
+
+
+def known_rectangle():
+    sketch = rectangle()
+    for point, position in zip(
+        sketch["points"], [[0, 0], [0.1, 0], [0.1, 0.05], [0, 0.05]], strict=True
+    ):
+        point["position"] = position
+    return sketch
+
+
+def test_duplicate_hints_survive_native_timeout_and_multiple_dependencies(
+    monkeypatch, truncated_redundant_diagnostics
+):
+    calls, primary = truncated_redundant_diagnostics
+    # Reaching the deadline must not erase exact equivalent equations, even when
+    # removing one constraint cannot repair both independent redundant groups.
+    clock = iter([10.0, 10.0 + sketch_solver.REDUNDANT_DIAGNOSTIC_BUDGET_SECONDS])
+    monkeypatch.setattr(sketch_solver, "monotonic", lambda: next(clock))
+    sketch = known_rectangle()
+    sketch["constraints"].extend(
+        [
+            {"id": "duplicate-horizontal", "kind": "horizontal", "lineId": "bottom"},
+            {
+                "id": "duplicate-width-reversed",
+                "kind": "distance",
+                "firstPointId": "p1",
+                "secondPointId": "p0",
+                "value": 0.1,
+            },
+        ]
+    )
+    original = deepcopy(sketch)
+    result = solve_sketch(sketch)
+    assert result.status == "redundant" and result.degrees_of_freedom == 0
+    assert result.failed_constraint_ids == (
+        "h-bottom",
+        "width",
+        "duplicate-horizontal",
+        "duplicate-width-reversed",
+    )
+    assert calls == [(1, 4, 0)]
+    assert [point.position for point in result.points] == [
+        tuple(primary[index : index + 2]) for index in range(7, len(primary), 2)
+    ]
+    assert sketch == original
+
+
+def test_dependent_relationship_hints_require_actual_full_rank_same_dof_trials(
+    monkeypatch, truncated_redundant_diagnostics
+):
+    calls, primary = truncated_redundant_diagnostics
+    monkeypatch.setattr(sketch_solver, "monotonic", lambda: 0.0)
+    sketch = known_rectangle()
+    sketch["constraints"].append(
+        {"id": "parallel", "kind": "parallel", "firstLineId": "bottom", "secondLineId": "top"}
+    )
+    original = deepcopy(sketch)
+    result = solve_sketch(sketch)
+    assert result.status == "redundant" and result.degrees_of_freedom == 0
+    assert result.failed_constraint_ids == ("h-bottom", "h-top", "parallel")
+    # Dropping the fixed point leaves the coupled redundancy and frees motion.
+    assert calls[1] == (0, 4, 2)
+    assert "origin" not in result.failed_constraint_ids
+    assert all(calculate_faileds == 0 for calculate_faileds, _, _ in calls[1:])
+    assert [point.position for point in result.points] == [
+        tuple(primary[index : index + 2]) for index in range(7, len(primary), 2)
+    ]
+    assert sketch == original
+    for identifier in result.failed_constraint_ids:
+        repaired = deepcopy(sketch)
+        repaired["constraints"] = [
+            condition for condition in repaired["constraints"] if condition["id"] != identifier
+        ]
+        repaired_result = solve_sketch(repaired)
+        assert repaired_result.status == "solved" and repaired_result.degrees_of_freedom == 0
+        np.testing.assert_allclose(
+            [point.position for point in repaired_result.points],
+            [[0, 0], [0.1, 0], [0.1, 0.05], [0, 0.05]],
+            atol=1e-12,
+        )
+
+
+def test_full_rank_removal_that_frees_motion_is_not_a_supplemental_hint(
+    monkeypatch, truncated_redundant_diagnostics
+):
+    calls, _ = truncated_redundant_diagnostics
+    monkeypatch.setattr(sketch_solver, "monotonic", lambda: 0.0)
+    sketch = known_rectangle()
+    sketch["constraints"].append(
+        {"id": "duplicate-horizontal", "kind": "horizontal", "lineId": "bottom"}
+    )
+    result = solve_sketch(sketch)
+    assert result.status == "redundant" and result.degrees_of_freedom == 0
+    assert calls[1] == (0, 0, 1)
+    assert result.failed_constraint_ids == ("h-bottom", "duplicate-horizontal")
+
+
+def test_redundant_trial_count_is_bounded(monkeypatch, truncated_redundant_diagnostics):
+    calls, _ = truncated_redundant_diagnostics
+    monkeypatch.setattr(sketch_solver, "monotonic", lambda: 0.0)
+    sketch = known_rectangle()
+    sketch["constraints"].append(
+        {"id": "parallel", "kind": "parallel", "firstLineId": "bottom", "secondLineId": "top"}
+    )
+    # Additional independent fixed points cannot repair the rectangle's coupled
+    # redundancy, but they would make an unlimited diagnostic search expensive.
+    independent = []
+    for index in range(sketch_solver.MAX_REDUNDANT_DIAGNOSTIC_TRIALS + 1):
+        identifier = f"independent-{index}"
+        sketch["points"].append({"id": identifier, "position": [index / 100, 0.2]})
+        independent.append({"id": f"fixed-{index}", "kind": "fixedPoint", "pointId": identifier})
+    sketch["constraints"] = independent + sketch["constraints"]
+    result = solve_sketch(sketch)
+    assert result.status == "redundant" and result.degrees_of_freedom == 0
+    assert result.failed_constraint_ids == ()
+    assert len(calls) == 1 + sketch_solver.MAX_REDUNDANT_DIAGNOSTIC_TRIALS
+    assert all(calculate_faileds == 0 for calculate_faileds, _, _ in calls[1:])
+
+
+def test_distinct_dimension_values_stay_conflicting_without_redundant_trials(
+    truncated_redundant_diagnostics,
+):
+    calls, _ = truncated_redundant_diagnostics
+    sketch = known_rectangle()
+    sketch["constraints"].append(
+        {
+            "id": "different-width-reversed",
+            "kind": "distance",
+            "firstPointId": "p1",
+            "secondPointId": "p0",
+            "value": 0.2,
+        }
+    )
+    result = solve_sketch(sketch)
+    assert result.status == "conflicting" and result.degrees_of_freedom is None
+    assert {"width", "different-width-reversed"}.issubset(result.failed_constraint_ids)
+    assert len(calls) == 1 and calls[0][0] == 1
+    assert [point.position for point in result.points] == [
+        tuple(point["position"]) for point in sketch["points"]
+    ]
+
+
+@pytest.mark.parametrize("invalid", ["status", "dof", "nonfinite"])
+def test_invalid_native_diagnostic_trials_are_rejected(monkeypatch, invalid):
+    library = sketch_solver._load_library()
+
+    class InvalidTrial:
+        def Slvs_Solve(self, pointer, group):
+            library.Slvs_Solve(pointer, group)
+            system = pointer._obj
+            if not system.calculateFaileds:
+                if invalid == "status":
+                    system.result = 99
+                elif invalid == "dof":
+                    system.dof = -2
+                else:
+                    system.param[0].val = float("nan")
+
+    monkeypatch.setattr(sketch_solver, "_load_library", InvalidTrial)
+    sketch = known_rectangle()
+    sketch["constraints"].append(
+        {"id": "parallel", "kind": "parallel", "firstLineId": "bottom", "secondLineId": "top"}
+    )
+    with pytest.raises(EngineError) as error:
+        solve_sketch(sketch)
+    assert error.value.code == "invalid-sketch-result"
 
 
 @pytest.mark.parametrize("kind, expected", [("parallel", [0.1, 0]), ("perpendicular", [0, 0.1])])
