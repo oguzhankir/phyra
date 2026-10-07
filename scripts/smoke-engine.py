@@ -472,6 +472,8 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
         for key, value in source.items()
         if key not in ("name", "revision", "displayUnits", "namedSelections")
     }
+    # Unchanged v6 CAD recipes retain their physical digest after v7 migration.
+    canonical["schemaVersion"] = 6
     expected_fingerprint = hashlib.sha256(
         json.dumps(
             canonical, sort_keys=True, separators=(",", ":"), allow_nan=False
