@@ -15,8 +15,12 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 ### Changed
 
 - Application menu actions activate before the menu closes, preserving theme and other command selections during focus changes.
+- Native sketch builds discover a compatible installed MSVC toolchain on Windows; CAD worker output flushing uses the platform's native C runtime to preserve JSON framing.
 - Project schema v7 extends geometry documents and optional studies with loft, sweep and named assembly instances. Validated v1–v6 inputs migrate explicitly; unchanged numerical and v6 CAD inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
 
+### Fixed
+
+- Project validation rejects a CAD study whose dimension disagrees with its geometry before opening the document, avoiding an unusable preparation state.
 
 ## 0.4.0
 

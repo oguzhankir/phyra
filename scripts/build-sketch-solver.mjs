@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { root, run, python, requirePython } from './common.mjs';
+import { discoverWindowsMsvc } from './windows-msvc.mjs';
 
 // Build only the constraint C ABI. No GUI, CAD scripting interpreter, system
 // Eigen, OpenMP runtime or user-selected executable enters the application.
@@ -21,7 +22,8 @@ if (!filename) throw new Error(`No managed sketch solver build is defined for ${
 requirePython();
 const base = path.join(root, 'artifacts/sketch-solver');
 const source = path.join(base, 'source');
-const build = path.join(base, `build-${target}`);
+const windows = process.platform === 'win32' ? await discoverWindowsMsvc(execute) : null;
+const build = path.join(base, `build-${target}${windows ? `-vs-${windows.cacheKey}` : ''}`);
 const output = path.join(base, target);
 await fs.mkdir(base, { recursive: true });
 
@@ -97,7 +99,7 @@ if (process.platform === 'darwin')
     `-DCMAKE_OSX_ARCHITECTURES=${process.arch}`,
     `-DCMAKE_OSX_DEPLOYMENT_TARGET=${pin.macosMinimum}`,
   );
-if (process.platform === 'win32') arguments_.push('-G', 'Visual Studio 17 2022', '-A', 'x64');
+if (windows) arguments_.push(...windows.arguments);
 await run('cmake', arguments_, { cwd: source });
 await run(
   'cmake',
@@ -171,14 +173,22 @@ await fs.copyFile(
   path.join(root, 'scripts/build-sketch-solver.mjs'),
   path.join(exported, 'PHYRA-build-sketch-solver.mjs'),
 );
-await fs.copyFile(path.join(root, 'scripts/common.mjs'), path.join(exported, 'PHYRA-common.mjs'));
+await fs.copyFile(path.join(root, 'scripts/common.mjs'), path.join(exported, 'common.mjs'));
+await fs.copyFile(
+  path.join(root, 'scripts/windows-msvc.mjs'),
+  path.join(exported, 'windows-msvc.mjs'),
+);
 await fs.writeFile(
   path.join(exported, 'PHYRA-REBUILD.txt'),
   `This artifact contains the complete SolveSpace ${pin.version} source and the exact Eigen and mimalloc submodule sources used for ${target}.\n` +
     `Original SolveSpace commit: ${pin.revision}\n` +
     'Export-only modification: CMakeLists.txt replaces include(GetGitCommitHash) with its exact revision constant. No numerical source was modified.\n' +
+    'PHYRA-build-sketch-solver.mjs and its helper files record Phyra’s repository build pipeline. Use the CMake commands below to rebuild this standalone source tree.\n' +
+    (windows
+      ? `Windows build selected ${windows.generator}; Visual Studio installation version ${windows.installationVersion}, MSVC x64 components.\n`
+      : '') +
     'With CMake >=3.18 and a C/C++ compiler, configure this directory using:\n' +
-    `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_GUI=OFF -DENABLE_CLI=OFF -DENABLE_TESTS=OFF -DENABLE_PYTHON_LIB=OFF -DENABLE_OPENMP=OFF -DENABLE_LTO=OFF -DFORCE_VENDORED_Eigen3=ON -DMI_OPT_ARCH=OFF -DMI_NO_OPT_ARCH=ON${process.platform === 'darwin' ? ' -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0' : process.platform === 'win32' ? ' -G "Visual Studio 17 2022" -A x64' : ''}\n` +
+    `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_GUI=OFF -DENABLE_CLI=OFF -DENABLE_TESTS=OFF -DENABLE_PYTHON_LIB=OFF -DENABLE_OPENMP=OFF -DENABLE_LTO=OFF -DFORCE_VENDORED_Eigen3=ON -DMI_OPT_ARCH=OFF -DMI_NO_OPT_ARCH=ON${process.platform === 'darwin' ? ' -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0' : windows ? ` -G "${windows.generator}" -A x64` : ''}\n` +
     'cmake --build build --target slvs --config Release --parallel 4\n' +
     'Retain COPYING.txt and all extlib notice files when redistributing this source or its binary. Phyra source and the ctypes adapter are provided separately with the application source.\n',
 );
