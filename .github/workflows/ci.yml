@@ -59,11 +59,13 @@ jobs:
       - run: npm run setup
       - run: npm run check
       - run: npm test
-      - run: npm run test:native
-      - run: npm run check:native
       - run: npm run test:numerics-slow
         if: github.event_name != 'pull_request'
+      # The packaged engine step generates the pinned license resources required
+      # by Tauri's build script, including for native tests and Clippy.
       - run: npm run package
+      - run: npm run test:native
+      - run: npm run check:native
       - run: npm run test:desktop
       - run: node scripts/stage-release.mjs
         if: inputs.release_assets && (matrix.os == 'macos-15' || matrix.os == 'windows-2025')
