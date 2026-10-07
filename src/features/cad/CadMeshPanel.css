@@ -1,0 +1,91 @@
+.cad-properties.cad-mesh-panel {
+  position: relative;
+  inset: auto;
+  width: 304px;
+  min-width: 260px;
+  max-width: 42%;
+  flex: 0 0 304px;
+  box-shadow: none;
+}
+.cad-mesh-content {
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+}
+.cad-mesh-content > :first-child {
+  margin-top: 0;
+}
+.cad-mesh-content form {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+.cad-mesh-generate {
+  justify-content: center;
+}
+.cad-mesh-method {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.cad-mesh-method > span {
+  color: var(--muted);
+}
+.cad-mesh-metrics {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px 12px;
+  font-size: 12px;
+  margin: 18px 0;
+}
+.cad-mesh-metrics dt {
+  color: var(--muted);
+}
+.cad-mesh-metrics dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cad-mesh-quality {
+  margin: 22px 0;
+}
+.cad-mesh-quality figcaption {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.cad-mesh-histogram {
+  height: 72px;
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+.cad-mesh-histogram > span {
+  flex: 1;
+  min-height: 1px;
+  background: var(--accent);
+  opacity: 0.8;
+  border-radius: 2px 2px 0 0;
+}
+.cad-mesh-quality-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 6px;
+}
+.cad-mesh-note {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+@media (max-width: 800px) {
+  .cad-properties.cad-mesh-panel {
+    flex-basis: 270px;
+    min-width: 240px;
+  }
+}

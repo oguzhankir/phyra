@@ -14,14 +14,14 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 9px 12px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--line);
 }
 .cad-sketch-tools button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 9px;
+  padding: 6px 8px;
   font-size: 11px;
   border-radius: 5px;
 }
@@ -44,8 +44,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  min-height: 40px;
+  padding: 6px 12px;
+  min-height: 32px;
   background: var(--surface-subtle);
   font-size: 11px;
   border-bottom: 1px solid var(--line);

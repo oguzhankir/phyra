@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Focus, Maximize, MousePointer2 } from 'lucide-react';
+import CadViewControls from './CadViewControls';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
 import type { CadAuthoringGuide } from './authoringGuide';
 import { cadBodyAtTriangle, cadLegacyBodyId, cadVisiblePrimitives } from './cadVisibility';
@@ -29,6 +29,7 @@ export default function CadViewport({
   definitionPresent = false,
   stale = false,
   provisional = false,
+  inspection = false,
   selected,
   hiddenBodies = [],
   selectionKind,
@@ -43,6 +44,7 @@ export default function CadViewport({
   definitionPresent?: boolean;
   stale?: boolean;
   provisional?: boolean;
+  inspection?: boolean;
   selected: string[];
   hiddenBodies?: string[];
   selectionKind: SelectionKind;
@@ -68,6 +70,7 @@ export default function CadViewport({
     selectionKind,
     stale,
     provisional,
+    inspection,
     onRendered,
     selected,
     hiddenBodies,
@@ -78,6 +81,7 @@ export default function CadViewport({
     selectionKind,
     stale,
     provisional,
+    inspection,
     onRendered,
     selected,
     hiddenBodies,
@@ -100,7 +104,9 @@ export default function CadViewport({
     renderer.setClearColor(dark ? '#202323' : '#f4f5f3');
     renderer.domElement.setAttribute(
       'aria-label',
-      'CAD model view. Left drag orbits; right drag pans; wheel zooms; click selects; Shift adds to selection. Alt-click cycles overlapping entities. F fits the model; Shift+F fits selection; 1 to 4 choose standard views.',
+      inspection
+        ? 'Mesh inspection view. Left drag orbits; right drag pans; wheel zooms. F fits the displayed mesh; 1 to 4 choose standard views. This view does not select CAD topology.'
+        : 'CAD model view. Left drag orbits; right drag pans; wheel zooms; click selects; Shift adds to selection. Alt-click cycles overlapping entities. F fits the model; Shift+F fits selection; 1 to 4 choose standard views.',
     );
     renderer.domElement.setAttribute('tabindex', '0');
     setFailure(null);
@@ -244,7 +250,13 @@ export default function CadViewport({
     setGeneration((n) => n + 1);
     const ray = new THREE.Raycaster();
     const hitEntities = (event: PointerEvent) => {
-      if (!preview || callbacks.current.stale || callbacks.current.provisional) return [];
+      if (
+        !preview ||
+        callbacks.current.stale ||
+        callbacks.current.provisional ||
+        callbacks.current.inspection
+      )
+        return [];
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(
         new THREE.Vector2(
@@ -299,6 +311,7 @@ export default function CadViewport({
         return;
       }
       start = null;
+      if (callbacks.current.inspection || callbacks.current.provisional) return;
       pickCycle = cadNextPick(
         pickCycle,
         hitEntities(event),
@@ -313,10 +326,11 @@ export default function CadViewport({
       else if (!additive) callbacks.current.onClearSelection();
     };
     const keyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') callbacks.current.onClearSelection();
+      const readOnly = callbacks.current.inspection || callbacks.current.provisional;
+      if (event.key === 'Escape' && !readOnly) callbacks.current.onClearSelection();
       if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
-        fit(undefined, event.shiftKey && !callbacks.current.stale);
+        fit(undefined, event.shiftKey && !readOnly && !callbacks.current.stale);
       }
       const standard = ({ '1': 'iso', '2': 'front', '3': 'top', '4': 'right' } as const)[
         event.key as '1' | '2' | '3' | '4'
@@ -389,7 +403,7 @@ export default function CadViewport({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [preview, guide, dark]);
+  }, [preview, guide, dark, inspection]);
   useEffect(() => {
     const current = graphics.current;
     if (!current || !preview) return;
@@ -447,76 +461,34 @@ export default function CadViewport({
   return (
     <div className="cad-viewport">
       <div ref={container} className="cad-graphics" />
-      <div className="cad-model-tools" role="toolbar" aria-label="Model view controls">
-        <div className="cad-tool-group">
-          <MousePointer2 size={14} />
-          {(['face', 'edge', 'body'] as const).map((kind) => (
-            <button
-              key={kind}
-              aria-pressed={selectionKind === kind}
-              disabled={
-                !preview || stale || provisional || (kind === 'body' && preview.bodies.length === 0)
-              }
-              onClick={() => onSelectionKind(kind)}
-            >
-              {kind === 'face' ? 'Faces' : kind === 'edge' ? 'Edges' : 'Bodies'}
-            </button>
-          ))}
-        </div>
-        <div className="cad-tool-group">
-          {(['iso', 'front', 'top', 'right'] as const).map((next) => (
-            <button
-              key={next}
-              aria-pressed={view === next}
-              onClick={() => {
-                setView(next);
-                graphics.current?.fit(next);
-              }}
-            >
-              {next === 'iso'
-                ? 'Isometric'
-                : next === 'front'
-                  ? 'Front · XY'
-                  : next === 'top'
-                    ? 'Top · XZ'
-                    : 'Right · YZ'}
-            </button>
-          ))}
-        </div>
-        <button
-          aria-label="Fit CAD model to view"
-          title="Fit visible model (F) · preserves view direction"
-          onClick={() => {
-            graphics.current?.fit();
-          }}
-        >
-          <Maximize size={15} />
-        </button>
-        <button
-          aria-label="Fit selected CAD entities to view"
-          title="Fit selection (Shift+F)"
-          disabled={!selected.length || stale || !preview}
-          onClick={() => graphics.current?.fit(undefined, true)}
-        >
-          <Focus size={15} />
-        </button>
-        <select
-          aria-label="CAD display style"
-          value={style}
-          onChange={(event) => setStyle(event.target.value as typeof style)}
-        >
-          <option value="edges">Shaded + edges</option>
-          <option value="shaded">Shaded</option>
-          <option value="wireframe">Wireframe</option>
-        </select>
-      </div>
+      <CadViewControls
+        selectionKind={selectionKind}
+        canSelect={!!preview && !stale && !provisional && !inspection}
+        hasBodies={!!preview?.bodies.length}
+        onSelectionKind={onSelectionKind}
+        view={view}
+        onView={(next) => {
+          setView(next);
+          graphics.current?.fit(next);
+        }}
+        onFit={() => graphics.current?.fit()}
+        canFitSelection={!!selected.length && !stale && !provisional && !inspection && !!preview}
+        onFitSelection={() => graphics.current?.fit(undefined, true)}
+        style={style}
+        onStyle={setStyle}
+      />
       {guide && (
         <div className="cad-guide-banner" role="status">
           {guide.label}
           {guide.truncated ? ' · bounded display' : ''}
         </div>
       )}
-      {provisional && (
+      {inspection && (
+        <div className="cad-guide-banner" role="status">
+          Mesh inspection · boundary triangles
+        </div>
+      )}
+      {provisional && !inspection && (
         <div className="cad-guide-banner" role="status">
           Command preview · Apply to keep this shape
         </div>
@@ -528,12 +500,19 @@ export default function CadViewport({
       )}
       <div className="cad-view-footer">
         <span>
-          {hoverName ??
-            (selected.length
-              ? `${selected.length} selected · Esc clears selection`
-              : 'Drag to orbit · right drag to pan · Alt-click to pick through')}
+          {inspection
+            ? 'Boundary mesh display · drag to orbit or pan'
+            : (hoverName ??
+              (selected.length
+                ? `${selected.length} selected · Esc clears selection`
+                : 'Drag to orbit · right drag to pan · Alt-click to pick through'))}
         </span>
-        <span>F · Fit view &nbsp; Shift+F · Fit selection</span>
+        <span>
+          F · Fit view
+          {!inspection && !provisional && !stale && !!preview && (
+            <> &nbsp; Shift+F · Fit selection</>
+          )}
+        </span>
       </div>
       {failure && (
         <p role="alert" className="cad-empty-overlay">
@@ -543,16 +522,22 @@ export default function CadViewport({
       {!preview && !guide && !failure && (
         <div className="cad-empty-overlay">
           <strong>
-            {definitionPresent
-              ? 'Exact shape is awaiting rebuild'
-              : 'Start with a sketch or a solid'}
+            {inspection
+              ? 'Generate a mesh to inspect this solid'
+              : definitionPresent
+                ? 'Exact shape is awaiting rebuild'
+                : 'Start with a sketch or a solid'}
           </strong>
           <p>
-            {definitionPresent
-              ? 'Your definition is saved in feature history. Rebuild in the desktop app to inspect the exact shape.'
-              : 'New sketch → choose a plane → draw a closed profile → Finish sketch → Extrude.'}
+            {inspection
+              ? 'Choose a target element size in Mesh inspection. Generation requires the desktop app and a current exact single solid.'
+              : definitionPresent
+                ? 'Your definition is saved in feature history. Rebuild in the desktop app to inspect the exact shape.'
+                : 'New sketch → choose a plane → draw a closed profile → Finish sketch → Extrude.'}
           </p>
-          {!definitionPresent && <p>For an existing part, use Import STEP.</p>}
+          {!inspection && !definitionPresent && (
+            <p>For an existing part, use Create → Import STEP.</p>
+          )}
         </div>
       )}
     </div>

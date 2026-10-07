@@ -6,7 +6,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
-- Isolated exact-solid mesh inspection generates independent Gmsh tetra4 topology with bounded binary buffers, mesh-scoped boundary groups, element quality and exact-versus-mesh measurements. Inspection jobs are cancellable, preserve accepted CAD exports and cannot enable general-solid analysis or enter project archives.
+- Single-solid CAD mesh inspection generates independent Gmsh tetra4 meshes from exact BRep geometry. The workspace shows boundary triangles, element counts and quality distribution, and exact-versus-mesh volume. Inspection remains transient; it neither assigns physical boundaries nor enables general-solid analysis or replaces exact CAD exports.
 
 - New desktop CAD solid operations use editable command drafts with exact Preview, one-transaction Apply and Cancel. Provisional shapes cannot enable analysis/export or replace the last accepted shape; incomplete numeric drafts and late/cancelled previews remain blocked.
 - CAD navigation adds overlapping-entity selection with Alt-click, visible-model and selected-entity fitting that preserves viewing direction, and numbered standard-view shortcuts.
@@ -19,7 +19,9 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Changed
 
-- The CAD workspace uses a compact grouped toolbar, a resizable/collapsible Model and Operations navigator, and on-demand properties, measurement, analysis and export details. Project saving stays in the document bar; narrow workspaces collapse the navigator to retain drawing space.
+- CAD now shares application menus and document tabs in one header, with modeling tools, file status, Save and Rebuild in one command strip. Compact view selectors replace the wide view-button row; Auto-save and Auto rebuild move into their relevant menus. English help and assistant guidance describe the new locations and mesh-inspection limits.
+
+- The CAD workspace uses a compact grouped toolbar, a resizable/collapsible Model and Operations navigator, and on-demand properties, measurement, analysis and export details. Project saving stays in the shared command strip; narrow workspaces collapse the navigator to retain drawing space.
 - Sketch dimension activation focuses its editable constraint value; plane axes and point-coordinate labels match the active plane. Constraint names, linked geometry selection, conflict highlighting and hover feedback make edits easier to inspect. Product-assistant responses and visible help metadata use English.
 
 - Phyra-owned source code is now Apache-2.0. Bundled GPL-covered dependencies retain their licenses; combined application metadata, notices and Corresponding Source gates explicitly preserve the applicable GPLv3 distribution obligations. Earlier GPL grants remain valid.

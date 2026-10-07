@@ -121,11 +121,26 @@ it('separates guidance about a pending command from the supplied committed CAD e
   expect(context.text).toContain('Apply becomes available only after an exact preview succeeds');
   expect(context.text).toContain('Cancel leaves the project definition unchanged');
   expect(context.text).toContain(
-    'Unapplied command drafts and provisional previews are not attached',
+    'Unapplied command drafts, provisional previews and transient mesh inspection data are not attached',
   );
   expect(context.text).toContain('synthetic-cad-fixture-job');
   expect(ASSISTANT_SYSTEM).toContain(
     'Never cite an older committed CAD evaluation as evidence for an unapplied command',
   );
   expect(ASSISTANT_SYSTEM).toContain('Apply needs a committed rebuild');
+});
+
+it('explains transient mesh inspection without treating it as study or supplied evidence', () => {
+  const context = assistantContext(
+    'How can I inspect tetrahedral mesh quality in CAD?',
+    assemblyContext(),
+    false,
+  );
+  expect(context.sourceIds).toContain('cad');
+  expect(context.text).toContain('Mean-ratio tetrahedral quality');
+  expect(context.text).toContain('not persistent CAD face references');
+  expect(context.text).not.toContain('private-assembly-project');
+  expect(ASSISTANT_SYSTEM).toContain(
+    'Transient mesh previews and their quality measurements are not supplied',
+  );
 });

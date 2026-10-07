@@ -53,21 +53,28 @@ export default function CanonicalProjectWorkspace({
       id={`document-panel-${documentId}`}
       aria-labelledby={`document-tab-${documentId}`}
     >
-      <ProjectWorkspaceBar
-        path={w.path}
-        dirty={w.dirty}
-        desktop={w.desktop}
-        canSave={
-          !w.locked && !w.nativeLocked && !w.validation && w.desktop && !w.invalidDraftLabels.length
-        }
-        autosaveEnabled={w.autosaveEnabled}
-        autosaveStatus={w.autosaveStatus}
-        autosaveError={w.autosaveError}
-        onAutosave={w.setAutosaveEnabled}
-        onSave={() => void w.save()}
-      />
       {mode === 'cad' ? (
         <CadWorkspace
+          persistenceControls={
+            <ProjectWorkspaceBar
+              compact
+              path={w.path}
+              dirty={w.dirty}
+              desktop={w.desktop}
+              canSave={
+                !w.locked &&
+                !w.nativeLocked &&
+                !w.validation &&
+                w.desktop &&
+                !w.invalidDraftLabels.length
+              }
+              autosaveEnabled={w.autosaveEnabled}
+              autosaveStatus={w.autosaveStatus}
+              autosaveError={w.autosaveError}
+              onAutosave={w.setAutosaveEnabled}
+              onSave={() => void w.save()}
+            />
+          }
           model={{
             project: w.project,
             desktop: w.desktop,
@@ -78,6 +85,9 @@ export default function CanonicalProjectWorkspace({
             busy: w.cad.busy,
             cancellable: w.cad.cancellable,
             command: w.cad.command,
+            meshPreview: w.cad.meshPreview,
+            meshBusy: w.cad.meshBusy,
+            inspectMesh: w.cad.inspectMesh,
             error: w.error,
             evaluation: w.cad.evaluation,
             retainedPreview: w.cad.retainedPreview,
@@ -107,204 +117,223 @@ export default function CanonicalProjectWorkspace({
           }}
         />
       ) : (
-        <main className="project-overview">
-          <header className="overview-heading">
-            <div>
-              <p>Project workflow</p>
-              <h1>{w.project.name}</h1>
-              <span>Create geometry, prepare a supported study, then inspect its results.</span>
-            </div>
-            <button className="primary" disabled={w.locked} onClick={() => onMode('cad')}>
-              <Box size={16} /> Open CAD workspace
-            </button>
-          </header>
-          <label className="overview-project-name">
-            <span>Project name</span>
-            <input
-              aria-label="Project name"
-              maxLength={200}
-              disabled={w.locked}
-              value={w.project.name}
-              onChange={(event) =>
-                w.edit((next) => {
-                  next.name = event.target.value;
-                }, false)
-              }
-            />
-          </label>
-          <div className="overview-stages">
-            <article className={`overview-stage ${evaluated ? 'complete' : ''}`}>
-              <div className="overview-stage-icon">
-                <Box size={24} />
+        <>
+          <ProjectWorkspaceBar
+            path={w.path}
+            dirty={w.dirty}
+            desktop={w.desktop}
+            canSave={
+              !w.locked &&
+              !w.nativeLocked &&
+              !w.validation &&
+              w.desktop &&
+              !w.invalidDraftLabels.length
+            }
+            autosaveEnabled={w.autosaveEnabled}
+            autosaveStatus={w.autosaveStatus}
+            autosaveError={w.autosaveError}
+            onAutosave={w.setAutosaveEnabled}
+            onSave={() => void w.save()}
+          />
+          <main className="project-overview">
+            <header className="overview-heading">
+              <div>
+                <p>Project workflow</p>
+                <h1>{w.project.name}</h1>
+                <span>Create geometry, prepare a supported study, then inspect its results.</span>
               </div>
-              <div className="overview-stage-step">01 · Geometry</div>
-              <h2>{empty ? 'Start your geometry' : geometryLabel}</h2>
-              <p>
-                {empty
-                  ? 'Draw in a dedicated workspace or import a STEP source. No material, mesh or analysis has been created.'
-                  : numerical
-                    ? 'This project uses a verified primitive or plane-profile analysis path.'
-                    : evaluated
-                      ? 'Exact geometry evaluated by the local CAD kernel. Analysis compatibility is checked separately.'
-                      : 'CAD definition saved. Evaluate it to validate the exact shape.'}
-              </p>
-              <span className="overview-stage-state">
-                {evaluated ? <CheckCircle2 size={14} /> : <Circle size={14} />}{' '}
-                {empty ? 'Not started' : evaluated ? 'Geometry available' : 'Evaluation required'}
-              </span>
-              <button className="secondary" disabled={w.locked} onClick={() => onMode('cad')}>
-                Edit geometry <ArrowRight size={14} />
+              <button className="primary" disabled={w.locked} onClick={() => onMode('cad')}>
+                <Box size={16} /> Open CAD workspace
               </button>
-              {isNumericalProject(w.project) && (
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    w.selectSection('geometry');
-                    onAnalysis();
-                  }}
-                >
-                  Open current geometry editor
+            </header>
+            <label className="overview-project-name">
+              <span>Project name</span>
+              <input
+                aria-label="Project name"
+                maxLength={200}
+                disabled={w.locked}
+                value={w.project.name}
+                onChange={(event) =>
+                  w.edit((next) => {
+                    next.name = event.target.value;
+                  }, false)
+                }
+              />
+            </label>
+            <div className="overview-stages">
+              <article className={`overview-stage ${evaluated ? 'complete' : ''}`}>
+                <div className="overview-stage-icon">
+                  <Box size={24} />
+                </div>
+                <div className="overview-stage-step">01 · Geometry</div>
+                <h2>{empty ? 'Start your geometry' : geometryLabel}</h2>
+                <p>
+                  {empty
+                    ? 'Draw in a dedicated workspace or import a STEP source. No material, mesh or analysis has been created.'
+                    : numerical
+                      ? 'This project uses a verified primitive or plane-profile analysis path.'
+                      : evaluated
+                        ? 'Exact geometry evaluated by the local CAD kernel. Analysis compatibility is checked separately.'
+                        : 'CAD definition saved. Evaluate it to validate the exact shape.'}
+                </p>
+                <span className="overview-stage-state">
+                  {evaluated ? <CheckCircle2 size={14} /> : <Circle size={14} />}{' '}
+                  {empty ? 'Not started' : evaluated ? 'Geometry available' : 'Evaluation required'}
+                </span>
+                <button className="secondary" disabled={w.locked} onClick={() => onMode('cad')}>
+                  Edit geometry <ArrowRight size={14} />
                 </button>
-              )}
-            </article>
-            <article className={!numerical ? 'overview-stage blocked' : 'overview-stage'}>
-              <div className="overview-stage-icon">
-                <Layers size={24} />
-              </div>
-              <div className="overview-stage-step">02 · Preparation</div>
-              <h2>Materials & conditions</h2>
-              <p>
-                {numerical
-                  ? 'Assign elastic properties, supports and loads to this study’s stable boundaries.'
-                  : empty
-                    ? 'Create geometry before preparing a study.'
-                    : compatibility?.state === 'unsupported'
-                      ? compatibility.reason
-                      : canCreateStudy
-                        ? 'The exact geometry has a supported analysis path. Create a study with your material and mesh definitions.'
-                        : 'Evaluate the exact geometry to check its available analysis paths.'}
-              </p>
-              <span className="overview-stage-state">
-                {numerical ? <Circle size={14} /> : <LockKeyhole size={14} />}{' '}
-                {numerical
-                  ? `${w.preparation.completed}/${w.preparation.total} definition checks`
-                  : canCreateStudy
-                    ? 'Supported geometry · study not created'
-                    : compatibility?.state === 'unsupported'
-                      ? 'Saved CAD · analysis unsupported'
-                      : 'Geometry evaluation required'}
-              </span>
-              {canCreateStudy ? (
-                <button
-                  className="secondary"
-                  disabled={w.locked}
-                  onClick={() => setCreatingStudy(true)}
-                >
-                  Create analysis <ArrowRight size={14} />
-                </button>
-              ) : (
+                {isNumericalProject(w.project) && (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      w.selectSection('geometry');
+                      onAnalysis();
+                    }}
+                  >
+                    Open current geometry editor
+                  </button>
+                )}
+              </article>
+              <article className={!numerical ? 'overview-stage blocked' : 'overview-stage'}>
+                <div className="overview-stage-icon">
+                  <Layers size={24} />
+                </div>
+                <div className="overview-stage-step">02 · Preparation</div>
+                <h2>Materials & conditions</h2>
+                <p>
+                  {numerical
+                    ? 'Assign elastic properties, supports and loads to this study’s stable boundaries.'
+                    : empty
+                      ? 'Create geometry before preparing a study.'
+                      : compatibility?.state === 'unsupported'
+                        ? compatibility.reason
+                        : canCreateStudy
+                          ? 'The exact geometry has a supported analysis path. Create a study with your material and mesh definitions.'
+                          : 'Evaluate the exact geometry to check its available analysis paths.'}
+                </p>
+                <span className="overview-stage-state">
+                  {numerical ? <Circle size={14} /> : <LockKeyhole size={14} />}{' '}
+                  {numerical
+                    ? `${w.preparation.completed}/${w.preparation.total} definition checks`
+                    : canCreateStudy
+                      ? 'Supported geometry · study not created'
+                      : compatibility?.state === 'unsupported'
+                        ? 'Saved CAD · analysis unsupported'
+                        : 'Geometry evaluation required'}
+                </span>
+                {canCreateStudy ? (
+                  <button
+                    className="secondary"
+                    disabled={w.locked}
+                    onClick={() => setCreatingStudy(true)}
+                  >
+                    Create analysis <ArrowRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    className="secondary"
+                    disabled={!numerical || w.locked}
+                    onClick={() => {
+                      w.selectSection('material');
+                      onAnalysis();
+                    }}
+                  >
+                    Prepare study <ArrowRight size={14} />
+                  </button>
+                )}
+              </article>
+              <article className={!numerical ? 'overview-stage blocked' : 'overview-stage'}>
+                <div className="overview-stage-icon">
+                  <Play size={24} />
+                </div>
+                <div className="overview-stage-step">03 · Analysis</div>
+                <h2>Mesh & method</h2>
+                <p>
+                  {numerical
+                    ? 'Generate a mesh and configure a supported FEM or experimental PINN method.'
+                    : 'Meshing and numerical methods stay locked until this exact geometry has a supported study.'}
+                </p>
+                <span className="overview-stage-state">
+                  {numerical ? <Circle size={14} /> : <LockKeyhole size={14} />}{' '}
+                  {numerical
+                    ? w.preparation.canRun
+                      ? 'Definition ready'
+                      : 'Preparation required'
+                    : 'Geometry compatibility required'}
+                </span>
                 <button
                   className="secondary"
                   disabled={!numerical || w.locked}
                   onClick={() => {
-                    w.selectSection('material');
+                    w.selectSection('mesh');
                     onAnalysis();
                   }}
                 >
-                  Prepare study <ArrowRight size={14} />
+                  Open analysis <ArrowRight size={14} />
                 </button>
-              )}
-            </article>
-            <article className={!numerical ? 'overview-stage blocked' : 'overview-stage'}>
-              <div className="overview-stage-icon">
-                <Play size={24} />
-              </div>
-              <div className="overview-stage-step">03 · Analysis</div>
-              <h2>Mesh & method</h2>
-              <p>
-                {numerical
-                  ? 'Generate a mesh and configure a supported FEM or experimental PINN method.'
-                  : 'Meshing and numerical methods stay locked until this exact geometry has a supported study.'}
-              </p>
-              <span className="overview-stage-state">
-                {numerical ? <Circle size={14} /> : <LockKeyhole size={14} />}{' '}
-                {numerical
-                  ? w.preparation.canRun
-                    ? 'Definition ready'
-                    : 'Preparation required'
-                  : 'Geometry compatibility required'}
-              </span>
-              <button
-                className="secondary"
-                disabled={!numerical || w.locked}
-                onClick={() => {
-                  w.selectSection('mesh');
+              </article>
+              <article className={!w.solved ? 'overview-stage blocked' : 'overview-stage complete'}>
+                <div className="overview-stage-icon">
+                  <FileInput size={24} />
+                </div>
+                <div className="overview-stage-step">04 · Results</div>
+                <h2>Inspect & export</h2>
+                <p>
+                  {w.solved && !numerical
+                    ? 'Saved current fields are preserved. Reevaluate the exact CAD source to prepare their geometry view before inspecting them.'
+                    : 'Review current physical fields, numerical diagnostics and SI exports. Geometry evaluation does not produce scientific fields.'}
+                </p>
+                <span className="overview-stage-state">
+                  {w.solved ? <CheckCircle2 size={14} /> : <LockKeyhole size={14} />}{' '}
+                  {w.solved
+                    ? numerical
+                      ? 'Current result available'
+                      : 'Saved fields · geometry view required'
+                    : 'No current result'}
+                </span>
+                <button
+                  className="secondary"
+                  disabled={!w.solved || !numerical || w.locked}
+                  onClick={() => {
+                    w.selectSection('results');
+                    onAnalysis();
+                  }}
+                >
+                  Inspect results <ArrowRight size={14} />
+                </button>
+              </article>
+            </div>
+            {creatingStudy && canCreateStudy && (
+              <CreateStudyForm
+                dimension={compatibility!.dimension}
+                locked={w.locked}
+                onCancel={() => setCreatingStudy(false)}
+                onCreate={(material, thickness, size) => {
+                  w.createStudy(material, thickness, size);
+                  setCreatingStudy(false);
                   onAnalysis();
                 }}
-              >
-                Open analysis <ArrowRight size={14} />
-              </button>
-            </article>
-            <article className={!w.solved ? 'overview-stage blocked' : 'overview-stage complete'}>
-              <div className="overview-stage-icon">
-                <FileInput size={24} />
+              />
+            )}
+            {w.error && (
+              <div className="overview-message error" role="alert">
+                {w.error}
               </div>
-              <div className="overview-stage-step">04 · Results</div>
-              <h2>Inspect & export</h2>
-              <p>
-                {w.solved && !numerical
-                  ? 'Saved current fields are preserved. Reevaluate the exact CAD source to prepare their geometry view before inspecting them.'
-                  : 'Review current physical fields, numerical diagnostics and SI exports. Geometry evaluation does not produce scientific fields.'}
+            )}
+            {w.notice && (
+              <div className="overview-message" role="status">
+                {w.notice}
+              </div>
+            )}
+            {!w.desktop && (
+              <p className="overview-browser-note">
+                Browser preview · the desktop app is required for native CAD import, evaluation,
+                project files and computation.
               </p>
-              <span className="overview-stage-state">
-                {w.solved ? <CheckCircle2 size={14} /> : <LockKeyhole size={14} />}{' '}
-                {w.solved
-                  ? numerical
-                    ? 'Current result available'
-                    : 'Saved fields · geometry view required'
-                  : 'No current result'}
-              </span>
-              <button
-                className="secondary"
-                disabled={!w.solved || !numerical || w.locked}
-                onClick={() => {
-                  w.selectSection('results');
-                  onAnalysis();
-                }}
-              >
-                Inspect results <ArrowRight size={14} />
-              </button>
-            </article>
-          </div>
-          {creatingStudy && canCreateStudy && (
-            <CreateStudyForm
-              dimension={compatibility!.dimension}
-              locked={w.locked}
-              onCancel={() => setCreatingStudy(false)}
-              onCreate={(material, thickness, size) => {
-                w.createStudy(material, thickness, size);
-                setCreatingStudy(false);
-                onAnalysis();
-              }}
-            />
-          )}
-          {w.error && (
-            <div className="overview-message error" role="alert">
-              {w.error}
-            </div>
-          )}
-          {w.notice && (
-            <div className="overview-message" role="status">
-              {w.notice}
-            </div>
-          )}
-          {!w.desktop && (
-            <p className="overview-browser-note">
-              Browser preview · the desktop app is required for native CAD import, evaluation,
-              project files and computation.
-            </p>
-          )}
-        </main>
+            )}
+          </main>
+        </>
       )}
       {active && (
         <WorkbenchOverlays

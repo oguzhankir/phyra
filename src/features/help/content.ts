@@ -104,6 +104,9 @@ export const helpArticles: readonly HelpArticle[] = [
       'operations',
       'fit selection',
       'pick through',
+      'mesh inspection',
+      'tetrahedral',
+      'mesh quality',
     ],
     sections: [
       {
@@ -125,6 +128,30 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        title: 'Inspect a mesh of an exact solid',
+        steps: [
+          'In the desktop CAD workspace, finish the active command and rebuild one closed solid. Open Inspect > Mesh inspection.',
+          'Enter Target element size in the displayed length unit, then choose Generate mesh. Gmsh rebuilds a first-order tetrahedral mesh from the exact BRep; it never reuses display triangles as finite elements.',
+          'Review boundary triangles in the main viewport, node and tetrahedron counts, minimum/mean/maximum element quality and the quality distribution. Orbit, pan, zoom and change standard views as usual. Close Mesh inspection to return to the exact CAD view.',
+          'Reduce the target size and choose Regenerate mesh to compare discretizations. Compare the mesh volume against the exact solid volume, especially for curved features. A changed size does not change the displayed mesh until regeneration succeeds.',
+        ],
+        paragraphs: [
+          'Mesh inspection is transient preparation evidence. It does not create a study, assign boundaries, enable an unsupported solver, replace the exact CAD export or enter the .phyra archive. Geometry edits invalidate the preview. Failed or cancelled meshing preserves the definition and the previous preview for unchanged geometry.',
+          'Only one valid closed solid is admitted. Surface shells, independent assembly instances, multiple solids and disconnected meshes are rejected. Existing numerical resource limits remain enforced. Region labels are scoped to this generated mesh; they are not persistent CAD face references and cannot carry loads or supports.',
+          'Mean-ratio tetrahedral quality ranges from zero for degenerate elements to one for a regular tetrahedron. It measures element shape, not solution accuracy. Volume difference reports discretization error against the exact solid, not stress or displacement error. General CAD face assignment and the full general-solid analysis workflow remain separate development work.',
+          'The assistant can explain this workflow from the same offline help. Transient inspection meshes, mesh-quality measurements and their buffers are not automatically attached to assistant context; it must not claim to have inspected them.',
+        ],
+        references: [
+          {
+            title: 'Gmsh reference manual',
+            authors: 'Gmsh contributors',
+            url: 'https://gmsh.info/doc/texinfo/',
+            scope:
+              'OpenCASCADE BRep import, first-order tetrahedral meshing and mesh inspection. Persistent CAD-to-mesh boundary assignment is not implied by import.',
+          },
+        ],
+      },
+      {
         title: 'Preview, apply or cancel a new operation',
         paragraphs: [
           'On desktop, new Box, Cylinder, Extrude, Revolve, Boolean, Fillet, Chamfer, Move / rotate, Loft, Sweep and Assembly operations use an editable command draft. Finish each parameter entry and choose Preview. Apply becomes available only after an exact preview succeeds for the current parameters; changing a parameter requires another Preview. An invalid value must be finished or reverted before previewing.',
@@ -135,8 +162,9 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Find the model, commands and view controls',
         paragraphs: [
+          'Project tabs share the application menu row. CAD tools, Project return, Save and Rebuild share one command strip; the Save menu contains Auto-save and the Modify menu contains Auto rebuild. File state remains next to Save, with errors shown explicitly. Viewport selection, standard view and display style use compact selectors.',
           'Model navigator has two tabs. Model groups Sketches & paths, Source solids and assembly Component instances; Operations lists the feature history with named input links. Current output stays visible in both tabs and identifies the recipe result used for exact evaluation and analysis checks. Selecting an earlier feature opens its properties without changing the output. To change the result, select a feature and choose Use selected feature as output, then rebuild. Collapse the navigator or resize its edge to give the drawing more space.',
-          'Inspect & export opens Feature properties, Exact measurements, Analysis support or Export geometry on demand. The details panel provides Properties, Measure, Analysis and Export navigation; close it to recover the drawing area. The footer’s Analysis supported, Analysis unavailable or Analysis not checked link opens the compatibility explanation.',
+          'Inspect opens Feature properties, Exact measurements, Mesh inspection, Analysis support or Export geometry on demand. The details panel provides Properties, Measure, Analysis and Export navigation; close it to recover the drawing area. The footer’s Analysis supported, Analysis unavailable or Analysis not checked link opens the compatibility explanation.',
           'Exact geometry selection is separate from selecting an authored feature. Choose Faces, Edges or Bodies above the viewport, then click an evaluated entity or use Geometry entities in the navigator. Shift, Control or Command adds or toggles an entity. Repeated Alt-click at the same location cycles through overlapping entities of the active kind. This helps inspect coincident instances; it does not resolve an ambiguous topology reference for an edge treatment or physical assignment.',
           'Drag to orbit, right-drag to pan and use the wheel to zoom. Fit model (F) frames the visible model while preserving the viewing direction; Fit selection (Shift+F) frames the visible selected faces, edges or bodies. Focus the viewport before using its shortcuts. Keys 1, 2, 3 and 4 select Isometric, Front · XY, Top · XZ and Right · YZ. View controls and body isolation change presentation only, not authored coordinates, materials or results.',
         ],
@@ -144,7 +172,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Import, save and export',
         paragraphs: [
-          'Use the global Save project action to save the editable .phyra definition. Saving does not require a successful exact rebuild or a supported numerical study. Geometry export is separate: open Inspect & export > Export geometry and rebuild the current output before exporting.',
+          'Use the global Save project action to save the editable .phyra definition. Saving does not require a successful exact rebuild or a supported numerical study. Geometry export is separate: open Inspect > Export geometry and rebuild the current output before exporting.',
           'STEP import reads declared source units and converts to SI. Additional scale is a deliberate dimensionless transform. Each source is limited to 16 MiB; the project limit is 64 MiB across 32 sources. Native-owned immutable definition sources travel inside .phyra archives and remain available for definition recovery.',
           'Export evaluated exact geometry as STEP in metres/millimetres, or BRep in SI metres. Geometry export is available independently of analysis support. Invalid or cancelled evaluation preserves the authored definition; correct it or use definition undo before evaluating again.',
         ],

@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import Menu from '../../shared/ui/Menu';
 
@@ -37,6 +38,9 @@ export default function CadToolbar({
   inspect,
   importAction,
   conversion,
+  leading,
+  trailing,
+  modifySettings,
 }: {
   navigatorOpen: boolean;
   onToggleNavigator: () => void;
@@ -46,10 +50,14 @@ export default function CadToolbar({
   inspect: CadToolAction[];
   importAction: CadToolAction;
   conversion?: CadToolAction | null;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  modifySettings?: ReactNode;
 }) {
   const NavigatorIcon = navigatorOpen ? PanelLeftClose : PanelLeft;
   return (
-    <div className="cad-ribbon" role="toolbar" aria-label="CAD feature tools">
+    <div className="cad-ribbon cad-command-strip" role="toolbar" aria-label="CAD feature tools">
+      {leading}
       <button
         className="icon-button"
         aria-label={navigatorOpen ? 'Hide model navigator' : 'Show model navigator'}
@@ -70,21 +78,24 @@ export default function CadToolbar({
           {create.map((action) => (
             <Action key={action.id} action={action} menu />
           ))}
+          <div className="menu-divider" />
+          <Action action={importAction} menu />
         </Menu>
         <Menu label="Modify" className="cad-tool-menu" width={290}>
           {modify.map((action) => (
             <Action key={action.id} action={action} menu />
           ))}
+          {modifySettings}
         </Menu>
       </div>
       <div className="cad-tool-group cad-tool-group-utilities">
-        <Action action={importAction} />
-        <Menu label="Inspect & export" className="cad-tool-menu" width={270}>
+        <Menu label="Inspect" className="cad-tool-menu" width={270}>
           {inspect.map((action) => (
             <Action key={action.id} action={action} menu />
           ))}
         </Menu>
       </div>
+      {trailing}
     </div>
   );
 }

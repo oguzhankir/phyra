@@ -3,10 +3,60 @@
   flex: 0 0 40px;
   display: flex;
   align-items: center;
-  padding: 0 14px;
-  gap: 22px;
+  padding: 0 10px;
+  gap: 8px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+}
+.app-document-switcher {
+  display: flex;
+  flex: 1;
+  min-width: 100px;
+  height: 100%;
+  overflow: hidden;
+}
+.app-header .project-document-tabs {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  padding-left: 0;
+  border-bottom: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+.app-header .project-document-tabs::-webkit-scrollbar {
+  display: none;
+}
+.app-header .project-tab-item {
+  min-width: 120px;
+  max-width: 220px;
+  flex: 0 0 auto;
+}
+.app-header .project-document-tab {
+  height: 39px;
+  padding-inline: 10px;
+}
+.app-header .project-document-tab.home-document-tab {
+  min-width: 64px;
+}
+.app-header .brand-version {
+  display: none;
+}
+.app-header .command-trigger span,
+.app-header .command-trigger kbd {
+  display: none;
+}
+.app-header .header-end {
+  margin-left: 0;
+  gap: 4px;
+}
+.app-header .header-end > button {
+  min-height: 28px;
+  padding: 5px 6px;
+}
+.app-header .assistant-launcher {
+  border: 0;
+  border-radius: 5px;
 }
 .workspace[hidden],
 .project-start-tab[hidden] {
@@ -424,6 +474,41 @@
   padding: 0 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+}
+.project-workspace-bar.compact {
+  flex: 0 0 auto;
+  height: auto;
+  padding: 0;
+  gap: 8px;
+  border-bottom: 0;
+  background: transparent;
+}
+.project-workspace-bar.compact .project-persistence-state {
+  font-size: 10px;
+  gap: 4px;
+}
+.project-workspace-bar.compact .project-save-actions {
+  margin-left: 0;
+  gap: 2px;
+}
+.project-workspace-bar.compact .project-save-actions > button {
+  min-height: 28px;
+  padding: 5px 7px;
+}
+.project-workspace-bar.compact .app-menu-trigger {
+  padding: 5px;
+}
+.project-workspace-bar.compact .app-menu-trigger > svg:last-child {
+  display: none;
+}
+.project-save-options .menu-help {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+}
+.project-save-error {
+  color: var(--danger);
 }
 .project-file-location {
   display: flex;

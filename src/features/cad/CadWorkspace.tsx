@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
   BookOpen,
@@ -36,6 +36,8 @@ import CadSketchEditor from './CadSketchEditor';
 import { cadRebuildIssue, usableSketch } from './featureWorkflow';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import CadViewport from './CadViewport';
+import CadMeshPanel from './CadMeshPanel';
+import { cadMeshDisplay } from '../../domain/geometry/cadMesh';
 import CadCommandPanel from './CadCommandPanel';
 import CadFeatureDialog from './CadFeatureDialog';
 import CadFeatureProperties from './CadFeatureProperties';
@@ -57,7 +59,13 @@ import './CadWorkspace.css';
 const freshId = (prefix: string) =>
   `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
 
-export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
+export default function CadWorkspace({
+  model,
+  persistenceControls,
+}: {
+  model: CadWorkspaceModel;
+  persistenceControls?: ReactNode;
+}) {
   const { project, command } = model;
   const draft = command.draft;
   const evaluation = draft ? null : model.evaluation;
@@ -67,6 +75,11 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState(238);
   const [detailsSection, setDetailsSection] = useState<CadDetailsSection | null>(null);
+  const [meshOpen, setMeshOpen] = useState(false);
+  const meshDisplay = useMemo(
+    () => (model.meshPreview ? cadMeshDisplay(model.meshPreview) : null),
+    [model.meshPreview],
+  );
   const layout = useRef<HTMLDivElement>(null);
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
   useEffect(() => {
@@ -170,6 +183,31 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   const activeSketch = geometry?.features.find(
     (item): item is CadSketchFeature => item.kind === 'sketch' && item.id === editingSketch,
   );
+  const inspectingMesh = meshOpen && !draft && !activeSketch;
+  useEffect(() => {
+    if (draft || activeSketch || detailsSection) setMeshOpen(false);
+  }, [draft, activeSketch, detailsSection]);
+  const defaultMeshSize = useMemo(() => {
+    const positions = evaluation?.preview.positions;
+    if (!positions?.length) return 0.02;
+    const low = [Infinity, Infinity, Infinity],
+      high = [-Infinity, -Infinity, -Infinity];
+    positions.forEach((value, i) => {
+      low[i % 3] = Math.min(low[i % 3], value);
+      high[i % 3] = Math.max(high[i % 3], value);
+    });
+    return Math.max(...high.map((value, i) => value - low[i])) / 6;
+  }, [evaluation?.preview]);
+  const meshReason = !model.desktop
+    ? 'Open the desktop app to generate an exact-solid mesh.'
+    : dimension !== '3d'
+      ? 'Mesh inspection requires a 3D closed solid.'
+      : !evaluation
+        ? 'Rebuild the current geometry before generating a mesh.'
+        : evaluation.bodyCount !== 1 ||
+            evaluation.preview.bodies.some((body) => body.componentPath?.length)
+          ? 'Choose one closed solid. Independent assembly instances and surface shells are not supported.'
+          : null;
   const authoringGuide = useMemo(() => (geometry ? cadAuthoringGuide(geometry) : null), [geometry]);
   const geometryKey = JSON.stringify(geometry);
   useEffect(() => {
@@ -487,6 +525,17 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
       run: () => setDetailsSection('measure'),
     },
     {
+      id: 'mesh',
+      label: 'Mesh inspection',
+      icon: Layers,
+      run: () => {
+        setDetailsSection(null);
+        setEdgeTool(null);
+        setMeshOpen(true);
+        if ((layout.current?.clientWidth ?? 1200) < 1000) setTreeOpen(false);
+      },
+    },
+    {
       id: 'analysis',
       label: 'Analysis support',
       icon: ShieldCheck,
@@ -499,102 +548,136 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
       run: () => setDetailsSection('export'),
     },
   ];
+  const modelingTool = (action: CadToolAction): CadToolAction => ({
+    ...action,
+    run: () => {
+      setMeshOpen(false);
+      action.run();
+    },
+  });
+  const workspaceLeading = (
+    <>
+      <button
+        className="cad-project-return"
+        disabled={model.busy || sketchDirty || !!draft}
+        onClick={model.onReturn}
+        title="Return to project workflow"
+      >
+        <ArrowLeft size={15} /> Project
+      </button>
+      <span
+        className={`cad-workspace-context ${draft || sketchDirty ? 'has-draft' : ''}`}
+        role={draft || sketchDirty ? 'status' : undefined}
+        title={
+          activeSketch
+            ? `Editing ${activeSketch.name} on the ${activeSketch.plane.toUpperCase()} plane`
+            : undefined
+        }
+      >
+        {draft
+          ? 'Command draft'
+          : sketchDirty
+            ? 'Sketch draft'
+            : activeSketch
+              ? `${activeSketch.name} · ${activeSketch.plane.toUpperCase()}`
+              : `${dimension.toUpperCase()} · ${project.displayUnits}`}
+      </span>
+    </>
+  );
+  const workspaceActions = (
+    <div className="cad-command-actions-inline">
+      {persistenceControls}
+      <div className="cad-history-actions">
+        <button
+          className="icon-button"
+          aria-label="Undo CAD edit"
+          title="Undo CAD edit · Ctrl/⌘ Z"
+          disabled={!model.canUndo || sketchDirty}
+          onClick={model.onUndo}
+        >
+          <Undo2 size={15} />
+        </button>
+        <button
+          className="icon-button"
+          aria-label="Redo CAD edit"
+          title="Redo CAD edit · Shift Ctrl/⌘ Z"
+          disabled={!model.canRedo || sketchDirty}
+          onClick={model.onRedo}
+        >
+          <Redo2 size={15} />
+        </button>
+      </div>
+      {model.busy ? (
+        <button
+          className="cancel-button"
+          disabled={!model.cancellable}
+          onClick={() => void model.cancel()}
+        >
+          Cancel operation
+        </button>
+      ) : activeSketch ? (
+        <button
+          className="primary"
+          disabled={model.locked || sketchDirty}
+          onClick={() => {
+            setEditingSketch(null);
+            model.reportDraft('cad-sketch', null);
+          }}
+        >
+          <Check size={15} /> Finish sketch
+        </button>
+      ) : (
+        <button
+          className="primary"
+          aria-label="Rebuild geometry"
+          disabled={
+            model.locked ||
+            model.nativeLocked ||
+            model.draftBlocked ||
+            sketchDirty ||
+            !geometry ||
+            !!rebuildIssue ||
+            !model.desktop
+          }
+          title={rebuildIssue ?? 'Build the exact shape from the current feature history'}
+          onClick={() => {
+            attemptedSource.current = geometryKey;
+            void model.evaluate();
+          }}
+        >
+          <Play size={14} /> Rebuild
+        </button>
+      )}
+      <button className="icon-button" aria-label="CAD help" title="CAD help" onClick={model.onHelp}>
+        <BookOpen size={15} />
+      </button>
+    </div>
+  );
   return (
     <div className="cad-workspace">
-      <header className="cad-heading">
-        <button
-          className="secondary"
-          disabled={model.busy || sketchDirty || !!draft}
-          onClick={model.onReturn}
-        >
-          <ArrowLeft size={15} /> Project
-        </button>
-        {activeSketch && (
-          <button
-            className="icon-button"
-            aria-label={treeOpen ? 'Hide model navigator' : 'Show model navigator'}
-            aria-expanded={treeOpen}
-            aria-controls="cad-model-navigator"
-            onClick={() => setTreeOpen(!treeOpen)}
-          >
-            {treeOpen ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
-          </button>
-        )}
-        <div className="cad-workspace-context">
-          <strong>Geometry</strong>
-          <span>
-            {dimension.toUpperCase()} · {project.displayUnits}
-          </span>
-        </div>
-        <div className="cad-heading-actions">
-          <button className="icon-button" aria-label="CAD help" onClick={model.onHelp}>
-            <BookOpen size={15} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="Undo CAD edit"
-            disabled={!model.canUndo || sketchDirty}
-            onClick={model.onUndo}
-          >
-            <Undo2 size={15} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="Redo CAD edit"
-            disabled={!model.canRedo || sketchDirty}
-            onClick={model.onRedo}
-          >
-            <Redo2 size={15} />
-          </button>
-          {!activeSketch && model.desktop && (
-            <label className="cad-auto-rebuild">
-              <input
-                type="checkbox"
-                checked={autoRebuild}
-                onChange={(event) => setAutoRebuild(event.target.checked)}
-              />
-              Auto rebuild
-            </label>
-          )}
-          {model.busy ? (
-            <button
-              className="cancel-button"
-              disabled={!model.cancellable}
-              onClick={() => void model.cancel()}
-            >
-              Cancel operation
-            </button>
-          ) : (
-            <button
-              className="primary"
-              disabled={
-                model.locked ||
-                model.nativeLocked ||
-                model.draftBlocked ||
-                sketchDirty ||
-                !geometry ||
-                !!activeSketch ||
-                !!rebuildIssue ||
-                !model.desktop
-              }
-              title={rebuildIssue ?? 'Build the exact shape from the current feature history'}
-              onClick={() => {
-                attemptedSource.current = geometryKey;
-                void model.evaluate();
-              }}
-            >
-              <Play size={14} /> Rebuild geometry
-            </button>
-          )}
-        </div>
-      </header>
       {!activeSketch && (
         <CadToolbar
+          leading={workspaceLeading}
+          trailing={workspaceActions}
+          modifySettings={
+            model.desktop ? (
+              <>
+                <div className="menu-divider" />
+                <button
+                  role="menuitemcheckbox"
+                  aria-checked={autoRebuild}
+                  onClick={() => setAutoRebuild(!autoRebuild)}
+                >
+                  {autoRebuild ? <Check size={14} /> : <span className="menu-icon" />} Auto rebuild
+                </button>
+              </>
+            ) : undefined
+          }
           navigatorOpen={treeOpen}
           onToggleNavigator={() => setTreeOpen(!treeOpen)}
-          primary={primaryTools}
-          create={createTools}
-          modify={modifyTools}
+          primary={primaryTools.map(modelingTool)}
+          create={createTools.map(modelingTool)}
+          modify={modifyTools.map(modelingTool)}
           inspect={inspectionTools.map((action) => ({
             ...action,
             disabled: !!draft,
@@ -615,31 +698,30 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             label: 'Import STEP',
             icon: Upload,
             disabled: model.locked || model.nativeLocked || model.draftBlocked || !model.desktop,
-            run: () => void model.importSource(),
+            run: () => {
+              setMeshOpen(false);
+              void model.importSource();
+            },
           }}
         />
       )}
       {activeSketch && (
-        <div className="cad-sketch-session" role="toolbar" aria-label="Sketch session">
-          <div>
-            <strong>Editing {activeSketch.name}</strong>
-            <span>
-              {activeSketch.plane.toUpperCase()} plane ·{' '}
-              {activeSketch.purpose === 'path'
-                ? 'draw a connected open path for Sweep'
-                : 'draw and constrain your profile'}
-            </span>
-          </div>
+        <div
+          className="cad-command-strip cad-sketch-command-strip"
+          role="toolbar"
+          aria-label="Sketch session"
+        >
+          {workspaceLeading}
           <button
-            className="primary"
-            disabled={model.locked || sketchDirty}
-            onClick={() => {
-              setEditingSketch(null);
-              model.reportDraft('cad-sketch', null);
-            }}
+            className="icon-button"
+            aria-label={treeOpen ? 'Hide model navigator' : 'Show model navigator'}
+            aria-expanded={treeOpen}
+            aria-controls="cad-model-navigator"
+            onClick={() => setTreeOpen(!treeOpen)}
           >
-            <Check size={15} /> Finish sketch
+            {treeOpen ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
           </button>
+          {workspaceActions}
         </div>
       )}
       <div
@@ -834,14 +916,20 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
               )}
               <CadViewport
                 preview={
-                  draft?.preview?.preview ?? evaluation?.preview ?? model.retainedPreview ?? null
+                  inspectingMesh
+                    ? meshDisplay
+                    : (draft?.preview?.preview ??
+                      evaluation?.preview ??
+                      model.retainedPreview ??
+                      null)
                 }
+                inspection={inspectingMesh}
                 provisional={!!draft?.preview}
-                guide={!evaluation && !draft?.preview ? authoringGuide : null}
+                guide={!inspectingMesh && !evaluation && !draft?.preview ? authoringGuide : null}
                 definitionPresent={!!geometry}
-                stale={!evaluation && !draft?.preview && !!model.retainedPreview}
-                selected={selected}
-                hiddenBodies={hiddenBodies}
+                stale={!inspectingMesh && !evaluation && !draft?.preview && !!model.retainedPreview}
+                selected={inspectingMesh ? [] : selected}
+                hiddenBodies={inspectingMesh ? [] : hiddenBodies}
                 selectionKind={selectionKind}
                 onSelectionKind={(kind) => {
                   setSelectionKind(kind);
@@ -850,21 +938,27 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                 onSelect={chooseEntity}
                 onClearSelection={() => setSelected([])}
                 dark={model.dark}
-                onRendered={evaluation ? model.onRendered : undefined}
+                onRendered={!inspectingMesh && evaluation ? model.onRendered : undefined}
               />
             </>
           )}
           <div className={`cad-evaluation-status ${evaluation ? 'complete' : ''}`} role="status">
-            {model.busy
-              ? 'Evaluating exact geometry in the local worker…'
-              : activeSketch
-                ? activeSketch.purpose === 'path'
-                  ? 'Completed drawing gestures are saved. Finish sketch, then choose Sweep with a closed profile.'
-                  : 'Completed drawing gestures are saved in the project. Finish sketch to rebuild the exact geometry.'
-                : evaluation
-                  ? `${evaluation.kernel} · ${evaluation.bodyCount} bodies · ${evaluation.faceCount} faces · ${evaluation.edgeCount} edges`
-                  : (rebuildIssue ??
-                    'Edit feature dimensions, then rebuild to view the exact geometry.')}
+            {model.meshBusy
+              ? 'Generating a tetrahedral mesh in the local worker…'
+              : inspectingMesh
+                ? model.meshPreview
+                  ? `${model.meshPreview.receipt.statistics.cells.toLocaleString('en')} tetrahedra · inspection only`
+                  : 'Choose an element size, then Generate mesh.'
+                : model.busy
+                  ? 'Evaluating exact geometry in the local worker…'
+                  : activeSketch
+                    ? activeSketch.purpose === 'path'
+                      ? 'Completed drawing gestures are saved. Finish sketch, then choose Sweep with a closed profile.'
+                      : 'Completed drawing gestures are saved in the project. Finish sketch to rebuild the exact geometry.'
+                    : evaluation
+                      ? `${evaluation.kernel} · ${evaluation.bodyCount} bodies · ${evaluation.faceCount} faces · ${evaluation.edgeCount} edges`
+                      : (rebuildIssue ??
+                        'Edit feature dimensions, then rebuild to view the exact geometry.')}
             {!activeSketch && (
               <button
                 className={`cad-compatibility-link ${evaluation?.analysisCompatibility.state ?? 'unchecked'}`}
@@ -891,7 +985,27 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             </div>
           )}
         </main>
-        {!draft && !activeSketch && detailsSection && (
+        {inspectingMesh && (
+          <CadMeshPanel
+            key={`${project.id}:${project.displayUnits}`}
+            mesh={model.meshPreview ?? null}
+            units={project.displayUnits}
+            defaultSize={defaultMeshSize}
+            busy={!!model.meshBusy}
+            blocked={
+              !!meshReason ||
+              model.locked ||
+              model.nativeLocked ||
+              model.draftBlocked ||
+              !model.inspectMesh
+            }
+            reason={meshReason}
+            onGenerate={model.inspectMesh ?? (async () => false)}
+            onCancel={model.cancel}
+            onClose={() => setMeshOpen(false)}
+          />
+        )}
+        {!inspectingMesh && !draft && !activeSketch && detailsSection && (
           <CadDetailsPanel
             section={detailsSection}
             onSection={setDetailsSection}

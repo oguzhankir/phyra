@@ -385,85 +385,86 @@ export default function App({
             : undefined
         }
         onAssistantOpen={onAssistantOpen}
-      />
-      <nav
-        className="project-document-tabs"
-        role="tablist"
-        aria-label="Open project documents"
-        onKeyDown={(event) => {
-          if (
-            !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) ||
-            modalOpen ||
-            windowClosing
-          )
-            return;
-          event.preventDefault();
-          const ids = [null, ...state.documents.map((entry) => entry.seed.id)];
-          const index = ids.indexOf(state.activeId);
-          const next =
-            event.key === 'Home'
-              ? 0
-              : event.key === 'End'
-                ? ids.length - 1
-                : (index + (event.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
-          documents.focus(ids[next]);
-          document.getElementById(ids[next] ? `document-tab-${ids[next]}` : 'home-tab')?.focus();
-        }}
       >
-        <button
-          className="project-document-tab home-document-tab"
-          id="home-tab"
-          role="tab"
-          tabIndex={state.activeId === null ? 0 : -1}
-          aria-selected={state.activeId === null}
-          aria-controls="project-home-panel"
-          disabled={modalOpen || windowClosing}
-          onClick={() => documents.focus(null)}
+        <nav
+          className="project-document-tabs"
+          role="tablist"
+          aria-label="Open project documents"
+          onKeyDown={(event) => {
+            if (
+              !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) ||
+              modalOpen ||
+              windowClosing
+            )
+              return;
+            event.preventDefault();
+            const ids = [null, ...state.documents.map((entry) => entry.seed.id)];
+            const index = ids.indexOf(state.activeId);
+            const next =
+              event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? ids.length - 1
+                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
+            documents.focus(ids[next]);
+            document.getElementById(ids[next] ? `document-tab-${ids[next]}` : 'home-tab')?.focus();
+          }}
         >
-          <House size={14} />
-          <span>Home</span>
-        </button>
-        {state.documents.map((entry) => (
-          <div
-            key={entry.seed.id}
-            className={`project-tab-item${state.activeId === entry.seed.id ? ' active' : ''}`}
-            role="presentation"
+          <button
+            className="project-document-tab home-document-tab"
+            id="home-tab"
+            role="tab"
+            tabIndex={state.activeId === null ? 0 : -1}
+            aria-selected={state.activeId === null}
+            aria-controls="project-home-panel"
+            disabled={modalOpen || windowClosing}
+            onClick={() => documents.focus(null)}
           >
-            <button
-              className="project-document-tab"
-              id={`document-tab-${entry.seed.id}`}
-              role="tab"
-              tabIndex={state.activeId === entry.seed.id ? 0 : -1}
-              aria-selected={state.activeId === entry.seed.id}
-              aria-controls={`document-panel-${entry.seed.id}`}
-              title={entry.snapshot?.path ?? entry.seed.path ?? 'Unsaved project draft'}
-              disabled={modalOpen || windowClosing}
-              onClick={() => documents.focus(entry.seed.id)}
+            <House size={14} />
+            <span>Home</span>
+          </button>
+          {state.documents.map((entry) => (
+            <div
+              key={entry.seed.id}
+              className={`project-tab-item${state.activeId === entry.seed.id ? ' active' : ''}`}
+              role="presentation"
             >
-              <File size={14} />
-              <span>{entry.snapshot?.project.name ?? entry.seed.project.name}</span>
-              {(entry.snapshot?.dirty ?? entry.seed.dirty) && (
-                <span className="tab-dirty-dot" aria-label="Unsaved changes" />
-              )}
-              {entry.snapshot?.busy && <span className="spinner" />}
-            </button>
-            <button
-              className="project-tab-close"
-              disabled={!canCloseDocument(entry.snapshot)}
-              aria-label={`Close ${entry.snapshot?.project.name ?? entry.seed.project.name}`}
-              title="Close this project"
-              onClick={() => void closeDocument(entry.seed.id)}
-            >
-              <X size={13} />
-            </button>
-          </div>
-        ))}
-        {nativeOwner?.snapshot?.busy && (
-          <span className="document-worker-status" role="status">
-            Worker: {nativeOwner.snapshot.project.name}
-          </span>
-        )}
-      </nav>
+              <button
+                className="project-document-tab"
+                id={`document-tab-${entry.seed.id}`}
+                role="tab"
+                tabIndex={state.activeId === entry.seed.id ? 0 : -1}
+                aria-selected={state.activeId === entry.seed.id}
+                aria-controls={`document-panel-${entry.seed.id}`}
+                title={entry.snapshot?.path ?? entry.seed.path ?? 'Unsaved project draft'}
+                disabled={modalOpen || windowClosing}
+                onClick={() => documents.focus(entry.seed.id)}
+              >
+                <File size={14} />
+                <span>{entry.snapshot?.project.name ?? entry.seed.project.name}</span>
+                {(entry.snapshot?.dirty ?? entry.seed.dirty) && (
+                  <span className="tab-dirty-dot" aria-label="Unsaved changes" />
+                )}
+                {entry.snapshot?.busy && <span className="spinner" />}
+              </button>
+              <button
+                className="project-tab-close"
+                disabled={!canCloseDocument(entry.snapshot)}
+                aria-label={`Close ${entry.snapshot?.project.name ?? entry.seed.project.name}`}
+                title="Close this project"
+                onClick={() => void closeDocument(entry.seed.id)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+          {nativeOwner?.snapshot?.busy && (
+            <span className="document-worker-status" role="status">
+              Worker: {nativeOwner.snapshot.project.name}
+            </span>
+          )}
+        </nav>
+      </WorkbenchHeader>
       <section
         className="project-start-tab"
         id="project-home-panel"

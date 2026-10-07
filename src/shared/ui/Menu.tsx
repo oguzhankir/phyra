@@ -9,11 +9,13 @@ export default function Menu({
   children,
   className = '',
   width = 295,
+  triggerContent,
 }: {
   label: string;
   children: ReactNode;
   className?: string;
   width?: number;
+  triggerContent?: ReactNode;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -46,6 +48,7 @@ export default function Menu({
         ref={trigger}
         className="app-menu-trigger"
         aria-haspopup="menu"
+        aria-label={label}
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(!open)}
@@ -56,7 +59,7 @@ export default function Menu({
           }
         }}
       >
-        {label}
+        {triggerContent ?? label}
         <ChevronDown size={11} aria-hidden="true" />
       </button>
       {open &&
