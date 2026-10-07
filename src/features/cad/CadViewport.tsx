@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Maximize, MousePointer2 } from 'lucide-react';
+import { Focus, Maximize, MousePointer2 } from 'lucide-react';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
 import type { CadAuthoringGuide } from './authoringGuide';
 import { cadBodyAtTriangle, cadLegacyBodyId, cadVisiblePrimitives } from './cadVisibility';
+import {
+  cadFrameHeight,
+  cadBoundsVisible,
+  cadNextPick,
+  cadSelectionBounds,
+  type CadPickCycle,
+} from './cadNavigation';
 
 type SelectionKind = 'face' | 'edge' | 'body';
 type View = 'iso' | 'front' | 'top' | 'right';
 type Graphics = {
   surface: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null;
   edges: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null;
-  fit: (view?: View) => void;
+  fit: (view?: View, selection?: boolean) => void;
   triangleSources: number[];
   segmentSources: number[];
 };
@@ -21,6 +28,7 @@ export default function CadViewport({
   guide = null,
   definitionPresent = false,
   stale = false,
+  provisional = false,
   selected,
   hiddenBodies = [],
   selectionKind,
@@ -34,6 +42,7 @@ export default function CadViewport({
   guide?: CadAuthoringGuide | null;
   definitionPresent?: boolean;
   stale?: boolean;
+  provisional?: boolean;
   selected: string[];
   hiddenBodies?: string[];
   selectionKind: SelectionKind;
@@ -50,9 +59,29 @@ export default function CadViewport({
     target: THREE.Vector3;
     up: THREE.Vector3;
     zoom: number;
+    halfHeight: number;
+    bounds: THREE.Box3;
   } | null>(null);
-  const callbacks = useRef({ onSelect, onClearSelection, selectionKind, stale, onRendered });
-  callbacks.current = { onSelect, onClearSelection, selectionKind, stale, onRendered };
+  const callbacks = useRef({
+    onSelect,
+    onClearSelection,
+    selectionKind,
+    stale,
+    provisional,
+    onRendered,
+    selected,
+    hiddenBodies,
+  });
+  callbacks.current = {
+    onSelect,
+    onClearSelection,
+    selectionKind,
+    stale,
+    provisional,
+    onRendered,
+    selected,
+    hiddenBodies,
+  };
   const [failure, setFailure] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [style, setStyle] = useState<'edges' | 'shaded' | 'wireframe'>('edges');
@@ -71,7 +100,7 @@ export default function CadViewport({
     renderer.setClearColor(dark ? '#202323' : '#f4f5f3');
     renderer.domElement.setAttribute(
       'aria-label',
-      'CAD model view. Left drag orbits; right drag pans; wheel zooms; click selects; Shift adds to selection.',
+      'CAD model view. Left drag orbits; right drag pans; wheel zooms; click selects; Shift adds to selection. Alt-click cycles overlapping entities. F fits the model; Shift+F fits selection; 1 to 4 choose standard views.',
     );
     renderer.domElement.setAttribute('tabindex', '0');
     setFailure(null);
@@ -153,10 +182,27 @@ export default function CadViewport({
     }
     if (bounds.isEmpty())
       bounds.set(new THREE.Vector3(-0.05, -0.05, -0.05), new THREE.Vector3(0.05, 0.05, 0.05));
-    const center = bounds.getCenter(new THREE.Vector3());
     const span = Math.max(bounds.getSize(new THREE.Vector3()).length(), 1e-6);
-    const fit = (next: View = 'iso') => {
-      controls.target.copy(center);
+    let halfHeight = span * 0.65;
+    const projectCamera = () => {
+      const aspect = Math.max(1, host.clientWidth) / Math.max(1, host.clientHeight);
+      camera.left = -halfHeight * aspect;
+      camera.right = halfHeight * aspect;
+      camera.top = halfHeight;
+      camera.bottom = -halfHeight;
+      camera.updateProjectionMatrix();
+    };
+    const fit = (next?: View, selection = false) => {
+      const visibleBounds = preview
+        ? cadSelectionBounds(
+            preview,
+            callbacks.current.hiddenBodies,
+            selection ? callbacks.current.selected : [],
+          )
+        : bounds;
+      // Hidden or stale selections must not refocus an invisible body.
+      if (visibleBounds.isEmpty()) return;
+      const center = visibleBounds.getCenter(new THREE.Vector3());
       const direction =
         next === 'front'
           ? new THREE.Vector3(0, 0, 1)
@@ -164,27 +210,41 @@ export default function CadViewport({
             ? new THREE.Vector3(0, -1, 0)
             : next === 'right'
               ? new THREE.Vector3(1, 0, 0)
-              : new THREE.Vector3(1.3, -1.7, 1.2).normalize();
+              : next === 'iso'
+                ? new THREE.Vector3(1.3, -1.7, 1.2).normalize()
+                : camera.position.clone().sub(controls.target).normalize();
+      if (next) camera.up.set(0, next === 'front' ? 1 : 0, next === 'front' ? 0 : 1);
+      halfHeight = cadFrameHeight(
+        visibleBounds,
+        direction,
+        camera.up,
+        Math.max(1, host.clientWidth) / Math.max(1, host.clientHeight),
+      );
+      controls.target.copy(center);
       camera.position.copy(center).addScaledVector(direction, span * 3);
-      camera.up.set(0, next === 'front' ? 1 : 0, next === 'front' ? 0 : 1);
       camera.zoom = 1;
-      camera.updateProjectionMatrix();
+      projectCamera();
       controls.update();
     };
     camera.near = span / 10000;
     camera.far = span * 1000;
-    fit();
+    fit('iso');
     if (savedCamera.current && (preview || guide)) {
       camera.position.copy(savedCamera.current.position);
       camera.up.copy(savedCamera.current.up);
       camera.zoom = savedCamera.current.zoom;
+      halfHeight = savedCamera.current.halfHeight;
       controls.target.copy(savedCamera.current.target);
+      projectCamera();
+      controls.update();
+      camera.updateMatrixWorld();
+      if (!bounds.equals(savedCamera.current.bounds) && !cadBoundsVisible(bounds, camera)) fit();
     }
     graphics.current = { surface, edges, fit, triangleSources: [], segmentSources: [] };
     setGeneration((n) => n + 1);
     const ray = new THREE.Raycaster();
-    const hitEntity = (event: PointerEvent) => {
-      if (!preview || callbacks.current.stale) return null;
+    const hitEntities = (event: PointerEvent) => {
+      if (!preview || callbacks.current.stale || callbacks.current.provisional) return [];
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(
         new THREE.Vector2(
@@ -193,35 +253,38 @@ export default function CadViewport({
         ),
         camera,
       );
-      ray.params.Line.threshold = (span * 0.012) / camera.zoom;
+      // Keep edge targeting at a stable screen-pixel distance through zoom and resize.
+      ray.params.Line.threshold = (halfHeight * 12) / (Math.max(rect.height, 1) * camera.zoom);
       const kind = callbacks.current.selectionKind;
       if (kind === 'edge' && edges) {
-        const hit = ray.intersectObject(edges)[0];
-        return hit?.index != null
-          ? preview.edges[
-              preview.segmentEdges[
-                graphics.current?.segmentSources[Math.floor(hit.index / 2)] ??
-                  Math.floor(hit.index / 2)
-              ]
-            ]
-          : null;
+        return ray.intersectObject(edges).flatMap((hit) => {
+          if (hit.index == null) return [];
+          const source =
+            graphics.current?.segmentSources[Math.floor(hit.index / 2)] ??
+            Math.floor(hit.index / 2);
+          const entity = preview.edges[preview.segmentEdges[source]];
+          return entity ? [entity.id] : [];
+        });
       }
-      if (surface) {
-        const hit = ray.intersectObject(surface)[0];
-        if (hit?.faceIndex != null) {
-          const source = graphics.current?.triangleSources[hit.faceIndex] ?? hit.faceIndex;
-          const face = preview.faces[preview.triangleFaces[source]];
-          return kind === 'body' ? cadBodyAtTriangle(preview, source) : face;
-        }
-      }
-      return null;
+      return surface
+        ? ray.intersectObject(surface).flatMap((hit) => {
+            if (hit.faceIndex == null) return [];
+            const source = graphics.current?.triangleSources[hit.faceIndex] ?? hit.faceIndex;
+            const entity =
+              kind === 'body'
+                ? cadBodyAtTriangle(preview, source)
+                : preview.faces[preview.triangleFaces[source]];
+            return entity ? [entity.id] : [];
+          })
+        : [];
     };
+    let pickCycle: CadPickCycle | null = null;
     let start: [number, number] | null = null;
     const down = (event: PointerEvent) => {
       start = event.button === 0 ? [event.clientX, event.clientY] : null;
     };
     const move = (event: PointerEvent) => {
-      if (!event.buttons) setHovered(hitEntity(event)?.id ?? null);
+      if (!event.buttons) setHovered(hitEntities(event)[0] ?? null);
       else if (
         event.buttons === 1 &&
         start &&
@@ -236,17 +299,32 @@ export default function CadViewport({
         return;
       }
       start = null;
-      const entity = hitEntity(event);
+      pickCycle = cadNextPick(
+        pickCycle,
+        hitEntities(event),
+        event.clientX,
+        event.clientY,
+        callbacks.current.selectionKind,
+        event.altKey,
+      );
+      const entity = pickCycle.ids[pickCycle.index];
       const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-      if (entity) callbacks.current.onSelect(entity.id, additive);
+      if (entity) callbacks.current.onSelect(entity, additive);
       else if (!additive) callbacks.current.onClearSelection();
     };
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') callbacks.current.onClearSelection();
-      if (event.key.toLowerCase() === 'f') {
+      if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
-        fit();
-        setView('iso');
+        fit(undefined, event.shiftKey && !callbacks.current.stale);
+      }
+      const standard = ({ '1': 'iso', '2': 'front', '3': 'top', '4': 'right' } as const)[
+        event.key as '1' | '2' | '3' | '4'
+      ];
+      if (standard && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        fit(standard);
+        setView(standard);
       }
     };
     renderer.domElement.addEventListener('pointerdown', down);
@@ -256,14 +334,9 @@ export default function CadViewport({
     renderer.domElement.addEventListener('keydown', keyboard);
     const resize = () => {
       const w = Math.max(1, host.clientWidth),
-        h = Math.max(1, host.clientHeight),
-        aspect = w / h;
+        h = Math.max(1, host.clientHeight);
       renderer.setSize(w, h);
-      camera.left = -span * 0.65 * aspect;
-      camera.right = span * 0.65 * aspect;
-      camera.top = span * 0.65;
-      camera.bottom = -span * 0.65;
-      camera.updateProjectionMatrix();
+      projectCamera();
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
@@ -276,6 +349,7 @@ export default function CadViewport({
       if (
         preview &&
         !reported &&
+        !callbacks.current.provisional &&
         host.clientWidth > 1 &&
         host.clientHeight > 1 &&
         renderer.info.render.triangles > 0
@@ -298,6 +372,8 @@ export default function CadViewport({
               target: controls.target.clone(),
               up: camera.up.clone(),
               zoom: camera.zoom,
+              halfHeight,
+              bounds: bounds.clone(),
             }
           : null;
       cancelAnimationFrame(frame);
@@ -378,7 +454,9 @@ export default function CadViewport({
             <button
               key={kind}
               aria-pressed={selectionKind === kind}
-              disabled={!preview || stale || (kind === 'body' && preview.bodies.length === 0)}
+              disabled={
+                !preview || stale || provisional || (kind === 'body' && preview.bodies.length === 0)
+              }
               onClick={() => onSelectionKind(kind)}
             >
               {kind === 'face' ? 'Faces' : kind === 'edge' ? 'Edges' : 'Bodies'}
@@ -407,14 +485,20 @@ export default function CadViewport({
         </div>
         <button
           aria-label="Fit CAD model to view"
-          title="Fit view (F)"
+          title="Fit visible model (F) · preserves view direction"
           onClick={() => {
-            const fitted = view === 'custom' ? 'iso' : view;
-            setView(fitted);
-            graphics.current?.fit(fitted);
+            graphics.current?.fit();
           }}
         >
           <Maximize size={15} />
+        </button>
+        <button
+          aria-label="Fit selected CAD entities to view"
+          title="Fit selection (Shift+F)"
+          disabled={!selected.length || stale || !preview}
+          onClick={() => graphics.current?.fit(undefined, true)}
+        >
+          <Focus size={15} />
         </button>
         <select
           aria-label="CAD display style"
@@ -432,6 +516,11 @@ export default function CadViewport({
           {guide.truncated ? ' · bounded display' : ''}
         </div>
       )}
+      {provisional && (
+        <div className="cad-guide-banner" role="status">
+          Command preview · Apply to keep this shape
+        </div>
+      )}
       {stale && (
         <div className="cad-stale-banner" role="status">
           Previous shape · rebuild to view your latest edits
@@ -442,9 +531,9 @@ export default function CadViewport({
           {hoverName ??
             (selected.length
               ? `${selected.length} selected · Esc clears selection`
-              : 'Drag to orbit · right drag to pan · wheel to zoom')}
+              : 'Drag to orbit · right drag to pan · Alt-click to pick through')}
         </span>
-        <span>X · Y · Z / SI model</span>
+        <span>F · Fit view &nbsp; Shift+F · Fit selection</span>
       </div>
       {failure && (
         <p role="alert" className="cad-empty-overlay">

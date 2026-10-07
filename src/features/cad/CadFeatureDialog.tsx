@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { CadFeature } from '../../domain/contracts/project.generated';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import CadAdvancedFields from './CadAdvancedFields';
+import { NumericDraftContext } from '../../shared/forms/PropertyControls';
 import {
   advancedIssue,
   newAdvancedFeature,
@@ -12,18 +13,30 @@ import {
 
 export default function CadFeatureDialog({
   kind,
+  commandPreview = false,
   features,
   selectedId,
   onCreate,
   onClose,
 }: {
   kind: AdvancedKind;
+  commandPreview?: boolean;
   features: readonly CadFeature[];
   selectedId?: string;
   onCreate: (feature: AdvancedFeature) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(() => newAdvancedFeature(kind, features, selectedId));
+  const [numericDrafts, setNumericDrafts] = useState<Record<string, string>>({});
+  const reportInput = useCallback((id: string, label: string | null) => {
+    setNumericDrafts((previous) => {
+      if ((previous[id] ?? null) === label) return previous;
+      const next = { ...previous };
+      if (label) next[id] = label;
+      else delete next[id];
+      return next;
+    });
+  }, []);
   const dialog = useRef<HTMLDivElement>(null);
   useModalFocus(true, onClose, 'cad-feature-dialog', dialog);
   const title =
@@ -55,12 +68,16 @@ export default function CadFeatureDialog({
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             />
           </label>
-          <CadAdvancedFields value={draft} features={features} onChange={setDraft} />
+          <NumericDraftContext.Provider value={reportInput}>
+            <CadAdvancedFields value={draft} features={features} onChange={setDraft} />
+          </NumericDraftContext.Provider>
           <div className="cad-operation-note">
             <strong>Exact geometry, evaluated locally</strong>
             <p>
-              After creation, rebuild checks the operation and shows any failing feature. This
-              geometry can be saved and exported. Analysis remains unavailable for these operations.
+              {commandPreview
+                ? 'Continue to preview the exact shape, then Apply to keep the command. Rebuild the committed geometry before export.'
+                : 'After creation, rebuild in the desktop app checks the exact shape before export.'}{' '}
+              Analysis remains unavailable for these operations.
             </p>
           </div>
           {issue && (
@@ -75,13 +92,13 @@ export default function CadFeatureDialog({
           </button>
           <button
             className="primary"
-            disabled={!!issue}
+            disabled={!!issue || Object.keys(numericDrafts).length > 0}
             onClick={() => {
               onCreate(draft);
               onClose();
             }}
           >
-            Create {kind}
+            {commandPreview ? 'Review command' : `Create ${kind}`}
           </button>
         </footer>
       </div>

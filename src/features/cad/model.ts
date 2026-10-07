@@ -1,6 +1,7 @@
 import type { ProjectDefinition, CadGeometry } from '../../domain/contracts/types';
 import type { SketchSolveReport } from '../../domain/geometry/sketchSolution';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
+import type { CadCommandModel } from './commandDraft';
 
 export interface CadWorkspaceModel {
   project: ProjectDefinition;
@@ -11,6 +12,7 @@ export interface CadWorkspaceModel {
   dark: boolean;
   busy: boolean;
   cancellable: boolean;
+  command: CadCommandModel;
   error: string | null;
   retainedPreview?: CadPreview | null;
   sketchSolve?: { featureId: string; report: SketchSolveReport } | null;
@@ -50,6 +52,4 @@ export interface CadWorkspaceModel {
   canUndo: boolean;
   canRedo: boolean;
   onRendered?: (report: { nodes: number; triangles: number; drawCalls: number }) => void;
-  onSaveProject: () => Promise<boolean>;
-  canSave: boolean;
 }

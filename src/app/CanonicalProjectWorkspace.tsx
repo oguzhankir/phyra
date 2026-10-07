@@ -57,7 +57,9 @@ export default function CanonicalProjectWorkspace({
         path={w.path}
         dirty={w.dirty}
         desktop={w.desktop}
-        canSave={!w.locked && !w.nativeLocked && !w.validation && w.desktop}
+        canSave={
+          !w.locked && !w.nativeLocked && !w.validation && w.desktop && !w.invalidDraftLabels.length
+        }
         autosaveEnabled={w.autosaveEnabled}
         autosaveStatus={w.autosaveStatus}
         autosaveError={w.autosaveError}
@@ -75,6 +77,7 @@ export default function CanonicalProjectWorkspace({
             dark: w.theme === 'dark',
             busy: w.cad.busy,
             cancellable: w.cad.cancellable,
+            command: w.cad.command,
             error: w.error,
             evaluation: w.cad.evaluation,
             retainedPreview: w.cad.retainedPreview,
@@ -101,8 +104,6 @@ export default function CanonicalProjectWorkspace({
             onRedo: w.redo,
             canUndo: w.canUndo && !w.historyBlocked,
             canRedo: w.canRedo && !w.historyBlocked,
-            onSaveProject: w.save,
-            canSave: !w.locked && !w.nativeLocked && !w.validation && w.desktop,
           }}
         />
       ) : (

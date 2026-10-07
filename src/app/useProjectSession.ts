@@ -16,6 +16,7 @@ import type { FileOperation, WorkbenchActivity } from './workbenchActivity';
 import {
   closeProjectDocument,
   persistProjectSnapshot,
+  projectReplacementIssue,
   scheduleProjectAutosave,
 } from './projectPersistence';
 
@@ -75,14 +76,14 @@ export function useProjectSession(props: Props) {
   }, []);
   const invalidDraftsRef = useRef(new Map<string, string>());
   const [invalidDraftLabels, setInvalidDraftLabels] = useState<string[]>([]);
-  const reportDraftValidity = useCallback((id: string, label: string | null) => {
+  const reportDraftValidity = useCallback((id: string, label: string | null, markDirty = true) => {
     const drafts = invalidDraftsRef.current;
     if (label === null) {
       if (!drafts.delete(id)) return;
     } else {
       if (drafts.get(id) === label) return;
       drafts.set(id, label);
-      setDirty(true);
+      if (markDirty) setDirty(true);
     }
     setInvalidDraftLabels(Array.from(drafts.values()));
   }, []);
@@ -335,6 +336,11 @@ export function useProjectSession(props: Props) {
     // Closing/replacing waits for an already-owned automatic write. No later
     // completion can clear the next document's dirty state or recovery journal.
     if (automaticSave.current && pendingSave.current) await pendingSave.current;
+    const commandIssue = projectReplacementIssue(invalidDraftsRef.current);
+    if (commandIssue) {
+      callbacks.current.onError(commandIssue);
+      return false;
+    }
     if (
       activity.cad?.current ||
       busyRef.current ||

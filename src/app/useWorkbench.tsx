@@ -129,6 +129,7 @@ export function useWorkbench({
     activity,
     invalidDraftsRef: session.invalidDraftsRef,
     edit: session.edit,
+    reportDraft: session.reportDraftValidity,
     onError: setError,
     onNotice: setNotice,
   });
@@ -520,6 +521,7 @@ export function useWorkbench({
   };
 
   const cadVerification = useCadVerificationWorkflow({
+    documentId: seed.id,
     enabled: verificationConfiguration === 'cad',
     ready: recovery.ready && !locked && !nativeLocked,
     project,

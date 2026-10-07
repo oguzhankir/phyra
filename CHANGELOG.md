@@ -6,6 +6,9 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
+- New desktop CAD solid operations use editable command drafts with exact Preview, one-transaction Apply and Cancel. Provisional shapes cannot enable analysis/export or replace the last accepted shape; incomplete numeric drafts and late/cancelled previews remain blocked.
+- CAD navigation adds overlapping-entity selection with Alt-click, visible-model and selected-entity fitting that preserves viewing direction, and numbered standard-view shortcuts.
+
 - Exact no-hole loft/sweep solids or surface shells with ordered section/path selectors, placed section duplication and editable named assembly instances. Multi-body picking and isolation preserve component identity; these new operations remain definition-only for analysis. Offline tutorials and AI guidance describe their implemented scope.
 - Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
 - Direct blank-plane sketch editing with endpoint/grid/axis snapping, on-canvas dimensions, selection-driven constraints, local open-sketch solving and conflict/degree-of-freedom feedback. Modeling adds rigid placement, guided edge operations, standard orthographic views, retained stale previews and optional automatic rebuild.
@@ -13,6 +16,9 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 - Separate geometry validity and analysis eligibility, with explicit gates for unsupported designs and exact primitive/profile adapters that retain the authored CAD source through the existing material-to-results workflow.
 
 ### Changed
+
+- The CAD workspace uses a compact grouped toolbar, a resizable/collapsible Model and Operations navigator, and on-demand properties, measurement, analysis and export details. Project saving stays in the document bar; narrow workspaces collapse the navigator to retain drawing space.
+- Sketch dimension activation focuses its editable constraint value; plane axes and point-coordinate labels match the active plane. Constraint names, linked geometry selection, conflict highlighting and hover feedback make edits easier to inspect. Product-assistant responses and visible help metadata use English.
 
 - Phyra-owned source code is now Apache-2.0. Bundled GPL-covered dependencies retain their licenses; combined application metadata, notices and Corresponding Source gates explicitly preserve the applicable GPLv3 distribution obligations. Earlier GPL grants remain valid.
 

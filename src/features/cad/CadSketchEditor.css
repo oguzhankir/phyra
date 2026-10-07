@@ -106,6 +106,15 @@
 .cad-sketch-axis.y {
   stroke: #568b66;
 }
+.cad-sketch-axis-labels {
+  fill: var(--muted);
+}
+.cad-sketch-axis-labels text:first-child {
+  fill: #a45048;
+}
+.cad-sketch-axis-labels text:last-child {
+  fill: #467955;
+}
 .cad-sketch-origin {
   fill: var(--surface);
   stroke: var(--muted);
@@ -121,6 +130,14 @@
 .selected .cad-sketch-curve {
   stroke: #2d7bc5;
   stroke-width: 2.5;
+}
+.prehighlighted:not(.selected) .cad-sketch-curve,
+g:not(.selected):focus-within .cad-sketch-curve {
+  stroke: #ad7c34;
+  stroke-width: 2.5;
+}
+.constraint-hint:not(.selected):not(.prehighlighted) .cad-sketch-curve {
+  stroke: #b0584a;
 }
 .cad-sketch-hit {
   fill: none;
@@ -142,6 +159,15 @@
 .selected .cad-sketch-point {
   fill: #2d7bc5;
   stroke: #2d7bc5;
+}
+.prehighlighted:not(.selected) .cad-sketch-point,
+g:not(.selected):focus-within .cad-sketch-point {
+  fill: #ad7c34;
+  stroke: #ad7c34;
+}
+.constraint-hint:not(.selected):not(.prehighlighted) .cad-sketch-point {
+  stroke: #b0584a;
+  stroke-width: 2;
 }
 .cad-sketch-preview {
   fill: none;
@@ -291,6 +317,15 @@
   padding: 3px;
   width: auto;
   margin: 0;
+}
+.cad-sketch-constraint > .cad-sketch-constraint-reference {
+  flex: 1;
+  text-align: left;
+  font-size: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
 }
 .cad-sketch-constraint > .field-label {
   width: 100%;

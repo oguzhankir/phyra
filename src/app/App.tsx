@@ -293,7 +293,10 @@ export default function App({
         const controller = documents.controller(entry.seed.id);
         if (!controller) return false;
         if (controller.dirtyRef.current) documents.focus(entry.seed.id);
-        if (!(await controller.canReplaceRef.current())) return false;
+        if (!(await controller.canReplaceRef.current())) {
+          documents.focus(entry.seed.id);
+          return false;
+        }
       }
       approved = true;
       return true;

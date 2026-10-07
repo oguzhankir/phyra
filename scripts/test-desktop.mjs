@@ -316,6 +316,10 @@ async function verify(mode) {
     cad &&
     (report.project.geometry.kind !== 'cad' ||
       !report.cad?.emptyStart ||
+      !report.cad?.commandInputsBlocked ||
+      !report.cad?.commandPreviewIsolated ||
+      !report.cad?.commandCancelPreserved ||
+      !report.cad?.commandApplyOnce ||
       !report.cad?.openSketchSolved ||
       !report.cad?.evaluated ||
       !report.cad?.sourcePreserved ||

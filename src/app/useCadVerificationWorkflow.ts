@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Project, ProjectDefinition } from '../domain/contracts/types';
 import type { ResultData } from '../domain/results/fields';
 import { invokeVerification } from '../platform/desktop/verification';
+import { readCadBuffer } from '../platform/desktop/cad';
 import type { useCadSession } from './useCadSession';
 import { cadVerificationCases } from './cadVerificationCases';
 
@@ -25,6 +26,7 @@ type Phase =
   | 'failed';
 interface Props {
   enabled: boolean;
+  documentId: string;
   ready: boolean;
   project: ProjectDefinition;
   projectRef: RefObject<ProjectDefinition>;
@@ -58,6 +60,10 @@ export function useCadVerificationWorkflow(props: Props) {
   const advancedEvidence = useRef<Record<string, unknown>[]>([]);
   const evidence = useRef({
     emptyStart: false,
+    commandPreviewIsolated: false,
+    commandInputsBlocked: false,
+    commandCancelPreserved: false,
+    commandApplyOnce: false,
     openSketchSolved: false,
     evaluated: false,
     sourcePreserved: false,
@@ -258,29 +264,59 @@ export function useCadVerificationWorkflow(props: Props) {
           if (!evidence.current.evaluated) throw new Error('Exact box adapter was not supported.');
           if (!previewRendered.current) return;
           evidence.current.previewRendered = true;
-          p.edit((next) => {
-            if (next.geometry.kind !== 'cad') throw new Error('CAD source lost.');
-            next.geometry.features.push(
-              {
-                id: 'verification-tool',
-                name: 'Overlapping box',
-                kind: 'box',
-                length: 0.05,
-                width: 0.04,
-                height: 0.02,
-              },
-              {
-                id: 'verification-union',
-                name: 'Union',
-                kind: 'boolean',
-                operation: 'union',
-                leftId: 'verification-box',
-                rightId: 'verification-tool',
-              },
-            );
-            next.geometry.outputFeatureId = 'verification-union';
-          });
-          trace('exact preview rendered -> unsupported Boolean');
+          const before = structuredClone(p.projectRef.current);
+          if (before.geometry.kind !== 'cad') throw new Error('CAD source lost.');
+          const candidate = structuredClone(before.geometry);
+          candidate.features.push(
+            {
+              id: 'verification-tool',
+              name: 'Overlapping box',
+              kind: 'box',
+              length: 0.05,
+              width: 0.04,
+              height: 0.02,
+            },
+            {
+              id: 'verification-union',
+              name: 'Union',
+              kind: 'boolean',
+              operation: 'union',
+              leftId: 'verification-box',
+              rightId: 'verification-tool',
+            },
+          );
+          candidate.outputFeatureId = 'verification-union';
+          if (!p.cad.command.start(candidate, 'verification-union', 'Boolean union'))
+            throw new Error('Command draft could not start.');
+          p.cad.command.reportInputDraft('verification-size', 'Distance');
+          evidence.current.commandInputsBlocked =
+            !(await p.cad.command.preview()) && !p.cad.command.apply();
+          if (!evidence.current.commandInputsBlocked)
+            throw new Error('Unfinished numeric draft enabled command preview or Apply.');
+          p.cad.command.reportInputDraft('verification-size', null);
+          if (!(await p.cad.command.preview())) throw new Error('Command preview failed.');
+          // A provisional exact shape must leave the accepted native receipt readable.
+          const retainedBuffer = await readCadBuffer(receipt.jobId, p.documentId);
+          evidence.current.commandPreviewIsolated =
+            retainedBuffer.byteLength === receipt.byteLength &&
+            JSON.stringify(p.projectRef.current) === JSON.stringify(before);
+          if (!evidence.current.commandPreviewIsolated)
+            throw new Error('Draft preview changed the project or replaced the accepted shape.');
+          await p.cad.command.cancel();
+          evidence.current.commandCancelPreserved =
+            JSON.stringify(p.projectRef.current) === JSON.stringify(before);
+          if (!evidence.current.commandCancelPreserved)
+            throw new Error('Cancelling a command changed the authored project.');
+          if (!p.cad.command.start(candidate, 'verification-union', 'Boolean union'))
+            throw new Error('Second command draft could not start after cancellation.');
+          if (!(await p.cad.command.preview()) || !p.cad.command.apply())
+            throw new Error('Verified command could not apply.');
+          evidence.current.commandApplyOnce =
+            p.projectRef.current.revision === before.revision + 1 &&
+            JSON.stringify(p.projectRef.current.geometry) === JSON.stringify(candidate);
+          if (!evidence.current.commandApplyOnce)
+            throw new Error('Command Apply did not produce one authored revision.');
+          trace('provisional exact preview -> cancel preserves source -> one Apply transaction');
           nextPhase = 'unsupported';
           break;
         }

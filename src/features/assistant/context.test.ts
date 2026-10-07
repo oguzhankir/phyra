@@ -95,3 +95,37 @@ it('keeps private advanced CAD definitions and evaluation evidence out of help-o
   expect(context.text).not.toContain('instance-a');
   expect(context.text).not.toContain('synthetic-cad-fixture-job');
 });
+
+it('uses English guidance with multilingual retrieval without implying screen access', () => {
+  const context = assistantContext('Montaj bileşenlerini nasıl taşırım?', assemblyContext(), true);
+  expect(context.sourceIds).toContain('cad-assembly');
+  expect(context.text).toContain('Create > Assembly');
+  expect(context.text).toContain(
+    'CAD viewport selection, camera position and open panels are not included',
+  );
+  expect(ASSISTANT_SYSTEM).toContain('Always respond in English');
+  expect(ASSISTANT_SYSTEM).toContain(
+    'Preserve supplied feature names, identifiers and quoted values exactly',
+  );
+  expect(ASSISTANT_SYSTEM).not.toContain("Answer in the user's language");
+  expect(ASSISTANT_SYSTEM).toContain('do not claim to see a highlighted face');
+});
+
+it('separates guidance about a pending command from the supplied committed CAD evidence', () => {
+  const context = assistantContext(
+    'Can I analyze the provisional CAD preview before I apply it?',
+    assemblyContext(),
+    true,
+  );
+  expect(context.sourceIds[0]).toBe('cad');
+  expect(context.text).toContain('Apply becomes available only after an exact preview succeeds');
+  expect(context.text).toContain('Cancel leaves the project definition unchanged');
+  expect(context.text).toContain(
+    'Unapplied command drafts and provisional previews are not attached',
+  );
+  expect(context.text).toContain('synthetic-cad-fixture-job');
+  expect(ASSISTANT_SYSTEM).toContain(
+    'Never cite an older committed CAD evaluation as evidence for an unapplied command',
+  );
+  expect(ASSISTANT_SYSTEM).toContain('Apply needs a committed rebuild');
+});

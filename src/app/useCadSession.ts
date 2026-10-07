@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ProjectDefinition } from '../domain/contracts/types';
 import { cadDefinitionError } from '../domain/project/document';
 import { assertCadNumericalGeometry } from '../domain/geometry/cadCompatibility';
@@ -16,12 +16,20 @@ import {
   type CadReceipt,
 } from '../platform/desktop/cad';
 import type { WorkbenchActivity } from './workbenchActivity';
+import {
+  CadCommandOwnership,
+  type CadCommandDraft,
+  type CadCommandModel,
+  type CadCommandRequest,
+} from '../features/cad/commandDraft';
+import { previewCadCommand } from './cadCommandPreview';
 
 type Lease = {
   id: string;
+  base: ProjectDefinition;
   snapshot: ProjectDefinition;
   cancelled: boolean;
-  operation: 'evaluate' | 'solve-sketch' | 'import' | 'export';
+  operation: 'evaluate' | 'preview' | 'solve-sketch' | 'import' | 'export';
 };
 interface Props {
   documentId: string;
@@ -31,6 +39,7 @@ interface Props {
   activity: WorkbenchActivity;
   invalidDraftsRef: RefObject<Map<string, string>>;
   edit: (change: (project: ProjectDefinition) => void, physical?: boolean) => void;
+  reportDraft: (id: string, label: string | null, markDirty?: boolean) => void;
   onError: (message: string | null) => void;
   onNotice: (message: string | null) => void;
 }
@@ -41,6 +50,33 @@ export function useCadSession(props: Props) {
   callbacks.current = props;
   const lease = useRef<Lease | null>(null);
   const [busy, setBusy] = useState(false);
+  const [commands] = useState(() => new CadCommandOwnership());
+  const [commandDraft, setCommandDraft] = useState<CadCommandDraft | null>(null);
+  const commandInputs = useRef(new Map<string, string>());
+  const reportCommandInput = useCallback(
+    (id: string, label: string | null) => {
+      const p = callbacks.current;
+      if (label === null) {
+        const marker = commandInputs.current.get(id);
+        if (marker) p.reportDraft(marker, null, false);
+        commandInputs.current.delete(id);
+        return;
+      }
+      const draft = commands.current();
+      if (!draft) return;
+      const marker = `${draft.markerId}:input:${id}`;
+      commandInputs.current.set(id, marker);
+      p.reportDraft(marker, label, false);
+    },
+    [commands],
+  );
+  const clearCommandMarkers = () => {
+    const marker = commands.clear();
+    if (marker) callbacks.current.reportDraft(marker, null, false);
+    for (const input of commandInputs.current.values())
+      callbacks.current.reportDraft(input, null, false);
+    commandInputs.current.clear();
+  };
   const [retained, setRetained] = useState<{
     receipt: CadReceipt;
     preview: CadPreview;
@@ -59,25 +95,38 @@ export function useCadSession(props: Props) {
     retained.source === JSON.stringify(props.project.geometry)
       ? retained
       : null;
-  const acquire = (operation: Lease['operation']): Lease | null => {
+  const blocked = (ownMarker?: string, editingInputs = false) => {
     const p = callbacks.current,
       a = p.activity;
-    if (
-      !p.desktop ||
-      p.invalidDraftsRef.current.size > 0 ||
-      lease.current ||
-      a.native.execution.current ||
-      a.native.file.current ||
-      a.native.device.current ||
-      a.native.closing.current ||
-      a.native.cad?.current ||
-      a.recovery.current ||
+    // Local edits may finish one field while another command field is invalid.
+    // Native preview and Apply never bypass these input markers.
+    const editableInputs = editingInputs ? new Set(commandInputs.current.values()) : null;
+    return (
+      Array.from(p.invalidDraftsRef.current.keys()).some(
+        (id) => id !== ownMarker && !editableInputs?.has(id),
+      ) ||
+      !!lease.current ||
+      !!a.native.execution.current ||
+      !!a.native.file.current ||
+      !!a.native.device.current ||
+      !!a.native.closing.current ||
+      !!a.native.cad?.current ||
+      !!a.recovery.current ||
       a.confirmation.current
-    )
-      return null;
+    );
+  };
+  const acquire = (operation: Lease['operation'], draft?: CadCommandRequest): Lease | null => {
+    const p = callbacks.current,
+      a = p.activity;
+    const ownsDraft =
+      operation === 'preview' && draft && commands.owns(draft, p.projectRef.current);
+    if (operation === 'preview' && !ownsDraft) return null;
+    if (!p.desktop || blocked(ownsDraft ? commands.current()!.markerId : undefined)) return null;
+    const base = structuredClone(p.projectRef.current);
     const next = {
       id: crypto.randomUUID(),
-      snapshot: structuredClone(p.projectRef.current),
+      base,
+      snapshot: draft ? { ...base, geometry: structuredClone(draft.geometry), study: null } : base,
       cancelled: false,
       operation,
     };
@@ -92,10 +141,10 @@ export function useCadSession(props: Props) {
     live.current &&
     lease.current === request &&
     !request.cancelled &&
-    callbacks.current.projectRef.current.id === request.snapshot.id &&
-    callbacks.current.projectRef.current.revision === request.snapshot.revision &&
+    callbacks.current.projectRef.current.id === request.base.id &&
+    callbacks.current.projectRef.current.revision === request.base.revision &&
     JSON.stringify(callbacks.current.projectRef.current.geometry) ===
-      JSON.stringify(request.snapshot.geometry);
+      JSON.stringify(request.base.geometry);
   const release = (request: Lease) => {
     if (lease.current !== request) return;
     lease.current = null;
@@ -111,10 +160,11 @@ export function useCadSession(props: Props) {
       const request = lease.current;
       if (request) {
         request.cancelled = true;
-        if (['evaluate', 'solve-sketch'].includes(request.operation))
+        if (['evaluate', 'preview', 'solve-sketch'].includes(request.operation))
           void cancelCad(request.id).catch(() => {});
         release(request);
       }
+      clearCommandMarkers();
     };
   }, []);
   const evaluate = async (): Promise<boolean> => {
@@ -225,7 +275,7 @@ export function useCadSession(props: Props) {
   };
   const cancel = async () => {
     const request = lease.current;
-    if (!request || !['evaluate', 'solve-sketch'].includes(request.operation)) return;
+    if (!request || !['evaluate', 'preview', 'solve-sketch'].includes(request.operation)) return;
     request.cancelled = true;
     try {
       await cancelCad(request.id);
@@ -234,6 +284,110 @@ export function useCadSession(props: Props) {
     } catch (error) {
       if (live.current) callbacks.current.onError(`CAD cancellation failed: ${String(error)}`);
     }
+  };
+  const cancelCommand = async () => {
+    clearCommandMarkers();
+    if (live.current) setCommandDraft(null);
+    if (lease.current?.operation === 'preview') await cancel();
+  };
+  useEffect(() => {
+    if (commands.current() && !commands.matches(props.project)) void cancelCommand();
+  }, [props.project.id, props.project.revision, props.project.geometry]);
+  const command: CadCommandModel = {
+    draft: commands.matches(props.project) ? commandDraft : null,
+    inputBlocked: Array.from(props.invalidDraftsRef.current.keys()).some(
+      (id) => id !== commands.current()?.markerId,
+    ),
+    reportInputDraft: reportCommandInput,
+    start(geometry, featureId, label) {
+      const p = callbacks.current;
+      if (blocked() || !commands.begin(p.projectRef.current, geometry, featureId, label))
+        return false;
+      const draft = commands.current()!;
+      p.reportDraft(draft.markerId, label, false);
+      p.onError(null);
+      setCommandDraft(draft);
+      return true;
+    },
+    update(change) {
+      const draft = commands.current();
+      if (
+        !draft ||
+        blocked(draft.markerId, true) ||
+        !commands.matches(callbacks.current.projectRef.current)
+      )
+        return;
+      if (commands.update(change)) setCommandDraft(commands.current());
+    },
+    async preview() {
+      const p = callbacks.current,
+        draft = commands.current();
+      if (!draft || blocked(draft.markerId)) return false;
+      const invalid = cadDefinitionError(draft.geometry);
+      if (invalid) {
+        p.onError(invalid);
+        return false;
+      }
+      if (!p.desktop) {
+        p.onError('Open the desktop app to preview and apply exact CAD commands.');
+        return false;
+      }
+      const ticket = commands.request(p.projectRef.current);
+      if (!ticket) return false;
+      setCommandDraft(commands.current());
+      const request = acquire('preview', ticket);
+      if (!request) {
+        commands.complete(
+          ticket,
+          p.projectRef.current,
+          null,
+          'The CAD worker is busy. Retry preview.',
+        );
+        setCommandDraft(commands.current());
+        return false;
+      }
+      try {
+        const preview = await previewCadCommand(
+          request.snapshot,
+          request.id,
+          p.documentId,
+          () => owns(request) && commands.owns(ticket, callbacks.current.projectRef.current),
+          {
+            evaluate: evaluateCad,
+            read: readCadBuffer,
+            decode: decodeCadDisplay,
+            finish: finishCad,
+          },
+        );
+        const published = commands.complete(ticket, callbacks.current.projectRef.current, preview);
+        if (live.current) setCommandDraft(commands.current());
+        return published && !!preview;
+      } catch (error) {
+        if (commands.complete(ticket, callbacks.current.projectRef.current, null, String(error))) {
+          if (live.current) setCommandDraft(commands.current());
+          p.onError(String(error));
+        }
+        return false;
+      } finally {
+        release(request);
+      }
+    },
+    apply() {
+      const p = callbacks.current,
+        draft = commands.current();
+      if (!draft || blocked(draft.markerId)) return false;
+      const geometry = commands.candidate(p.projectRef.current);
+      if (!geometry) return false;
+      p.edit((next) => {
+        next.geometry = geometry;
+      });
+      if (JSON.stringify(p.projectRef.current.geometry) !== JSON.stringify(geometry)) return false;
+      clearCommandMarkers();
+      setCommandDraft(null);
+      p.onNotice('Command applied. Rebuild the committed geometry before analysis or export.');
+      return true;
+    },
+    cancel: cancelCommand,
   };
   const importSource = async () => {
     const p = callbacks.current,
@@ -331,7 +485,9 @@ export function useCadSession(props: Props) {
   }, [retainedSketch, props.project.id, props.project.geometry]);
   return {
     busy,
-    cancellable: !!lease.current && ['evaluate', 'solve-sketch'].includes(lease.current.operation),
+    cancellable:
+      !!lease.current && ['evaluate', 'preview', 'solve-sketch'].includes(lease.current.operation),
+    command,
     current,
     evaluation,
     retainedPreview,

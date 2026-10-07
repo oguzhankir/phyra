@@ -1,6 +1,6 @@
 # Phyra — Product Vision and Roadmap
 
-**Reviewed:** 6 October 2026
+**Reviewed:** 7 October 2026
 
 This is Phyra's single product roadmap. It describes the current foundation, the product destination, and the evidence required before capabilities are presented as supported. It is organized by reusable engineering capabilities and dependency order, not by intermediate release promises or delivery dates.
 
@@ -68,7 +68,7 @@ The CAD scope is mechanical part and assembly preparation for analysis. CAM, BIM
 | Project tabs and preparation | Implemented, bounded | Up to 32 isolated documents, adjacent tree/properties, boundary/object context actions and compact workflow/checks; meshed worker restraint validation remains authoritative |
 | Device coverage | Partial | CPU reference and measured Apple MPS PINN path on available hardware; CUDA remains unverified |
 | Desktop distribution | Partial | Hosted package/workflow evidence on macOS 15 Apple Silicon and Windows Server 2022 x64; minimum-version, clean consumer installation and production distribution evidence remain open |
-| CAD authoring and neutral import | Implemented, bounded | Direct blank-plane line/arc/circle sketching, dimensions, snapping, open-sketch DOF/conflict solving, general closed hole contours; local exact box/cylinder, extrusion, revolution, Boolean, fillet/chamfer, rigid placement and STEP import/export. Bounded feature recipes, standard views and topology inspection. No-hole loft/sweep solids or surface shells, named reusable assembly instances, component placement and body isolation are implemented. Freeform surface editing, shell/thicken, assembly mates/contact and general imported-solid analyses remain open. |
+| CAD authoring and neutral import | Implemented, bounded | Direct blank-plane line/arc/circle sketching, dimensions, snapping, open-sketch DOF/conflict solving, general closed hole contours; local exact box/cylinder, extrusion, revolution, Boolean, fillet/chamfer, rigid placement and STEP import/export. Bounded feature recipes, standard views, through-selection, selection fitting and topology inspection. A compact viewport-first shell separates Model/Operations from on-demand details; new desktop solid commands use exact Preview/Apply/Cancel without publishing draft analysis evidence. No-hole loft/sweep solids or surface shells, named reusable assembly instances, component placement and body isolation are implemented. Freeform surface editing, shell/thicken, assembly mates/contact and general imported-solid analyses remain open. |
 | Broader classical physics and materials | Planned | No unrestricted CAD domains, multiple-material regions, thermal, nonlinear, dynamic or contact solver |
 | Reusable Physics ML models | Planned / research | No validated operator, mesh/graph or geometry-conditioned product workflow |
 | BYOK CAD/analysis assistant | Implemented, limited | Independent saved provider connections, account-discovered model selection in chat, OS credential storage, bounded authored project and current CAD/study evidence on deliberate Send and cited local history; broader provider/platform workflow evidence remains open |
@@ -138,6 +138,8 @@ Phyra should become a strong mechanical CAD workbench for the geometries and ass
 
 Select the CAD kernel and sketch-constraint approach through prototypes that cover edit stability, import robustness, platform support, licensing/redistribution and application packaging. Keep the geometry definition separate from the mesh so changing a discretization does not erase design intent or physical assignments. Do not commit to a CAD library because it handles one demo part.
 
+The next CAD gate is richer direct editing and preparation: reliable face movement/offset, datum geometry, mirror/pattern, split/imprint, shell/thicken, repair and sections, followed by validated helix and gear workflows. These remain open; a compact interface or a rigid-transform command does not implement arbitrary face editing. New operations must use the command lifecycle, explicit references and bounded local workers.
+
 The target is analysis-oriented mechanical CAD. Do not add unrelated authoring disciplines to the product scope. A CAD feature is complete only when geometry can be created or imported, edited, inspected, saved and reopened in a normal workflow.
 
 ## 6. Classical analysis and physical definitions
@@ -184,7 +186,9 @@ An editable “radiation” field must never imply support for all three. Sequen
 
 ### Numerical library and result requirements
 
-Prefer established, maintained libraries for meshing, sparse assembly and solution when they meet Phyra's problem contracts, license requirements and supported platforms. Use a typed backend adapter and preserve an independent reference route where feasible. Do not assume that a library supports a formulation because it exposes a similarly named API.
+Prefer established, maintained libraries for meshing, sparse assembly and solution when they meet Phyra's problem contracts, license requirements and supported platforms. Qualify [CalculiX](https://www.calculix.de/) as the first external structural-backend candidate, compare [Code_Aster](https://code-aster.org/en/product/main) for advanced constitutive workflows, and evaluate [FEniCSx](https://fenicsproject.org/) separately as a research formulation framework. These are candidates, not bundled or supported solvers. CPU operation, macOS Apple Silicon/Windows x64 packaging, process-tree cancellation, license/source redistribution and independent references must pass before product exposure. Use a typed backend adapter and preserve an independent reference route where feasible. Do not assume that a library supports a formulation because it exposes a similarly named API.
+
+The first general-solid milestone is one complete closed-BRep-to-Gmsh linear-elastic workflow with owned immutable CAD assets, face-to-physical-group mappings, stable boundary assignments, tetra4 quality checks, save/reopen and validated result fields. Current primitive region contracts and asset transport cannot simply be relabelled as general CAD support. Higher-order elements, local refinement, multiple materials, modal/buckling and nonlinear/contact follow as individually tested slices; no unrestricted geometry gate opens in advance. Spatially graded materials must evaluate a typed material field in an explicit coordinate frame at quadrature locations and pass homogeneous-limit and graded-bar references before Physics ML receives the same law. Fluids and fluid–structure coupling remain later work.
 
 For every advertised analysis, validate equations and conventions, reactions and conservation, mesh/time convergence, physical quantities of interest, nonlinear failure behavior and supported hardware. Result fields must retain node/cell/integration-point association. Smoothing and projection are explicit operations; never silently average discontinuous material fields or hide singular behavior.
 
