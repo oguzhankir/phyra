@@ -123,8 +123,16 @@ fn open_archive_for_document_with_assets(
         documents.generation(document)
     };
     let opened = read_archive_details_with_assets(&path, directory, sources)?;
+    let mut cache_notice = None;
     let manifest = if directory.join("manifest.json").is_file() {
-        Some(validate_cache(&opened.project)?)
+        match validate_cache(&opened.project) {
+            Ok(manifest) => Some(manifest),
+            Err(error) if discardable_cad_cache(&opened.project, &error) => {
+                cache_notice = Some("The saved CAD result could not be verified against the current exact geometry and mesh. The editable project and source files were restored. Rebuild the geometry, review face assignments and run the study again.".to_string());
+                None
+            }
+            Err(error) => return Err(error),
+        }
     } else {
         None
     };
@@ -149,15 +157,38 @@ fn open_archive_for_document_with_assets(
     } else {
         let _ = fs::remove_dir_all(directory);
     }
-    let notice = migration_notice(
+    let migration = migration_notice(
         &opened.project,
         opened.migrated,
         opened.dropped_cache,
         manifest.is_some(),
     );
+    let notices: Vec<_> = migration.into_iter().chain(cache_notice).collect();
+    let notice = (!notices.is_empty()).then(|| notices.join(" "));
     let opened_path = path.to_string_lossy().into_owned();
     documents.associate(document, opened.project["id"].as_str().unwrap(), path)?;
     Ok(json!({"project":opened.project,"manifest":manifest,"path":opened_path,"notice":notice}))
+}
+
+fn discardable_cad_cache(project: &Value, error: &str) -> bool {
+    project["geometry"]["kind"] == "cad"
+        && project["study"]["domain"]["kind"] == "cad-solid"
+        && [
+            "cad-cache-mismatch:",
+            "stale-cad-domain:",
+            "cad-domain-unavailable:",
+            "stale-cache:",
+            "invalid-cache:",
+            "corrupt-cache:",
+            // A saveable CAD definition may retain assignments that need
+            // repair. Admission can reject these before reading its old cache.
+            "invalid-region:",
+            "empty-constraint:",
+            "invalid-assignment:",
+            "unsupported-study:",
+        ]
+        .iter()
+        .any(|code| error.starts_with(code))
 }
 
 fn migration_notice(
@@ -328,6 +359,105 @@ mod tests {
         let path = root.join("project.phyra");
         write_archive(&path, &project, Some(&cache)).unwrap();
         (project, path)
+    }
+
+    fn cad_cached_archive(root: &Path) -> (Value, PathBuf) {
+        let (mut project, path) = cached_archive(root);
+        project["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"box",
+            "features":[{"id":"box","kind":"box","name":"Box","length":0.1,"width":0.05,"height":0.02}]});
+        project["study"]["domain"] = json!({"kind":"cad-solid","geometryFingerprint":"a".repeat(64),
+            "outputFeatureId":"box","boundaries":[{"id":"cad-a","faceId":format!("box/face/{}", "b".repeat(24)),"name":"Face A"}]});
+        write_archive(&path, &project, Some(&root.join("source-cache"))).unwrap();
+        (project, path)
+    }
+
+    #[test]
+    fn rejected_cad_cache_restores_definition_with_notice_without_rewriting_archive() {
+        for code in [
+            "cad-cache-mismatch",
+            "stale-cad-domain",
+            "cad-domain-unavailable",
+            "stale-cache",
+            "invalid-cache",
+            "corrupt-cache",
+            "invalid-region",
+            "empty-constraint",
+            "invalid-assignment",
+            "unsupported-study",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let (project, path) = cad_cached_archive(root.path());
+            let original = fs::read(&path).unwrap();
+            let state = ProjectState::default();
+            let engine = EngineState::default();
+            let document = uuid::Uuid::new_v4().to_string();
+            let directory = root.path().join("staged");
+            let opened = open_archive_for_document(
+                &state,
+                &engine,
+                None,
+                &document,
+                path.clone(),
+                &directory,
+                |_| Err(format!("{code}: rejected fixture")),
+            )
+            .unwrap();
+            assert_eq!(opened["project"], project);
+            assert!(opened["manifest"].is_null());
+            assert!(opened["notice"]
+                .as_str()
+                .unwrap()
+                .contains("editable project"));
+            assert!(engine.jobs.lock().unwrap().is_empty());
+            assert!(!directory.exists());
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(
+                state
+                    .documents
+                    .lock()
+                    .unwrap()
+                    .path(&document, project["id"].as_str().unwrap()),
+                Some(path)
+            );
+        }
+    }
+
+    #[test]
+    fn cad_cache_fallback_does_not_swallow_cancellation_or_worker_failures() {
+        for error in [
+            "Analysis cancelled",
+            "Application is closing",
+            "Engine exited unexpectedly",
+            "invalid-request: bad source",
+            "resource-limit: mesh exceeds the bound",
+            "meshing-failed: reconstruction failed",
+            "cancelled: job was cancelled",
+            "noise invalid-cache: not a typed rejection",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let (project, path) = cad_cached_archive(root.path());
+            let original = fs::read(&path).unwrap();
+            let state = ProjectState::default();
+            let engine = EngineState::default();
+            let document = uuid::Uuid::new_v4().to_string();
+            let result = open_archive_for_document(
+                &state,
+                &engine,
+                None,
+                &document,
+                path.clone(),
+                &root.path().join("staged"),
+                |_| Err(error.into()),
+            );
+            assert_eq!(result.unwrap_err(), error);
+            assert!(state
+                .documents
+                .lock()
+                .unwrap()
+                .path(&document, project["id"].as_str().unwrap())
+                .is_none());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
     }
 
     #[test]

@@ -18,6 +18,7 @@ export default function CadMeshPanel({
   onCancel,
   onClose,
   inspection,
+  onPrepareAnalysis,
 }: {
   mesh: CadMeshPreview | null;
   units: 'm' | 'mm';
@@ -29,6 +30,7 @@ export default function CadMeshPanel({
   onCancel: () => Promise<void>;
   onClose: () => void;
   inspection: CadMeshInspection;
+  onPrepareAnalysis?: () => void;
 }) {
   const factor = lengthFactor(units);
   const [text, setText] = useState(() =>
@@ -186,10 +188,25 @@ export default function CadMeshPanel({
             </p>
           </>
         )}
+        {onPrepareAnalysis && (
+          <div className="cad-mesh-prepare">
+            <strong>Ready for solid FEM preparation</strong>
+            <p className="cad-hint">
+              Each mesh boundary has a verified exact face. Create a study, then assign material,
+              supports and loads. Analysis generates its own mesh.
+            </p>
+            <button
+              className="primary cad-mesh-generate"
+              disabled={busy || blocked}
+              onClick={onPrepareAnalysis}
+            >
+              Prepare analysis
+            </button>
+          </div>
+        )}
         <p className="cad-mesh-note">
-          Inspection only. This mesh is temporary and does not enable a solver, assign loads or
-          change the saved geometry. Face correspondence applies only to the current geometry and
-          does not create saved boundary assignments.
+          Inspection only. This mesh is temporary. Preparing an analysis explicitly saves a checked
+          face catalog; it does not reuse inspection elements as the analysis mesh.
         </p>
       </div>
     </aside>

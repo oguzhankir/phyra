@@ -23,7 +23,7 @@ from phyra_engine.execution.limits import (
 )
 from phyra_engine.geometry.regions import SOLID_REGIONS
 from phyra_engine.meshing.solid import mesh_id, quality, validate_mesh
-from phyra_engine.meshing.types import Mesh
+from phyra_engine.meshing.types import Mesh, Mesh2D
 from phyra_engine.physics.elasticity.solid import integrate_surface_loads
 from phyra_engine.results import validate_cached
 from phyra_engine.results.fields import STRESS_COMPONENTS
@@ -76,6 +76,7 @@ def write_output(
     *,
     started_at: str | None = None,
     duration_seconds: float | None = None,
+    expected_mesh: Mesh | None = None,
 ) -> dict[str, Any]:
     values = {
         "positions": mesh.positions,
@@ -112,6 +113,12 @@ def write_output(
             "Low tetrahedral mean-ratio quality; "
             "refine or adjust geometry before interpreting results."
         )
+    boundary_records = region_metadata(mesh)
+    domain = project["study"].get("domain")
+    if domain:
+        labels = {boundary["id"]: boundary["name"] for boundary in domain["boundaries"]}
+        for boundary in boundary_records:
+            boundary["name"] = labels.get(boundary["id"], boundary["id"])
     if result:
         notices.append("First-order tetrahedra can be stiff in bending. Check mesh convergence.")
         notices.append(
@@ -138,7 +145,7 @@ def write_output(
         "solver": "fem",
         "device": "cpu",
         "startedAt": started_at or datetime.now(timezone.utc).isoformat(),
-        "regions": region_metadata(mesh),
+        "regions": boundary_records,
         "statistics": {
             "nodes": len(mesh.positions),
             "cells": len(mesh.cells),
@@ -163,7 +170,7 @@ def write_output(
         manifest["summary"] = result["summary"]
     if duration_seconds is not None:
         manifest["durationSeconds"] = duration_seconds
-    validate_cached(project, manifest, bytes(blob))
+    validate_cached(project, manifest, bytes(blob), expected_mesh=expected_mesh)
     output.mkdir(parents=True, exist_ok=True)
     binary_temp = output / "buffer.bin.tmp"
     manifest_temp = output / "manifest.json.tmp"
@@ -176,7 +183,13 @@ def write_output(
     return manifest
 
 
-def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dict[str, Any]:
+def _validate_cached(
+    project: dict[str, Any],
+    manifest: Any,
+    blob: bytes,
+    *,
+    expected_mesh: Mesh | Mesh2D | None = None,
+) -> dict[str, Any]:
     """Validate provenance, resource bounds, descriptors, finite fields and topology.
 
     No pickle or executable serialization is used. Hashes detect accidental
@@ -261,10 +274,16 @@ def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dic
     ):
         raise EngineError("invalid-cache", "Cached field set does not match the operation.")
     regions = manifest.get("regions")
+    domain = project["study"].get("domain")
+    expected_regions = (
+        [boundary["id"] for boundary in domain["boundaries"]]
+        if domain
+        else list(SOLID_REGIONS[project["geometry"]["kind"]])
+    )
     if (
         not isinstance(regions, list)
         or any(not isinstance(item, dict) for item in regions)
-        or [item.get("id") for item in regions] != list(SOLID_REGIONS[project["geometry"]["kind"]])
+        or [item.get("id") for item in regions] != expected_regions
     ):
         raise EngineError("invalid-cache", "Cached boundary regions do not match the solid.")
     statistics = manifest.get("statistics")
@@ -343,6 +362,23 @@ def _validate_cached(project: dict[str, Any], manifest: Any, blob: bytes) -> dic
         tuple(item["id"] for item in regions),
     )
     validate_mesh(mesh)
+    if domain:
+        # The execution layer rebuilt the exact current solid, required complete
+        # face correspondence and remeshed it. Integrity hashes alone cannot
+        # prove that an archived boundary label still belongs to this CAD face.
+        # Fail closed on changed kernel/mesher ordering rather than guessing.
+        if (
+            not isinstance(expected_mesh, Mesh)
+            or mesh.regions != expected_mesh.regions
+            or any(
+                not np.array_equal(getattr(mesh, field), getattr(expected_mesh, field))
+                for field in ("positions", "cells", "surface", "surface_regions", "surface_cells")
+            )
+        ):
+            raise EngineError(
+                "cad-cache-mismatch",
+                "Cached CAD mesh does not match independently prepared source geometry and faces.",
+            )
     if manifest.get("meshId") != mesh_id(mesh):
         raise EngineError("corrupt-cache", "Mesh identity does not match node/cell data.")
     actual_regions = region_metadata(mesh)

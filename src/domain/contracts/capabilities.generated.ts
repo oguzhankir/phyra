@@ -1,7 +1,7 @@
 /* Generated from contracts/engine-capabilities.schema.json. Run npm run generate. */
 
 export interface EngineCapabilities {
-  schemaVersion: 1;
+  schemaVersion: 2;
   execution: {
     backend: "local-process";
     jobsPerWorker: 1;
@@ -13,8 +13,8 @@ export interface EngineCapabilities {
    */
   materialModels: ["homogeneous-isotropic-linear-elastic"];
   /**
-   * @minItems 3
-   * @maxItems 3
+   * @minItems 4
+   * @maxItems 4
    */
   meshing: [
     {
@@ -46,6 +46,17 @@ export interface EngineCapabilities {
        * @maxItems 1
        */
       geometryKinds: ["profile"];
+    },
+    {
+      id: "gmsh-occ-cad-tetra4";
+      dimension: "3d";
+      cellType: "tetra4";
+      /**
+       * @minItems 1
+       * @maxItems 1
+       */
+      geometryKinds: ["cad"];
+      requiredDomain: "cad-solid";
     }
   ];
   /**

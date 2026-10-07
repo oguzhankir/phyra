@@ -4,9 +4,6 @@ import argparse
 import hashlib
 import io
 import json
-import os
-import re
-import stat
 import sys
 from copy import deepcopy
 from importlib.metadata import version
@@ -19,43 +16,12 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_BUFFER_BYTES, MAX_REQUEST_BYTES
 from phyra_engine.geometry.cad.native_output import cad_log_to_stderr, kernel_log_to_stderr
 from phyra_engine.protocol.cad import CadRequest, read_cad_request
+from phyra_engine.protocol.cad_assets import read_cad_assets
 from phyra_engine.protocol.stdio import emit
 
 
 def _read_assets(request: CadRequest) -> dict[str, bytes]:
-    root = Path(request.asset_root)
-    if not root.is_absolute() or root.is_symlink() or not root.is_dir():
-        raise EngineError("invalid-cad-assets", "The native CAD asset root is invalid.")
-    assets: dict[str, bytes] = {}
-    total = 0
-    for metadata in request.geometry_definition()["assets"]:
-        digest = metadata["sha256"]
-        if not re.fullmatch(r"[a-f0-9]{64}", digest):
-            raise EngineError("invalid-cad-assets", "CAD source identity is invalid.")
-        source = root / f"{digest}.step"
-        if source.is_symlink() or not source.is_file():
-            raise EngineError("invalid-cad-assets", "A native-owned STEP source is missing.")
-        # Prevent a swapped symlink or FIFO from escaping the finite file read.
-        descriptor = os.open(
-            source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-        )
-        with os.fdopen(descriptor, "rb") as stream:
-            opened_status = os.fstat(stream.fileno())
-            if not stat.S_ISREG(opened_status.st_mode):
-                raise EngineError("invalid-cad-assets", "A CAD source is not a regular file.")
-            expected = metadata["byteLength"]
-            if opened_status.st_size != expected or total + expected > MAX_BUFFER_BYTES:
-                raise EngineError(
-                    "cad-resource-limit", "STEP source sizes exceed the CAD asset budget."
-                )
-            payload = stream.read(expected + 1)
-        if len(payload) != expected or hashlib.sha256(payload).hexdigest() != digest:
-            raise EngineError(
-                "invalid-cad-assets", "A STEP source failed its size or integrity check."
-            )
-        assets[metadata["id"]] = payload
-        total += len(payload)
-    return assets
+    return read_cad_assets(request.geometry_definition(), request.asset_root)
 
 
 def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:

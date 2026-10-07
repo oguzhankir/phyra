@@ -121,7 +121,7 @@ const circleSketch: Extract<CadFeature, { kind: 'sketch' }> = {
 };
 function cadProject(): ProjectDefinition {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     id: 'private-cad-project',
     name: 'Editable CAD',
     revision: 2,

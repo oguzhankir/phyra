@@ -1,31 +1,21 @@
 import type { ProjectDefinition as Project } from '../contracts/types';
 import { isNumericalProject } from './document';
-import { regionNames, type RegionId } from './regions';
+import { isCadSolidProject } from './cadSolid';
+import { projectRegions, type RegionId } from './regions';
+import { selectionNameKey } from './selectionNames';
+export { selectionNameKey } from './selectionNames';
 
 export type NamedSelection = Project['namedSelections'][number];
 
-// ASCII case folding is identical in the native/Python validators and does not
-// depend on the user's locale. Non-ASCII labels retain their authored identity.
-export function selectionNameKey(name: string): string {
-  // Explicit shared whitespace policy, including BOM and separator controls;
-  // JS trim(), Python strip() and Rust trim() do not recognize identical sets.
-  const whitespace =
-    '[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
-  return name
-    .replace(new RegExp(`^${whitespace}+|${whitespace}+$`, 'g'), '')
-    .replace(/[A-Z]/g, (character) => character.toLowerCase());
-}
-
 export function selectionIsCompatible(project: Project, selection: NamedSelection): boolean {
-  if (!isNumericalProject(project)) return false;
-  const available = new Set(
-    regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile).map(
-      ({ id }) => id,
-    ),
-  );
+  if (!isNumericalProject(project) && !isCadSolidProject(project)) return false;
+  const available = new Set(projectRegions(project).map(({ id }) => id));
   return (
     selection.geometryKind === project.geometry.kind &&
     selection.dimension === project.study.dimension &&
+    (isCadSolidProject(project)
+      ? selection.geometryFingerprint === project.study.domain.geometryFingerprint
+      : selection.geometryFingerprint === undefined) &&
     selection.regions.length > 0 &&
     selection.regions.every((region) => available.has(region))
   );
@@ -35,6 +25,14 @@ export function namedSelectionError(project: Project): string | null {
   const ids = new Set<string>();
   const names = new Set<string>();
   for (const selection of project.namedSelections) {
+    if (
+      selection.geometryKind === 'cad'
+        ? selection.dimension !== '3d' ||
+          selection.geometryFingerprint?.length !== 64 ||
+          !/^[a-f0-9]{64}$/.test(selection.geometryFingerprint ?? '')
+        : selection.geometryFingerprint !== undefined
+    )
+      return 'CAD boundary sets require a 3D source fingerprint; primitive sets cannot carry one.';
     const name = selectionNameKey(selection.name);
     if (!name) return 'Named selection names cannot be empty.';
     if (names.has(name)) return 'Named selection names must be unique.';
@@ -53,9 +51,9 @@ export function nextSelectionName(project: Project): string {
 }
 
 export function selectedBoundaries(project: Project, regions: readonly RegionId[]): RegionId[] {
-  if (!isNumericalProject(project)) return [];
+  if (!isNumericalProject(project) && !isCadSolidProject(project)) return [];
   const chosen = new Set(regions);
-  return regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile)
+  return projectRegions(project)
     .map(({ id }) => id)
     .filter((id) => chosen.has(id));
 }

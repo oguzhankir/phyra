@@ -20,6 +20,7 @@ from phyra_engine.execution.registry import (
 )
 from phyra_engine.protocol.request import StudyRequest
 from phyra_engine.results.storage import publish, read_cached
+from phyra_engine.studies.cad import is_cad_solid
 from phyra_engine.studies.mesh import generate_study_mesh
 from phyra_engine.studies.project import fingerprint
 
@@ -89,9 +90,15 @@ def execute(
     if request.operation == "validate":
         if progress:
             progress("validating-cache", None)
-        return read_cached(output, project)
+        expected_mesh = (
+            generate_study_mesh(project, progress, assets=request.asset_sources())
+            if is_cad_solid(project)
+            else None
+        )
+        check_cancelled()
+        return read_cached(output, project, expected_mesh=expected_mesh)
 
-    mesh = generate_study_mesh(project, progress)
+    mesh = generate_study_mesh(project, progress, assets=request.asset_sources())
     classical = trained = None
     for method in plan.methods:
         check_cancelled()

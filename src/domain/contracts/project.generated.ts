@@ -44,7 +44,7 @@ export type Regions = [BoundaryId, ...BoundaryId[]];
 export type Vector = [number, number, number];
 
 export interface ProjectDefinition {
-  schemaVersion: 7;
+  schemaVersion: 8;
   id: string;
   name: string;
   revision: number;
@@ -398,6 +398,7 @@ export interface LinearStaticStudy {
     kind: "fem" | "pinn";
     pinn: PinnConfiguration;
   };
+  domain?: CadSolidDomain;
 }
 export interface Constraint {
   id: string;
@@ -443,10 +444,26 @@ export interface PinnConfiguration {
   device: "auto" | "cpu" | "mps" | "cuda";
   formulation: "strong-form" | "potential-energy";
 }
+export interface CadSolidDomain {
+  kind: "cad-solid";
+  geometryFingerprint: string;
+  outputFeatureId: string;
+  /**
+   * @minItems 1
+   * @maxItems 512
+   */
+  boundaries: [CadStudyBoundary, ...CadStudyBoundary[]];
+}
+export interface CadStudyBoundary {
+  id: BoundaryId;
+  faceId: string;
+  name: string;
+}
 export interface NamedSelection {
   id: string;
   name: string;
-  geometryKind: "box" | "cylinder" | "bracket" | "profile";
+  geometryKind: "box" | "cylinder" | "bracket" | "profile" | "cad";
   dimension: "2d" | "3d";
   regions: Regions;
+  geometryFingerprint?: string;
 }

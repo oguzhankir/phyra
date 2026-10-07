@@ -14,6 +14,7 @@ from jsonschema import Draft7Validator  # type: ignore[import-untyped]
 
 from phyra_engine.errors import EngineError
 from phyra_engine.geometry.regions import SOLID_REGIONS
+from phyra_engine.studies.cad import is_cad_solid, validate_cad_domain
 from phyra_engine.studies.validation import validate_physical_project
 
 SELECTION_WHITESPACE = (
@@ -23,11 +24,11 @@ SELECTION_WHITESPACE = (
 )
 
 
-@lru_cache(maxsize=7)
-def project_validator(version: int = 7) -> Draft7Validator:
+@lru_cache(maxsize=8)
+def project_validator(version: int = 8) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = "project.schema.json" if version == 7 else f"project-v{version}.schema.json"
+    filename = "project.schema.json" if version == 8 else f"project-v{version}.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -77,8 +78,8 @@ def _validate_named_selections(project: dict[str, Any]) -> None:
             raise EngineError(
                 "invalid-selection", "2D boundary sets require rectangular or profile geometry."
             )
-        if kind == "profile":
-            valid_regions = selection["dimension"] == "2d" and all(
+        if kind in ("profile", "cad"):
+            valid_regions = selection["dimension"] == ("3d" if kind == "cad" else "2d") and all(
                 re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,99}", region)
                 for region in selection["regions"]
             )
@@ -100,8 +101,8 @@ def _validate_named_selections(project: dict[str, Any]) -> None:
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6, 7):
-        raise EngineError("unsupported-version", "Supported project versions are 1 through 7.")
+    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6, 7, 8):
+        raise EngineError("unsupported-version", "Supported project versions are 1 through 8.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -127,6 +128,8 @@ def validate_project(project: Any) -> dict[str, Any]:
         validate_physical_project(project, version)
     if project["geometry"]["kind"] == "cad":
         validate_cad_geometry(project["geometry"], version)
+    if version >= 8:
+        validate_cad_domain(project, current=False)
     return project
 
 
@@ -138,6 +141,8 @@ def validate_numerical_project(project: Any) -> dict[str, Any]:
             "unsupported-study", "Create a compatible physical study before analysis."
         )
     view = numerical_view(project)
+    if is_cad_solid(project):
+        validate_cad_domain(project, current=True)
     validate_physical_project(view, project["schemaVersion"])
     return project
 
@@ -149,6 +154,8 @@ def numerical_view(project: dict[str, Any]) -> dict[str, Any]:
     adapts the geometry consumed by existing physical/mesh/field validators.
     """
     if project["geometry"]["kind"] != "cad":
+        return project
+    if is_cad_solid(project):
         return project
     if (
         project["study"] is None
@@ -162,7 +169,7 @@ def numerical_view(project: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
-def validate_cad_geometry(geometry: Any, version: int = 7) -> dict[str, Any]:
+def validate_cad_geometry(geometry: Any, version: int = 8) -> dict[str, Any]:
     """Bounded canonical design intent, without implying mesher/solver support."""
     _finite_tree(geometry)
     schema = project_validator(version).schema
@@ -229,11 +236,11 @@ def validate_cad_geometry(geometry: Any, version: int = 7) -> dict[str, Any]:
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 7:
+    if project["schemaVersion"] == 8:
         return project
     source_version = project["schemaVersion"]
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 7
+    upgraded["schemaVersion"] = 8
     if source_version < 3:
         upgraded["namedSelections"] = []
     if source_version == 1:
@@ -269,6 +276,10 @@ def fingerprint(project: dict[str, Any]) -> str:
         for key, value in project.items()
         if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
+    # v8 adds explicit exact-solid face bindings. Definitions without the new
+    # study domain retain their already validated pre-v8 physical digest.
+    if canonical.get("schemaVersion") == 8 and not is_cad_solid(canonical):
+        canonical["schemaVersion"] = 7
     # Unchanged v6 CAD keeps its original physical digest. New operations and
     # explicit sketch purposes retain the distinct v7 authoring contract.
     if (

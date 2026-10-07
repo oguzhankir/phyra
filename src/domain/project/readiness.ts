@@ -1,6 +1,7 @@
 import type { Project } from '../contracts/types';
 import { boundaryPoints } from './boundaryGeometry';
-import { regionNames } from './regions';
+import { projectRegions } from './regions';
+import { cadSolidSourceError, isCadSolidProject, type CadSolidSource } from './cadSolid';
 import { inputError } from './validation';
 import { profileError } from './profile';
 import { supportsPinn } from './study';
@@ -20,7 +21,7 @@ export interface StudyPreparation {
   total: number;
   canMesh: boolean;
   canRun: boolean;
-  restraintRank: number;
+  restraintRank: number | null;
   rigidModes: number;
   firstMissing: PreparationSection | null;
 }
@@ -49,7 +50,10 @@ function matrixRank(rows: number[][], columns: number): number {
 // Restrict u = translation + rotation × position to prescribed components.
 // Same rigid-motion space as the worker's mesh-based restraint test. This
 // definition-level test does not replace the worker's SVD or a mesh check.
-export function restraintRank(project: Project): number {
+export function restraintRank(project: Project): number | null {
+  // Exact face identity contains no nodal coordinates. The worker checks the
+  // actual generated mesh; display triangles and bounding boxes cannot prove rank.
+  if (project.geometry.kind === 'cad') return null;
   const dimension = project.study.dimension === '2d' ? 2 : 3;
   const points = project.study.constraints.flatMap((item) =>
     item.regions.flatMap((region) => boundaryPoints(project, region)),
@@ -88,11 +92,13 @@ function supportConflict(project: Project): boolean {
   const prescribed = new Map<string, number>();
   for (const support of project.study.constraints)
     for (const region of support.regions)
-      for (const point of boundaryPoints(project, region))
+      for (const location of project.geometry.kind === 'cad'
+        ? [region]
+        : boundaryPoints(project, region).map((point) => point.join(':')))
         for (let axis = 0; axis < (project.study.dimension === '2d' ? 2 : 3); axis++) {
           const value = support.components[axis];
           if (value === null) continue;
-          const key = `${point.join(':')}:${axis}`;
+          const key = `${location}:${axis}`;
           const previous = prescribed.get(key);
           if (
             previous !== undefined &&
@@ -105,25 +111,31 @@ function supportConflict(project: Project): boolean {
   return false;
 }
 
-export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparation {
+export function prepareStudy(
+  project: Project,
+  invalidDrafts = 0,
+  cadSource?: CadSolidSource | null,
+): StudyPreparation {
   const { geometry: g, study } = project;
   const is2D = study.dimension === '2d';
-  const boundaries = new Set(
-    regionNames(g.kind, study.dimension, g.profile).map((item) => item.id),
-  );
+  const boundaries = new Set(projectRegions(project).map((item) => item.id));
   const validRegions = (regions: string[]) =>
     regions.length > 0 && regions.every((id) => boundaries.has(id));
   const dimensions =
-    g.kind === 'profile'
-      ? [g.length, g.width]
-      : is2D
-        ? [g.length, g.width, study.thickness]
-        : g.kind === 'cylinder'
-          ? [g.length, g.radius]
-          : g.kind === 'bracket'
-            ? [g.length, g.width, g.height, g.thickness]
-            : [g.length, g.width, g.height];
+    g.kind === 'cad'
+      ? []
+      : g.kind === 'profile'
+        ? [g.length, g.width]
+        : is2D
+          ? [g.length, g.width, study.thickness]
+          : g.kind === 'cylinder'
+            ? [g.length, g.radius]
+            : g.kind === 'bracket'
+              ? [g.length, g.width, g.height, g.thickness]
+              : [g.length, g.width, g.height];
+  const sourceError = isCadSolidProject(project) ? cadSolidSourceError(project, cadSource) : null;
   const geometryInvalid =
+    !!sourceError ||
     dimensions.some((value) => !Number.isFinite(value) || value <= 0 || value > 1000) ||
     (g.kind === 'profile' && !!profileError(g.profile)) ||
     (g.kind === 'bracket' && g.thickness >= Math.min(g.length, g.width));
@@ -146,7 +158,8 @@ export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparat
       item.components.some((value) => value !== null && !Number.isFinite(value)) ||
       (is2D && item.components[2] !== null),
   );
-  const rank = !geometryInvalid && !supportInvalid ? restraintRank(project) : 0;
+  const rank =
+    g.kind === 'cad' ? null : !geometryInvalid && !supportInvalid ? restraintRank(project) : 0;
   const rigidModes = is2D ? 3 : 6;
   const conflict = !geometryInvalid && !supportInvalid && supportConflict(project);
   const displaced = study.constraints.some((item) =>
@@ -170,6 +183,7 @@ export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparat
         : !!item.traction,
   );
   const meshInvalid =
+    (g.kind === 'cad' && study.mesh.boundarySize !== undefined) ||
     !(study.mesh.size > 0 && study.mesh.size <= 1000) ||
     (study.mesh.boundarySize !== undefined &&
       !(study.mesh.boundarySize > 0 && study.mesh.boundarySize <= 1000));
@@ -196,8 +210,8 @@ export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparat
       'Geometry',
       geometryInvalid ? 'invalid' : 'complete',
       geometryInvalid
-        ? 'Repair the dimensions or profile topology.'
-        : `${g.kind === 'box' && is2D ? 'Rectangle' : g.kind} · ${boundaries.size} boundary regions`,
+        ? (sourceError ?? 'Repair the dimensions or profile topology.')
+        : `${g.kind === 'cad' ? 'Exact CAD solid' : g.kind === 'box' && is2D ? 'Rectangle' : g.kind} · ${boundaries.size} boundary regions`,
     ),
     check(
       'material',
@@ -212,18 +226,22 @@ export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparat
       'Supports',
       supportInvalid || conflict
         ? 'invalid'
-        : !study.constraints.length || rank < rigidModes
+        : !study.constraints.length || (rank !== null && rank < rigidModes)
           ? 'missing'
-          : 'complete',
+          : rank === null
+            ? 'review'
+            : 'complete',
       conflict
         ? 'Overlapping supports prescribe conflicting displacements.'
         : supportInvalid
           ? 'Repair boundary assignments or displacement components.'
           : !study.constraints.length
             ? 'No supports assigned.'
-            : rank < rigidModes
-              ? `${rigidModes - rank} rigid-motion mode(s) remain free. Add independent restraints.`
-              : `${study.constraints.length} support(s) · rigid-motion check passed`,
+            : rank === null
+              ? 'Rigid-motion and overlapping-support checks run on the generated mesh.'
+              : rank < rigidModes
+                ? `${rigidModes - rank} rigid-motion mode(s) remain free. Add independent restraints.`
+                : `${study.constraints.length} support(s) · rigid-motion check passed`,
     ),
     check(
       'loads',
@@ -250,7 +268,9 @@ export function prepareStudy(project: Project, invalidDrafts = 0): StudyPreparat
       'Mesh settings',
       meshInvalid ? 'invalid' : 'complete',
       meshInvalid
-        ? 'Enter positive supported mesh sizes.'
+        ? g.kind === 'cad' && study.mesh.boundarySize !== undefined
+          ? 'Exact CAD solid meshing supports one global target size. Remove boundary refinement.'
+          : 'Enter positive supported mesh sizes.'
         : 'Element size supplied · mesh generated by the run if needed',
     ),
     check(

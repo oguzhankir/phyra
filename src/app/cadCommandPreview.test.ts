@@ -34,6 +34,29 @@ function fixture() {
 }
 
 describe('CAD command preview publication', () => {
+  it('traces each awaited preview boundary without changing discard-before-publication ordering', async () => {
+    const { project, bridge } = fixture();
+    const stages: string[] = [];
+    await previewCadCommand(
+      project,
+      'request',
+      'document',
+      () => true,
+      bridge,
+      (stage) => stages.push(stage),
+    );
+    expect(stages).toEqual([
+      'evaluate-start',
+      'evaluate-received',
+      'read-start',
+      'read-received',
+      'decode-start',
+      'decode-complete',
+      'discard-start',
+      'discard-complete',
+    ]);
+    expect(bridge.finish).toHaveBeenCalledExactlyOnceWith('pending-draft', 'document', false);
+  });
   it('discards native staging and publishes display only, never an export or analysis receipt', async () => {
     const { project, bridge } = fixture();
     const preview = await previewCadCommand(project, 'request', 'document', () => true, bridge);

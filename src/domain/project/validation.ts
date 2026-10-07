@@ -1,13 +1,18 @@
 import type { Project } from '../contracts/types';
 import { namedSelectionError } from './namedSelections';
 import { profileError } from './profile';
-import { regionNames } from './regions';
+import { projectRegions } from './regions';
 import { supportsPinn } from './study';
+import { cadSolidDomainError, isCadSolidProject } from './cadSolid';
 
 export function inputError(project: Project): string | null {
   const selectionError = namedSelectionError(project);
   if (selectionError) return selectionError;
   const g = project.geometry;
+  if (isCadSolidProject(project)) {
+    const error = cadSolidDomainError(project);
+    if (error) return error;
+  }
   if (g.kind === 'profile') {
     if (project.study.dimension !== '2d') return 'Profiles require a 2D plane-stress study.';
     const error = profileError(g.profile);
@@ -15,13 +20,15 @@ export function inputError(project: Project): string | null {
   } else if (project.study.dimension === '2d' && g.kind !== 'box')
     return 'The 2D study supports rectangles or line/arc profiles.';
   const dimensions =
-    project.study.dimension === '2d'
-      ? [g.length, g.width, project.study.thickness]
-      : g.kind === 'cylinder'
-        ? [g.length, g.radius]
-        : g.kind === 'bracket'
-          ? [g.length, g.width, g.height, g.thickness]
-          : [g.length, g.width, g.height];
+    g.kind === 'cad'
+      ? []
+      : project.study.dimension === '2d'
+        ? [g.length, g.width, project.study.thickness]
+        : g.kind === 'cylinder'
+          ? [g.length, g.radius]
+          : g.kind === 'bracket'
+            ? [g.length, g.width, g.height, g.thickness]
+            : [g.length, g.width, g.height];
   if (dimensions.some((value) => !Number.isFinite(value) || value <= 0 || value > 1000))
     return 'Geometry dimensions must be finite, positive, and at most 1,000 m.';
   if (g.kind === 'bracket' && g.thickness >= Math.min(g.length, g.width))
@@ -32,6 +39,8 @@ export function inputError(project: Project): string | null {
     return 'Poisson’s ratio must be greater than −1 and at most 0.45 for this formulation.';
   if (!(project.study.mesh.size > 0) || project.study.mesh.size > 1000)
     return 'Mesh size must be positive and at most 1,000 m.';
+  if (g.kind === 'cad' && project.study.mesh.boundarySize !== undefined)
+    return 'Exact CAD solid meshing supports one global target size. Remove boundary refinement.';
   if (
     project.study.mesh.boundarySize !== undefined &&
     (!Number.isFinite(project.study.mesh.boundarySize) ||
@@ -41,9 +50,7 @@ export function inputError(project: Project): string | null {
     return 'Boundary mesh size must be finite, positive, and at most 1,000 m.';
   if (project.study.solver.kind === 'pinn' && !supportsPinn(project))
     return 'Strong-form PINN supports rectangular 2D force/pressure studies. Select potential energy for profiles and spatial traction, or choose FEM.';
-  const boundaries = new Set(
-    regionNames(g.kind, project.study.dimension, g.profile).map((item) => item.id),
-  );
+  const boundaries = new Set(projectRegions(project).map((item) => item.id));
   for (const item of [...project.study.constraints, ...project.study.loads]) {
     const missing = item.regions.filter((id) => !boundaries.has(id));
     if (missing.length)

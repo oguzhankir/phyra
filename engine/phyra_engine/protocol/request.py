@@ -7,6 +7,7 @@ from typing import Any, BinaryIO, Literal, cast
 
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_REQUEST_BYTES
+from phyra_engine.protocol.cad_assets import read_cad_assets
 from phyra_engine.studies.project import validate_numerical_project
 
 PROTOCOL_VERSION = 1
@@ -27,19 +28,32 @@ class StudyRequest:
     job_id: str
     operation: Operation
     _project_json: bytes
+    _asset_sources: tuple[tuple[str, bytes], ...] = ()
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "StudyRequest":
+    def from_payload(
+        cls, payload: dict[str, Any], *, asset_root: str | None = None
+    ) -> "StudyRequest":
         validate_envelope(payload)
         job_id = job_identity(payload["jobId"])
         validate_version(payload["protocolVersion"])
         operation = validate_operation(payload["operation"])
         project = validate_numerical_project(payload["project"])
         snapshot = json.dumps(project, separators=(",", ":"), allow_nan=False).encode("utf-8")
-        return cls(job_id, operation, snapshot)
+        if len(snapshot) > MAX_REQUEST_BYTES:
+            raise EngineError("resource-limit", "Study metadata exceeds the 1 MiB limit.")
+        # General solids consume exact STEP sources. Existing analytical CAD
+        # adapters do not: an inactive import must not change their requirements.
+        assets = (
+            read_cad_assets(project["geometry"], asset_root) if "domain" in project["study"] else {}
+        )
+        return cls(job_id, operation, snapshot, tuple(sorted(assets.items())))
 
     def project_definition(self) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self._project_json))
+
+    def asset_sources(self) -> dict[str, bytes]:
+        return dict(self._asset_sources)
 
 
 def reject_constant(value: str) -> None:

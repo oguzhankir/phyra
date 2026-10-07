@@ -16,6 +16,8 @@ export interface CadWorkspaceModel {
   command: CadCommandModel;
   meshPreview?: CadMeshPreview | null;
   meshBusy?: boolean;
+  analysisStatus?: { label: string; detail: string; ready: boolean };
+  onPrepareAnalysis?: () => void;
   inspectMesh?: (size: number) => Promise<boolean>;
   error: string | null;
   retainedPreview?: CadPreview | null;

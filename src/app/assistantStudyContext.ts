@@ -98,7 +98,7 @@ function cadSnapshot(
             diagnosticCount: receipt.diagnostics.length,
             omittedDiagnosticCount: Math.max(0, receipt.diagnostics.length - 8),
             scope:
-              'Exact evaluated CAD output only. Display triangles are not an analysis mesh; eligibility and sketch DOF do not prove physical correctness. Only features in the selected output dependency closure were evaluated.',
+              'Exact evaluated CAD output only. analysisCompatibility describes primitive adapters; a separate cad-solid study requires current source and face-catalog verification. Display triangles are not an analysis mesh; eligibility and sketch DOF do not prove physical correctness. Only features in the selected output dependency closure were evaluated.',
           }),
         }
       : null,

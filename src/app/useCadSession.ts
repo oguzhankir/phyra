@@ -22,6 +22,7 @@ import {
   type CadCommandModel,
   type CadCommandRequest,
 } from '../features/cad/commandDraft';
+import { invokeVerification } from '../platform/desktop/verification';
 import { previewCadCommand } from './cadCommandPreview';
 import { previewCadMesh } from './cadMeshPreview';
 import { inspectCadMesh, decodeCadMeshBuffer } from '../platform/desktop/cadMesh';
@@ -36,6 +37,7 @@ type Lease = {
 };
 interface Props {
   documentId: string;
+  verificationRef?: RefObject<boolean>;
   desktop: boolean;
   project: ProjectDefinition;
   projectRef: RefObject<ProjectDefinition>;
@@ -410,6 +412,13 @@ export function useCadSession(props: Props) {
             decode: decodeCadDisplay,
             finish: finishCad,
           },
+          p.verificationRef?.current
+            ? (stage) => {
+                void invokeVerification('verification_trace', {
+                  message: `CAD preview: ${stage}`,
+                }).catch((cause) => console.error('CAD verification trace failed:', cause));
+              }
+            : undefined,
         );
         const published = commands.complete(ticket, callbacks.current.projectRef.current, preview);
         if (live.current) setCommandDraft(commands.current());

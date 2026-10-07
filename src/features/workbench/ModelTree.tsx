@@ -98,7 +98,9 @@ export default function ModelTree(props: Props) {
       ? 'Rectangular solid'
       : project.geometry.kind === 'cylinder'
         ? 'Cylinder'
-        : 'L bracket';
+        : project.geometry.kind === 'cad'
+          ? 'Exact CAD solid'
+          : 'L bracket';
   const groupId = (id: GroupId) => `model-${props.documentId ?? project.id}-${id}`;
   const openMenu = (
     target: Target,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   Box,
@@ -9,8 +9,10 @@ import {
   LockKeyhole,
   Play,
 } from 'lucide-react';
+import type { ProjectDefinition } from '../domain/contracts/types';
 import type { Workbench } from './useWorkbench';
 import { isNumericalProject } from '../domain/project/document';
+import CreateStudyDialog from '../features/project/CreateStudyDialog';
 import CadWorkspace from '../features/cad/CadWorkspace';
 import ProjectWorkspaceBar from '../features/workbench/ProjectWorkspaceBar';
 import WorkbenchOverlays from './WorkbenchOverlays';
@@ -34,9 +36,29 @@ export default function CanonicalProjectWorkspace({
   const w = workbench,
     numerical = !!w.analysisProject,
     empty = w.project.geometry.kind === 'empty';
-  const [creatingStudy, setCreatingStudy] = useState(false);
+  const [creatingStudy, setCreatingStudy] = useState<{
+    kind: 'adapter' | 'cad-solid';
+    source: string;
+    dimension: '2d' | '3d';
+  } | null>(null);
   const compatibility = w.cad.current?.receipt.analysisCompatibility;
-  const canCreateStudy = !w.project.study && compatibility?.state === 'supported';
+  const canCreateStudy =
+    !w.project.study && (compatibility?.state === 'supported' || !!w.cadStudyCandidate);
+  const canPrepareCad = !!w.cadStudyCandidate && (!w.project.study || !!w.cadSourceError);
+  const source = studyPreparationSourceKey(w.project);
+  const validDraft =
+    !!creatingStudy &&
+    creatingStudy.source === source &&
+    (creatingStudy.kind === 'cad-solid'
+      ? canPrepareCad
+      : !w.project.study && compatibility?.state === 'supported');
+  useEffect(() => {
+    if (!active || !validDraft || w.help || w.confirmation) setCreatingStudy(null);
+  }, [active, validDraft, w.help, w.confirmation]);
+  const openStudy = (kind: 'adapter' | 'cad-solid') => {
+    const dimension = kind === 'cad-solid' ? '3d' : compatibility?.dimension;
+    if (dimension) setCreatingStudy({ kind, source, dimension });
+  };
   const geometryLabel = empty
     ? 'No geometry'
     : w.project.geometry.kind === 'cad'
@@ -44,7 +66,7 @@ export default function CanonicalProjectWorkspace({
       : w.project.geometry.kind === 'profile'
         ? 'Exact plane profile'
         : w.project.geometry.kind;
-  const evaluated = numerical || !!w.cad.evaluation;
+  const evaluated = isNumericalProject(w.project) || (!!w.cad.current && !w.cadSourceError);
   return (
     <section
       className="project-document-workspace canonical-project"
@@ -88,6 +110,25 @@ export default function CanonicalProjectWorkspace({
             meshPreview: w.cad.meshPreview,
             meshBusy: w.cad.meshBusy,
             inspectMesh: w.cad.inspectMesh,
+            analysisStatus: w.project.study?.domain
+              ? {
+                  label: w.cadSourceError
+                    ? 'Study source needs review'
+                    : 'Solid FEM study prepared',
+                  detail:
+                    w.cadSourceError ??
+                    'The study uses the complete exact face catalog. Assign material, supports and loads in the analysis workspace.',
+                  ready: !w.cadSourceError,
+                }
+              : w.cadStudyCandidate
+                ? {
+                    label: 'Solid FEM preparation available',
+                    detail:
+                      'Current mesh inspection verifies every exact face. Choose Prepare analysis in Mesh inspection to create a source-bound solid study.',
+                    ready: true,
+                  }
+                : undefined,
+            onPrepareAnalysis: canPrepareCad ? () => openStudy('cad-solid') : undefined,
             error: w.error,
             evaluation: w.cad.evaluation,
             retainedPreview: w.cad.retainedPreview,
@@ -171,7 +212,9 @@ export default function CanonicalProjectWorkspace({
                   {empty
                     ? 'Draw in a dedicated workspace or import a STEP source. No material, mesh or analysis has been created.'
                     : numerical
-                      ? 'This project uses a verified primitive or plane-profile analysis path.'
+                      ? w.project.study?.domain
+                        ? 'This solid study preserves the exact CAD source and its explicit face assignments.'
+                        : 'This project uses a verified primitive or plane-profile analysis path.'
                       : evaluated
                         ? 'Exact geometry evaluated by the local CAD kernel. Analysis compatibility is checked separately.'
                         : 'CAD definition saved. Evaluate it to validate the exact shape.'}
@@ -206,10 +249,12 @@ export default function CanonicalProjectWorkspace({
                     ? 'Assign elastic properties, supports and loads to this study’s stable boundaries.'
                     : empty
                       ? 'Create geometry before preparing a study.'
-                      : compatibility?.state === 'unsupported'
-                        ? compatibility.reason
-                        : canCreateStudy
-                          ? 'The exact geometry has a supported analysis path. Create a study with your material and mesh definitions.'
+                      : canCreateStudy
+                        ? compatibility?.state === 'supported'
+                          ? 'The exact geometry has a supported analysis adapter. Supply material properties and a target mesh size.'
+                          : 'Verified exact faces are ready for a solid FEM study. Supply material properties and a target mesh size.'
+                        : compatibility?.state === 'unsupported'
+                          ? 'Open Mesh inspection to check whether this closed solid can be prepared for FEM. Shells and assemblies remain unavailable.'
                           : 'Evaluate the exact geometry to check its available analysis paths.'}
                 </p>
                 <span className="overview-stage-state">
@@ -226,7 +271,9 @@ export default function CanonicalProjectWorkspace({
                   <button
                     className="secondary"
                     disabled={w.locked}
-                    onClick={() => setCreatingStudy(true)}
+                    onClick={() =>
+                      openStudy(compatibility?.state === 'supported' ? 'adapter' : 'cad-solid')
+                    }
                   >
                     Create analysis <ArrowRight size={14} />
                   </button>
@@ -304,18 +351,6 @@ export default function CanonicalProjectWorkspace({
                 </button>
               </article>
             </div>
-            {creatingStudy && canCreateStudy && (
-              <CreateStudyForm
-                dimension={compatibility!.dimension}
-                locked={w.locked}
-                onCancel={() => setCreatingStudy(false)}
-                onCreate={(material, thickness, size) => {
-                  w.createStudy(material, thickness, size);
-                  setCreatingStudy(false);
-                  onAnalysis();
-                }}
-              />
-            )}
             {w.error && (
               <div className="overview-message error" role="alert">
                 {w.error}
@@ -335,6 +370,26 @@ export default function CanonicalProjectWorkspace({
           </main>
         </>
       )}
+      {active && validDraft && creatingStudy && (
+        <CreateStudyDialog
+          dimension={creatingStudy.dimension}
+          units={w.project.displayUnits}
+          defaultSize={w.cad.meshPreview?.receipt.targetSize}
+          previousStudy={w.project.study}
+          locked={w.locked || w.nativeLocked}
+          replacing={!!w.project.study}
+          onCancel={() => setCreatingStudy(null)}
+          onCreate={(material, thickness, size) => {
+            if (
+              validDraft &&
+              w.createStudy(material, thickness, size, creatingStudy.kind === 'cad-solid')
+            ) {
+              setCreatingStudy(null);
+              onAnalysis();
+            }
+          }}
+        />
+      )}
       {active && (
         <WorkbenchOverlays
           workbench={w}
@@ -347,111 +402,7 @@ export default function CanonicalProjectWorkspace({
   );
 }
 
-function CreateStudyForm({
-  dimension,
-  locked,
-  onCancel,
-  onCreate,
-}: {
-  dimension: '2d' | '3d';
-  locked: boolean;
-  onCancel: () => void;
-  onCreate: (
-    material: { name: string; young: number; poisson: number },
-    thickness: number,
-    size: number,
-  ) => void;
-}) {
-  const [name, setName] = useState(''),
-    [young, setYoung] = useState(''),
-    [poisson, setPoisson] = useState(''),
-    [thickness, setThickness] = useState(''),
-    [mesh, setMesh] = useState('');
-  const e = Number(young),
-    nu = Number(poisson),
-    t = dimension === '2d' ? Number(thickness) / 1000 : 1,
-    size = Number(mesh) / 1000;
-  const valid =
-    name.trim().length > 0 &&
-    young.trim() !== '' &&
-    Number.isFinite(e) &&
-    e > 0 &&
-    poisson.trim() !== '' &&
-    Number.isFinite(nu) &&
-    nu > -1 &&
-    nu < 0.5 &&
-    Number.isFinite(t) &&
-    t > 0 &&
-    mesh.trim() !== '' &&
-    Number.isFinite(size) &&
-    size > 0;
-  return (
-    <form
-      className="overview-study-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (valid) onCreate({ name: name.trim(), young: e, poisson: nu }, t, size);
-      }}
-    >
-      <h2>Create a {dimension === '2d' ? 'plane-stress' : 'solid elasticity'} study</h2>
-      <p>Supply elastic properties for the intended material. Supports and loads start empty.</p>
-      <fieldset disabled={locked}>
-        <label>
-          Material name
-          <input
-            value={name}
-            maxLength={200}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Young’s modulus · Pa
-          <input
-            inputMode="decimal"
-            value={young}
-            onChange={(event) => setYoung(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Poisson’s ratio
-          <input
-            inputMode="decimal"
-            value={poisson}
-            onChange={(event) => setPoisson(event.target.value)}
-            required
-          />
-        </label>
-        {dimension === '2d' && (
-          <label>
-            Study thickness · mm
-            <input
-              inputMode="decimal"
-              value={thickness}
-              onChange={(event) => setThickness(event.target.value)}
-              required
-            />
-          </label>
-        )}
-        <label>
-          Target mesh size · mm
-          <input
-            inputMode="decimal"
-            value={mesh}
-            onChange={(event) => setMesh(event.target.value)}
-            required
-          />
-        </label>
-        <div>
-          <button type="button" className="secondary" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="submit" className="primary" disabled={!valid}>
-            Create study
-          </button>
-        </div>
-      </fieldset>
-    </form>
-  );
+/** A material draft belongs to one source recipe and one study replacement target. */
+export function studyPreparationSourceKey(project: ProjectDefinition): string {
+  return JSON.stringify([project.id, project.geometry, project.study?.id ?? null]);
 }

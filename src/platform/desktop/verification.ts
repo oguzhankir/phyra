@@ -20,3 +20,15 @@ export function invokeVerification<K extends keyof VerificationArguments>(
 ): Promise<VerificationResult[K]> {
   return invoke(command, args);
 }
+
+/** Actual preparation-render evidence used only by the packaged CAD verifier. */
+export interface CadPreparationRender {
+  projectId: string;
+  studyId: string;
+  geometryFingerprint: string;
+  outputFeatureId: string;
+  region: string;
+  clientX: number;
+  clientY: number;
+  triangles: number;
+}

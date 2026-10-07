@@ -7,6 +7,9 @@ export type Point3 = readonly [number, number, number];
 // anchors, not mesh nodes, quadrature points or numerical result samples.
 export function boundaryPoints(project: Project, region: string): Point3[] {
   const { geometry: g, study } = project;
+  // An arbitrary exact face needs its real mesh nodes for restraint checks.
+  // Bounding-box corners or presentation samples cannot supply those DOFs.
+  if (g.kind === 'cad') return [];
   if (g.kind === 'profile') {
     const segment = g.profile?.outer.find((item) => item.id === region);
     if (segment) return sampleSegment(segment, 2).map(([x, y]) => [x, y, 0]);

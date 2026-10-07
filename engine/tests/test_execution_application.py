@@ -12,6 +12,7 @@ import pytest
 from phyra_engine.errors import EngineError
 from phyra_engine.execution import application
 from phyra_engine.execution.application import RunPlan, execute
+from phyra_engine.execution.limits import MAX_REQUEST_BYTES
 from phyra_engine.protocol.request import StudyRequest
 from phyra_engine.results import validate_cached
 from phyra_engine.results.storage import _read_bounded, read_cached
@@ -206,3 +207,37 @@ def test_cache_read_enforces_bound_when_file_grows_after_stat(tmp_path, monkeypa
     with pytest.raises(EngineError) as error:
         _read_bounded(file, 16)
     assert error.value.code == "resource-limit"
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        b'{"unfinished":',
+        b'{"text":"\xff"}',
+        b'{"number":NaN}',
+        b'{"number":Infinity}',
+        b'{"number":-Infinity}',
+        b'{"number":1e400}',
+        b'{"number":-1e400}',
+    ],
+    ids=["syntax", "utf8", "nan", "infinity", "negative-infinity", "overflow", "negative-overflow"],
+)
+def test_malformed_cached_json_is_a_recoverable_cache_failure(project, tmp_path, metadata):
+    (tmp_path / "manifest.json").write_bytes(metadata)
+    # Invalid metadata must fail before a binary payload is read or accepted.
+    with pytest.raises(EngineError) as error:
+        read_cached(tmp_path, project)
+    assert error.value.code == "invalid-cache"
+    assert (tmp_path / "manifest.json").read_bytes() == metadata
+
+
+def test_cached_json_failure_normalization_preserves_file_and_resource_errors(project, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_cached(tmp_path, project)
+    (tmp_path / "manifest.json").write_bytes(b"x" * (MAX_REQUEST_BYTES + 1))
+    with pytest.raises(EngineError) as error:
+        read_cached(tmp_path, project)
+    assert error.value.code == "resource-limit"
+    (tmp_path / "manifest.json").write_bytes(b"{}")
+    with pytest.raises(FileNotFoundError):
+        read_cached(tmp_path, project)

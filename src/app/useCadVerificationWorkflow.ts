@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { prepareStudy } from '../domain/project/readiness';
+import { isCadSolidProject } from '../domain/project/cadSolid';
 import type { Project, ProjectDefinition } from '../domain/contracts/types';
 import type { ResultData } from '../domain/results/fields';
-import { invokeVerification } from '../platform/desktop/verification';
+import { acceptsCadPreparationFrame } from './cadVerificationFrames';
+import { invokeVerification, type CadPreparationRender } from '../platform/desktop/verification';
 import { readCadBuffer } from '../platform/desktop/cad';
 import type { useCadSession } from './useCadSession';
 import { cadVerificationCases } from './cadVerificationCases';
@@ -30,6 +33,25 @@ type Phase =
   | 'mesh'
   | 'solve'
   | 'solved'
+  | 'general-start'
+  | 'general-evaluate'
+  | 'general-evaluated'
+  | 'general-inspected'
+  | 'general-menu'
+  | 'general-panel'
+  | 'general-form'
+  | 'general-form-ready'
+  | 'general-prepared'
+  | 'general-face-selected'
+  | 'general-support-menu'
+  | 'general-support'
+  | 'general-load'
+  | 'general-load-assigned'
+  | 'general-source-stale'
+  | 'general-source-restored'
+  | 'general-mesh'
+  | 'general-solve'
+  | 'general-solved'
   | 'complete'
   | 'failed';
 interface Props {
@@ -39,6 +61,7 @@ interface Props {
   project: ProjectDefinition;
   projectRef: RefObject<ProjectDefinition>;
   analysisProject: Project | null;
+  selected: string[];
   currentData: ResultData | null;
   cad: ReturnType<typeof useCadSession>;
   report: RefObject<Record<string, unknown> | null>;
@@ -70,6 +93,10 @@ export function useCadVerificationWorkflow(props: Props) {
   const rendererIds = useRef(new Set<string>());
   const inspectionFrames = useRef({ mesh: false, cad: false });
   const inspectionSource = useRef('');
+  const generalGeometry = useRef<ProjectDefinition['geometry'] | null>(null);
+  const preparationFrame = useRef<CadPreparationRender | null>(null);
+  const generalLoadRegion = useRef('');
+  const generalStudy = useRef('');
   const evidence = useRef({
     emptyStart: false,
     commandPreviewIsolated: false,
@@ -90,6 +117,11 @@ export function useCadVerificationWorkflow(props: Props) {
     inspectionCorrespondence: false,
     inspectionUi: false,
     inspectionSelectionIsolated: false,
+    generalPreparation: false,
+    generalStaleSourceGate: false,
+    generalAssignments: false,
+    generalMesh: false,
+    generalSolve: false,
   });
   const failed = async (message: string) => {
     scheduledPhase.current = 'failed';
@@ -320,7 +352,9 @@ export function useCadVerificationWorkflow(props: Props) {
           p.cad.command.reportInputDraft('verification-size', null);
           if (!(await p.cad.command.preview())) throw new Error('Command preview failed.');
           // A provisional exact shape must leave the accepted native receipt readable.
+          trace('retained exact buffer read started');
           const retainedBuffer = await readCadBuffer(receipt.jobId, p.documentId);
+          trace('retained exact buffer read completed');
           evidence.current.commandPreviewIsolated =
             retainedBuffer.byteLength === receipt.byteLength &&
             JSON.stringify(p.projectRef.current) === JSON.stringify(before);
@@ -364,7 +398,9 @@ export function useCadVerificationWorkflow(props: Props) {
           const receipt = p.cad.current.receipt;
           if (!(await p.cad.inspectMesh(0.01)))
             throw new Error('Exact Boolean mesh inspection failed.');
+          trace('inspection retained exact buffer read started');
           const buffer = await readCadBuffer(receipt.jobId, p.documentId);
+          trace('inspection retained exact buffer read completed');
           evidence.current.inspectionPreservedCad =
             buffer.byteLength === receipt.byteLength &&
             JSON.stringify(p.projectRef.current) === before;
@@ -392,6 +428,7 @@ export function useCadVerificationWorkflow(props: Props) {
           if (!evidence.current.inspectionCorrespondence)
             throw new Error('Exact CAD face correspondence was not established for the Boolean.');
           inspectionSource.current = JSON.stringify(p.projectRef.current);
+          generalGeometry.current = structuredClone(p.projectRef.current.geometry);
           const summary = document.querySelector<HTMLElement>('.cad-entity-section summary');
           if (!summary) throw new Error('Model navigator did not expose geometry entities.');
           if (!summary.closest('details')?.open) summary.click();
@@ -556,13 +593,6 @@ export function useCadVerificationWorkflow(props: Props) {
             return;
           }
           evidence.current.meshGenerated = true;
-          p.report.current = {
-            ...evidence.current,
-            advanced: advancedEvidence.current,
-            advancedDefinitions: advancedDefinitions.current,
-            jobId: p.cad.current?.receipt.jobId,
-            exportIntegrity: false,
-          };
           trace('CAD source -> mesh -> solve');
           await p.execute('solve');
           nextPhase = 'solved';
@@ -573,6 +603,236 @@ export function useCadVerificationWorkflow(props: Props) {
             if (p.error) throw new Error(p.error);
             return;
           }
+          nextPhase = 'general-start';
+          break;
+        case 'general-start':
+          p.edit((next) => {
+            if (!generalGeometry.current) throw new Error('General CAD recipe was not retained.');
+            next.geometry = structuredClone(generalGeometry.current);
+            next.study = null;
+          });
+          preparationFrame.current = null;
+          inspectionFrames.current = { mesh: false, cad: false };
+          nextPhase = 'general-evaluate';
+          break;
+        case 'general-evaluate':
+          if (!(await p.cad.evaluate())) throw new Error('General solid exact rebuild failed.');
+          nextPhase = 'general-evaluated';
+          break;
+        case 'general-evaluated':
+          if (!p.cad.current) return;
+          if (!(await p.cad.inspectMesh(0.01)))
+            throw new Error('General solid correspondence failed.');
+          nextPhase = 'general-inspected';
+          break;
+        case 'general-inspected':
+          if (!p.cad.meshPreview) return;
+          verificationButton(document, 'button[aria-label="Inspect"]').click();
+          nextPhase = 'general-menu';
+          break;
+        case 'general-menu':
+          verificationTextButton(
+            document.querySelector('[role="menu"][aria-label="Inspect"]')!,
+            'Mesh inspection',
+          ).click();
+          nextPhase = 'general-panel';
+          break;
+        case 'general-panel':
+          if (!inspectionFrames.current.mesh) return;
+          verificationTextButton(verificationInspectionPanel(), 'Prepare analysis').click();
+          nextPhase = 'general-form';
+          break;
+        case 'general-form': {
+          const form = document.querySelector<HTMLFormElement>('.overview-study-form');
+          if (!form) throw new Error('Prepare analysis did not open the material dialog.');
+          verificationInput(form, 'Material name', 'General CAD test material');
+          verificationInput(form, 'Young’s modulus', '210000000000');
+          verificationInput(form, 'Poisson’s ratio', '0.3');
+          verificationInput(form, 'Target mesh size', '10');
+          nextPhase = 'general-form-ready';
+          break;
+        }
+        case 'general-form-ready':
+          verificationTextButton(
+            document.querySelector('.overview-study-form')!,
+            'Create study',
+          ).click();
+          nextPhase = 'general-prepared';
+          break;
+        case 'general-prepared': {
+          if (!isCadSolidProject(p.project) || !preparationFrame.current) return;
+          if (JSON.stringify(p.project.geometry) !== JSON.stringify(generalGeometry.current))
+            throw new Error('Preparing general CAD replaced its authored recipe.');
+          const frame = preparationFrame.current;
+          const canvas = document.querySelector<HTMLCanvasElement>('.model-viewport canvas');
+          if (
+            !canvas ||
+            !frame.triangles ||
+            !p.project.study.domain.boundaries.some((face) => face.id === frame.region)
+          )
+            throw new Error('General CAD preparation did not render a bound exact face.');
+          canvas.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              button: 2,
+              clientX: frame.clientX,
+              clientY: frame.clientY,
+            }),
+          );
+          nextPhase = 'general-face-selected';
+          break;
+        }
+        case 'general-face-selected':
+          if (p.selected.length !== 1 || p.selected[0] !== preparationFrame.current?.region)
+            throw new Error('Context picking did not select the exact CAD catalog boundary.');
+          evidence.current.generalPreparation = true;
+          nextPhase = 'general-support-menu';
+          break;
+        case 'general-support-menu':
+          verificationTextButton(document, 'Add support to selection…').click();
+          nextPhase = 'general-support';
+          break;
+        case 'general-support': {
+          if (
+            !isCadSolidProject(p.project) ||
+            p.project.study.constraints.length !== 1 ||
+            p.project.study.constraints[0].regions[0] !== preparationFrame.current?.region
+          )
+            throw new Error('Selected exact face was not assigned to the support.');
+          const support = p.project.study.domain.boundaries.find(
+            (face) => face.id === preparationFrame.current?.region,
+          )!;
+          const supportFace = p.cad.current!.receipt.faces.find(
+            (face) => face.id === support.faceId,
+          )!;
+          const candidates = p.cad.current!.receipt.faces.filter(
+            (face) => face.id !== support.faceId,
+          );
+          candidates.sort(
+            (a, b) =>
+              Math.hypot(...b.centroid.map((value, i) => value - supportFace.centroid[i])) -
+              Math.hypot(...a.centroid.map((value, i) => value - supportFace.centroid[i])),
+          );
+          generalLoadRegion.current = p.project.study.domain.boundaries.find(
+            (face) => face.faceId === candidates[0].id,
+          )!.id;
+          verificationButton(document, '.model-browser [aria-label="Add load"]').click();
+          nextPhase = 'general-load';
+          break;
+        }
+        case 'general-load': {
+          const load = p.project.study?.loads[0];
+          if (!load) return;
+          const label = Array.from(
+            document.querySelectorAll<HTMLLabelElement>('.model-panel .boundary-list label'),
+          ).find((item) => item.querySelector('code')?.textContent === generalLoadRegion.current);
+          if (!label) throw new Error('Bound CAD face was absent from the load assignment list.');
+          if (!load.regions.includes(generalLoadRegion.current))
+            label.querySelector<HTMLInputElement>('input')!.click();
+          nextPhase = 'general-load-assigned';
+          break;
+        }
+        case 'general-load-assigned': {
+          const load = p.project.study?.loads[0];
+          if (!load) throw new Error('General CAD load disappeared.');
+          for (const region of load.regions.filter((id) => id !== generalLoadRegion.current)) {
+            const label = Array.from(
+              document.querySelectorAll<HTMLLabelElement>('.model-panel .boundary-list label'),
+            ).find((item) => item.querySelector('code')?.textContent === region);
+            if (!label) throw new Error('Assigned boundary control disappeared.');
+            label.querySelector<HTMLInputElement>('input')!.click();
+          }
+          verificationInput(document.querySelector('.model-panel')!, 'Force X', '1000');
+          verificationInput(document.querySelector('.model-panel')!, 'Force Y', '0');
+          verificationInput(document.querySelector('.model-panel')!, 'Force Z', '0');
+          nextPhase = 'general-mesh';
+          break;
+        }
+        case 'general-mesh':
+          generalStudy.current = JSON.stringify(p.project.study);
+          p.edit((next) => {
+            if (next.geometry.kind !== 'cad' || next.geometry.features[0].kind !== 'box')
+              throw new Error('Verification source is no longer a box Boolean.');
+            next.geometry.features[0].length *= 1.1;
+          });
+          nextPhase = 'general-source-stale';
+          break;
+        case 'general-source-stale': {
+          if (!isCadSolidProject(p.project))
+            throw new Error('CAD source edit discarded its study.');
+          const readiness = prepareStudy(p.project, 0, p.cad.current?.receipt);
+          if (
+            p.cad.current ||
+            readiness.canMesh ||
+            readiness.canRun ||
+            JSON.stringify(p.project.study) !== generalStudy.current
+          )
+            throw new Error(
+              'CAD source edit lost assignments or bypassed the current-source gate.',
+            );
+          p.undo();
+          nextPhase = 'general-source-restored';
+          break;
+        }
+        case 'general-source-restored':
+          evidence.current.generalAssignments =
+            isCadSolidProject(p.project) &&
+            p.project.study.loads[0]?.regions.length === 1 &&
+            p.project.study.loads[0].regions[0] === generalLoadRegion.current &&
+            p.project.study.loads[0].vector[0] === 1000;
+          if (!evidence.current.generalAssignments)
+            throw new Error('CAD load controls did not persist their face and force.');
+          evidence.current.generalStaleSourceGate =
+            !!p.cad.current &&
+            JSON.stringify(p.project.study) === generalStudy.current &&
+            JSON.stringify(p.project.geometry) === JSON.stringify(generalGeometry.current);
+          if (!evidence.current.generalStaleSourceGate)
+            throw new Error('Undo failed to restore the authored CAD study and its face catalog.');
+          await p.execute('mesh');
+          nextPhase = 'general-solve';
+          break;
+        case 'general-solve':
+          if (!p.currentData || p.currentData.manifest.operation !== 'mesh') {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          evidence.current.generalMesh = true;
+          await p.execute('solve');
+          nextPhase = 'general-solved';
+          break;
+        case 'general-solved':
+          if (!p.currentData || p.currentData.manifest.operation !== 'solve') {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          evidence.current.generalSolve = true;
+          if (!isCadSolidProject(p.project) || !p.cad.current)
+            throw new Error('General study source was lost.');
+          {
+            const receipt = p.cad.current.receipt;
+            const end = receipt.faces.filter(
+              (face) =>
+                Math.abs(face.centroid[0] - receipt.statistics.bounds[1][0]) < 1e-10 &&
+                Math.abs(face.bounds[1][0] - face.bounds[0][0]) < 1e-10,
+            );
+            if (end.length !== 1)
+              throw new Error('Independent X-positive face reference is ambiguous.');
+            const expectedPickedRegion = p.project.study.domain.boundaries.find(
+              (face) => face.faceId === end[0].id,
+            )?.id;
+            p.report.current = {
+              ...evidence.current,
+              expectedPickedRegion,
+              advanced: advancedEvidence.current,
+              advancedDefinitions: advancedDefinitions.current,
+              jobId: receipt.jobId,
+              exportIntegrity: false,
+            };
+          }
+          trace(
+            'general CAD -> actual preparation dialog -> exact face context pick -> support/load controls -> mesh/solve',
+          );
           nextPhase = 'complete';
           break;
       }
@@ -623,8 +883,37 @@ export function useCadVerificationWorkflow(props: Props) {
   return {
     phase,
     rendered,
+    preparationRendered: (report: CadPreparationRender) => {
+      // Dialog submission can mount the analysis view before React commits the next
+      // verification phase. Own the first frame by the explicit CAD study, not effect order.
+      if (
+        props.enabled &&
+        !preparationFrame.current &&
+        acceptsCadPreparationFrame(
+          current.current.projectRef.current,
+          generalGeometry.current,
+          report,
+        )
+      ) {
+        preparationFrame.current = report;
+        setRenderedTick((tick) => tick + 1);
+      }
+    },
     workspace: props.enabled
-      ? phase === 'study' ||
+      ? [
+          'general-prepared',
+          'general-face-selected',
+          'general-support-menu',
+          'general-support',
+          'general-load',
+          'general-load-assigned',
+          'general-mesh',
+          'general-source-stale',
+          'general-source-restored',
+          'general-solve',
+          'general-solved',
+        ].includes(phase) ||
+        phase === 'study' ||
         phase === 'mesh' ||
         phase === 'solve' ||
         phase === 'solved' ||
@@ -645,4 +934,21 @@ function verificationInspectionPanel() {
   const panel = document.querySelector<HTMLElement>('aside[aria-label="Mesh inspection"]');
   if (!panel) throw new Error('Mesh inspection panel did not open.');
   return panel;
+}
+
+function verificationTextButton(root: ParentNode, text: string) {
+  const button = Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find(
+    (item) => item.textContent?.trim() === text,
+  );
+  if (!button || button.disabled) throw new Error(`Verification action unavailable: ${text}`);
+  return button;
+}
+function verificationInput(root: ParentNode, label: string, value: string) {
+  const element = Array.from(root.querySelectorAll<HTMLLabelElement>('label'))
+    .find((item) => item.textContent?.trim().startsWith(label))
+    ?.querySelector<HTMLInputElement>('input');
+  if (!element || element.disabled) throw new Error(`Verification input unavailable: ${label}`);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 }

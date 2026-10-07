@@ -1,10 +1,10 @@
-import type { Project, Constraint } from '../contracts/types';
+import type { Project, Constraint, NumericalGeometry } from '../contracts/types';
 
 export type RegionId = Project['study']['loads'][number]['regions'][number];
 export function regionNames(
-  kind: Project['geometry']['kind'],
+  kind: NumericalGeometry['kind'],
   dimension: '2d' | '3d' = '3d',
-  profile?: Project['geometry']['profile'],
+  profile?: NumericalGeometry['profile'],
 ): { id: RegionId; name: string }[] {
   if (kind === 'profile' && dimension === '2d')
     return [...(profile?.outer ?? []), ...(profile?.holes ?? [])].map(({ id, name }) => ({
@@ -39,6 +39,13 @@ export function regionNames(
         { id: 'inner-y', name: 'Inner Y boundary' },
       ]
     : planar;
+}
+
+/** Boundary catalogs identify exact source faces without depending on mesh order. */
+export function projectRegions(project: Project): { id: RegionId; name: string }[] {
+  return project.geometry.kind === 'cad'
+    ? (project.study.domain?.boundaries.map(({ id, name }) => ({ id, name })) ?? [])
+    : regionNames(project.geometry.kind, project.study.dimension, project.geometry.profile);
 }
 
 export function assignedRegions(values: RegionId[], fallback: RegionId): Constraint['regions'] {

@@ -108,6 +108,7 @@ async fn geometry_job(
             result
         })();
         finish_run(&state.0, &request)?;
+        crate::verification::trace_verification("CAD geometry command returning");
         result
     })
     .await
@@ -199,6 +200,7 @@ pub(crate) async fn finish_cad(
     owner_id: String,
     accept: bool,
 ) -> Result<(), String> {
+    crate::verification::trace_verification("CAD finish command received");
     tauri::async_runtime::spawn_blocking(move || {
         let document = document_identity(Some(&document_id))?;
         let project_state = app.state::<ProjectState>();
@@ -206,7 +208,9 @@ pub(crate) async fn finish_cad(
         documents.require_owner(Some(&owner_id))?;
         documents.require_open(document)?;
         let state = app.state::<CadState>();
-        finish_document_cad(&state.0, document, &job_id, accept)
+        let result = finish_document_cad(&state.0, document, &job_id, accept);
+        crate::verification::trace_verification("CAD finish command returning");
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -234,6 +238,7 @@ pub(crate) async fn read_cad_buffer(
     document_id: String,
     owner_id: String,
 ) -> Result<tauri::ipc::Response, String> {
+    crate::verification::trace_verification("CAD buffer read received");
     tauri::async_runtime::spawn_blocking(move || {
         let document = document_identity(Some(&document_id))?;
         let project_state = app.state::<ProjectState>();
@@ -241,10 +246,9 @@ pub(crate) async fn read_cad_buffer(
         documents.require_owner(Some(&owner_id))?;
         documents.require_open(document)?;
         let directory = owned_document_directory(&app.state::<CadState>().0, document, &job_id)?;
-        Ok(tauri::ipc::Response::new(read_bounded(
-            &directory.join("buffer.bin"),
-            MAX_BLOB,
-        )?))
+        let buffer = read_bounded(&directory.join("buffer.bin"), MAX_BLOB)?;
+        crate::verification::trace_verification("CAD buffer read returning");
+        Ok(tauri::ipc::Response::new(buffer))
     })
     .await
     .map_err(|e| e.to_string())?

@@ -963,17 +963,18 @@ export default function CadWorkspace({
                         'Edit feature dimensions, then rebuild to view the exact geometry.')}
             {!activeSketch && (
               <button
-                className={`cad-compatibility-link ${evaluation?.analysisCompatibility.state ?? 'unchecked'}`}
+                className={`cad-compatibility-link ${model.analysisStatus?.ready ? 'supported' : (evaluation?.analysisCompatibility.state ?? 'unchecked')}`}
                 disabled={!!draft}
                 onClick={() => setDetailsSection('analysis')}
               >
-                {evaluation
-                  ? evaluation.analysisCompatibility.state === 'supported'
-                    ? 'Analysis supported'
-                    : 'Analysis unavailable'
-                  : draft
-                    ? 'Apply to check analysis'
-                    : 'Analysis not checked'}
+                {model.analysisStatus?.label ??
+                  (evaluation
+                    ? evaluation.analysisCompatibility.state === 'supported'
+                      ? 'Analysis supported'
+                      : 'Analysis unavailable'
+                    : draft
+                      ? 'Apply to check analysis'
+                      : 'Analysis not checked')}
               </button>
             )}
           </div>
@@ -992,6 +993,7 @@ export default function CadWorkspace({
             key={`${project.id}:${project.displayUnits}`}
             mesh={model.meshPreview ?? null}
             inspection={meshInspection}
+            onPrepareAnalysis={model.onPrepareAnalysis}
             units={project.displayUnits}
             defaultSize={defaultMeshSize}
             busy={!!model.meshBusy}
@@ -1016,6 +1018,7 @@ export default function CadWorkspace({
             featureName={feature?.name}
             featureKind={feature ? cadFeatureLabel(feature) : undefined}
             evaluation={evaluation}
+            analysisStatus={model.analysisStatus}
             units={project.displayUnits}
             exportUnits={exportUnits}
             onExportUnits={setExportUnits}

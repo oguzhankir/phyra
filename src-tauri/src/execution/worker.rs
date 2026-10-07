@@ -5,7 +5,10 @@ use super::{
 };
 use crate::{
     platform::files::{read_bounded, MAX_BLOB, MAX_JSON, MAX_LOG},
-    project::validation::validate_numerical_project,
+    project::{
+        assets::{asset_root, stage_sources},
+        validation::validate_numerical_project,
+    },
     verification::trace_verification,
 };
 use serde_json::{json, Value};
@@ -115,6 +118,13 @@ pub(crate) fn worker_with_publication(
         return Err("Application is closing".into());
     }
     fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    // Exact primitive adapters never consume inactive STEP history. Only the
+    // source-bound solid route reconstructs imported assets numerically.
+    let sources = if project["study"]["domain"]["kind"] == "cad-solid" {
+        stage_sources(&asset_root(app)?, project, directory)?
+    } else {
+        None
+    };
     let mut active = state.active.lock().map_err(|e| e.to_string())?;
     if active.is_some() {
         return Err("An analysis job is already running".into());
@@ -132,6 +142,9 @@ pub(crate) fn worker_with_publication(
         return Err("Engine request exceeds its resource limit".into());
     }
     let mut command = Command::new(engine_path(app)?);
+    if let Some(sources) = &sources {
+        command.arg("--asset-root").arg(sources.path());
+    }
     command
         .arg("--output")
         .arg(directory)

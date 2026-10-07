@@ -40,12 +40,14 @@ environment.PATH =
     ? `${process.env.WINDIR}\\System32;${process.env.WINDIR}`
     : '/usr/bin:/bin:/usr/sbin:/sbin';
 
-function assertRenderer(renderer, manifest, association) {
+function assertRenderer(renderer, manifest, association, expectedRegion = 'x1') {
   if (
     !renderer ||
     renderer.renderedTriangles !== manifest.statistics.surfaceTriangles ||
     renderer.association !== association ||
-    renderer.pickedRegion !== 'x1' ||
+    !expectedRegion ||
+    renderer.pickedRegion !== expectedRegion ||
+    !manifest.regions.some((region) => region.id === expectedRegion) ||
     !Number.isFinite(renderer.probedValue) ||
     !Number.isInteger(renderer.probedIndex) ||
     renderer.probedIndex < 0 ||
@@ -287,11 +289,21 @@ async function verify(mode) {
     !report.recovery?.supersededRequestsRejected ||
     !report.recovery?.newClientSequenceAccepted ||
     report.recovery?.resultsIncluded !== false ||
-    report.engineCapabilities?.schemaVersion !== 1
+    report.engineCapabilities?.schemaVersion !== 2
   )
     throw new Error('Native recovery or implemented-method capability verification failed');
-  assertRenderer(report.renderer, report.manifest, 'node');
-  assertRenderer(report.stressRenderer, report.manifest, 'cell');
+  assertRenderer(
+    report.renderer,
+    report.manifest,
+    'node',
+    cad ? report.cad?.expectedPickedRegion : 'x1',
+  );
+  assertRenderer(
+    report.stressRenderer,
+    report.manifest,
+    'cell',
+    cad ? report.cad?.expectedPickedRegion : 'x1',
+  );
   assertMaximum(
     report.renderer.fieldMaximum,
     report.manifest.summary.maxDisplacement,
@@ -332,6 +344,12 @@ async function verify(mode) {
       !report.cad?.inspectionCorrespondence ||
       !report.cad?.inspectionUi ||
       !report.cad?.inspectionSelectionIsolated ||
+      !report.cad?.generalPreparation ||
+      !report.cad?.generalStaleSourceGate ||
+      !report.cad?.generalAssignments ||
+      !report.cad?.generalMesh ||
+      !report.cad?.generalSolve ||
+      report.project.study?.domain?.kind !== 'cad-solid' ||
       !report.cad?.previewRendered ||
       !report.cad?.rendererReused ||
       !report.cad?.exportIntegrity ||

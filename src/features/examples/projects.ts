@@ -7,7 +7,7 @@ import kirschQuarter from '../../../examples/kirsch-quarter.json';
 import energyTension from '../../../examples/energy-tension.json';
 import eccentricDisplacement from '../../../examples/eccentric-displacement.json';
 import energyHole from '../../../examples/energy-hole.json';
-import type { Project } from '../../domain/contracts/types';
+import type { NumericalProject } from '../../domain/contracts/types';
 
 export type ExampleId =
   | 'cantilever'
@@ -32,9 +32,9 @@ const examples: Record<ExampleId, unknown> = {
   'energy-hole': energyHole,
 };
 
-export function makeProject(example?: ExampleId): Project {
+export function makeProject(example?: ExampleId): NumericalProject {
   const definition = examples[example ?? 'cantilever'];
-  const project = structuredClone(definition) as Project;
+  const project = structuredClone(definition) as NumericalProject;
   project.id = crypto.randomUUID();
   project.study.id = crypto.randomUUID();
   project.study.constraints.forEach((item) => {

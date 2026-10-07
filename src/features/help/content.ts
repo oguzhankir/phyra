@@ -143,7 +143,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Only one valid closed solid is admitted. Surface shells, independent assembly instances, multiple solids and disconnected meshes are rejected. Existing numerical resource limits remain enforced. Region labels are scoped to this generated mesh and cannot carry loads or supports.',
           'Face correspondence checks complete exact face geometry after import. A complete unique match links each mesh boundary to its source face for this unchanged geometry. Face order, centroid proximity and visual similarity are never used as identity. If the exact comparison cannot establish a unique match, the panel explains why and keeps mesh-only inspection available.',
           'A matched face selection survives a new mesh size for the same project and exact geometry. An unmatched mesh boundary selection belongs to its original mesh job. Inspection selection is separate from modeling selection. No boundary assignments are saved; changing geometry invalidates the preview and requires another correspondence check.',
-          'Mean-ratio tetrahedral quality ranges from zero for degenerate elements to one for a regular tetrahedron. It measures element shape, not solution accuracy. Volume difference reports discretization error against the exact solid, not stress or displacement error. General CAD face assignment and the full general-solid analysis workflow remain separate development work.',
+          'Mean-ratio tetrahedral quality ranges from zero for degenerate elements to one for a regular tetrahedron. It measures element shape, not solution accuracy. Volume difference reports discretization error against the exact solid, not stress or displacement error. For a complete unique correspondence, Prepare analysis starts a separate source-bound study; mesh inspection alone does not create physical assignments.',
           'The assistant can explain this workflow from the same offline help. Transient inspection meshes, mesh-quality measurements and their buffers are not automatically attached to assistant context; it must not claim to have inspected them.',
         ],
         references: [
@@ -154,6 +154,22 @@ export const helpArticles: readonly HelpArticle[] = [
             scope:
               'OpenCASCADE BRep import, first-order tetrahedral meshing and mesh inspection. Persistent CAD-to-mesh boundary assignment is not implied by import.',
           },
+        ],
+      },
+      {
+        title: 'Prepare a closed CAD solid for analysis',
+        steps: [
+          'Rebuild the exact output, then open Inspect > Mesh inspection and Generate mesh. One closed solid, at most 512 faces and complete unique Boundary correspondence are required. Shells, assemblies, multiple solids and ambiguous faces remain unavailable.',
+          'Choose Prepare analysis and create the linear-static FEM study. The study retains the CAD recipe and an explicit catalog of exact faces. The inspected mesh is not a solved result.',
+          'In Prepare, select faces in the viewport or boundary list. Add support or Add load, then review the assigned faces and component values. Choose one homogeneous isotropic material for the whole solid. Total force and pressure are supported; general CAD Physics ML is not.',
+          'Open Solve, choose the global element size and generate a numerical mesh. Local boundary refinement is not yet available for general CAD solids. The worker rebuilds the exact source and verifies the complete face mapping before assigning physical regions. Run FEM, then inspect displacements, stresses, reactions and balance. Refine the mesh and compare quantities of interest before drawing conclusions.',
+          'Save the .phyra project. Reopening preserves the face catalog and source files. Rebuild the geometry before editing face assignments or starting a new solve. Cached results are accepted only when the rebuilt exact source and numerical mesh match.',
+        ],
+        paragraphs: [
+          'A geometry edit makes the study source stale. Recreating the study explicitly clears its supports and loads so they can be assigned to the new faces. Review copied boundary sets and repair their geometry stamp before reuse. No nearest-face, face-order or visual-similarity reassignment occurs.',
+          'The geometry fingerprint and selected output belong to the physical definition; remeshing an unchanged solid preserves face assignments. A transient CAD mesh selection is separate from a physical support/load. Surface triangles used for display never become tetrahedral finite elements.',
+          'Definition checks cannot determine the complete rigid-motion restraint rank of a general CAD surface. The meshed worker performs the authoritative check and rejects underconstrained systems. A successful solve and a good element-quality score do not establish mesh convergence or structural safety.',
+          'If a saved CAD result cannot be verified against the rebuilt source and mesh, opening keeps the editable definition and source files, discards the derived cache and explains that a new solve is required. Cancellation or backend failures remain explicit errors.',
         ],
       },
       {
@@ -185,7 +201,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Analysis gate and topology repair',
         paragraphs: [
-          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. General STEP, revolution, Boolean, edge-treatment, Move / rotate, loft, sweep and assembly outputs remain editable CAD until a matching numerical adapter exists. A successful exact rebuild enables geometry inspection/export; it does not enable an unsupported study.',
+          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. A separate source-bound FEM route admits one closed general CAD solid, including eligible STEP, revolution, Boolean, edge-treatment, Move / rotate and loft/sweep outputs, after complete exact face correspondence. Use Mesh inspection > Prepare analysis. Assemblies and surface shells remain definition-only. A successful exact rebuild enables geometry inspection/export; it does not enable an unsupported study.',
           'Content references identify unchanged geometry entities. Changed or coincident ambiguous entities require explicit repair. Geometry edits invalidate incompatible assignments and old results; selecting a face does not assign a physical law or establish solver support. Thermal, multilayer materials, inverse material estimation and space-environment studies remain roadmap work.',
         ],
       },
@@ -251,7 +267,7 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
         note: {
           tone: 'info',
-          text: 'Surface shell has no enclosed volume. Loft solids and shells are available for CAD inspection and export; current elasticity studies do not support these outputs.',
+          text: 'Surface shell has no enclosed volume. Loft solids and shells are available for CAD inspection and export. One closed loft solid may enter source-bound linear-static FEM after complete face correspondence; a surface shell cannot.',
         },
         references: [
           {
@@ -298,7 +314,7 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
         note: {
           tone: 'info',
-          text: 'Surface shell is open at its ends and has no enclosed volume. Sweep outputs are available for CAD inspection and export, while analysis remains gated until a compatible numerical adapter exists.',
+          text: 'Surface shell is open at its ends and has no enclosed volume. Sweep outputs are available for CAD inspection and export. One closed sweep solid may enter source-bound linear-static FEM after complete face correspondence; open surface shells remain gated.',
         },
         references: [
           {
@@ -375,11 +391,11 @@ export const helpArticles: readonly HelpArticle[] = [
           'Select the intended boundaries and choose Save boundary set.',
           'Give the set a unique nonempty name. The model tree and editor show its boundary IDs and geometry context.',
           'In a support or load editor, choose Copy a named selection. Review the copied boundaries before running.',
-          'If the primitive type or study dimension changes, repair incompatible sets explicitly using the current viewport selection.',
+          'If the geometry type, CAD source or study dimension changes, repair incompatible sets explicitly using the current viewport selection.',
         ],
         note: {
           tone: 'info',
-          text: 'These are reusable copied boundary groups. Changing or deleting a set does not update previously assigned supports or loads. General CAD topology mapping and associative selections are future work.',
+          text: 'These are reusable copied boundary groups. Changing or deleting a set does not update previously assigned supports or loads. CAD sets also retain their source geometry fingerprint. Geometry edits leave them available for explicit repair; automatic topology reassignment and associative selections remain future work.',
         },
         screenshots: [
           {
@@ -510,7 +526,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Supported domains',
         bullets: [
-          '3D: a box, an X-axis cylinder, or a connected L bracket. Bracket thickness must be smaller than both in-plane dimensions.',
+          '3D: a box, an X-axis cylinder, a connected L bracket, or one closed exact CAD solid with a verified source-bound face catalog. Bracket thickness must be smaller than both in-plane dimensions. General CAD preparation starts in Inspect > Mesh inspection > Prepare analysis.',
           '2D: a rectangle or one closed counterclockwise profile of 2–64 straight edges/circular arcs and up to 16 enclosed circular holes in X–Y. Each arc is at most 180°. Physical thickness belongs to the study.',
           'A cylinder spans X = 0 to length, with its axis centered at Y = Z = 0.',
         ],
@@ -1411,7 +1427,7 @@ The reported normalized potential is strain energy minus external work. It may b
         title: 'Project files',
         paragraphs: [
           'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
-          'Versions 1–6 are validated against frozen schemas before migrating to version 7. Versions through 4 receive strong-form; versions 5 and 6 preserve the selected formulation. Version 6 introduced empty/CAD designs independently of optional studies; version 7 adds loft, sweep and assembly recipes. Migration retains existing definitions. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
+          'Versions 1–7 are validated against frozen schemas before migrating to version 8. Versions through 4 receive strong-form; versions 5 and 6 preserve the selected formulation. Version 6 introduced empty/CAD designs independently of optional studies; version 7 adds loft, sweep and assembly recipes; version 8 adds source-bound CAD solid study catalogs and stamped CAD boundary sets. Migration retains existing definitions. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved. CAD solid cached fields also require a rebuilt source and matching numerical mesh. An unverifiable CAD cache is discarded with a notice while the editable definition and imported source files are restored.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
@@ -1635,7 +1651,7 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'What the context contains',
         paragraphs: [
-          'Documentation context retrieves articles from this installed application’s offline help, including the loft, sweep and assembly guides. Project context works before an analysis exists. It adds the authored SI definition, current preparation and project/revision identity. CAD context includes the selected output and bounded evaluated measurements, kernel/job/fingerprint, sketch DOF/status and solver-compatibility reason when available. The recipe identifies loft section order, sweep profile/path references and assembly component IDs, names and source placements. Only the selected output dependency closure was evaluated; unsupported CAD is not a numerical solution. Large definitions become explicitly marked summaries that omit curve/constraint details rather than implying those details were read.',
+          'Documentation context retrieves articles from this installed application’s offline help, including the loft, sweep and assembly guides. Project context works before an analysis exists. It adds the authored SI definition, current preparation and project/revision identity. CAD context includes the selected output and bounded evaluated measurements, kernel/job/fingerprint, sketch DOF/status and solver-compatibility reason when available. The recipe identifies loft section order, sweep profile/path references and assembly component IDs, names and source placements. A supplied general CAD study includes its source fingerprint, output feature, exact-face catalog and physical assignments when the definition fits the context budget. A catalog is authored intent, not proof that the current source or mesh has been reverified. Only the selected output dependency closure was evaluated; unsupported CAD is not a numerical solution. Large definitions become explicitly marked summaries that omit curve/constraint details rather than implying those details were read.',
           'Unapplied command drafts and provisional Preview shapes are not attached as project geometry or exact evaluation evidence. CAD viewport selection, camera position and which panels are open are also excluded. Describe the feature or operation you are asking about; the assistant cannot see your screen or infer which face is highlighted.',
           'Study context also adds available run/result summaries and measured diagnostics. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
           'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. Those messages may contain an earlier study explanation. Start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
@@ -1789,7 +1805,7 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Planned; not available in this release',
         bullets: [
-          'Freeform surface editing, surface sewing/thickening, assembly mates/contact and general imported-solid, loft/sweep/assembly analysis. Multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
+          'Freeform surface editing, surface sewing/thickening, assembly mates/contact, shell and multi-solid analysis, and unrestricted imported-solid analysis. The implemented general CAD FEM route is restricted to one closed solid with complete unique face correspondence. Multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
           'Thermal/fluid, plane strain, dynamics, nonlinear materials, contact and coupled physics.',
           'Reusable learned operators, inverse studies, validated uncertainty and resumable model checkpoints.',
           'Optional external Physics ML framework adapters and distributed/HPC execution. Current local device capability does not establish framework or distributed support.',

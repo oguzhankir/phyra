@@ -5,6 +5,8 @@ export function changeStudyDimension(
   dimension: Project['study']['dimension'],
 ): void {
   if (project.study.dimension === dimension) return;
+  if (project.geometry.kind === 'cad')
+    throw new Error('Exact CAD solid studies remain 3D. Change geometry in the CAD workspace.');
   project.study.dimension = dimension;
   project.study.formulation = dimension === '2d' ? 'plane-stress' : 'solid';
   project.study.constraints = [];

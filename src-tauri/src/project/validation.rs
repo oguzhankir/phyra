@@ -38,7 +38,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         4 => include_str!("../../../contracts/project-v4.schema.json"),
         5 => include_str!("../../../contracts/project-v5.schema.json"),
         6 => include_str!("../../../contracts/project-v6.schema.json"),
-        7 => include_str!("../../../contracts/project.schema.json"),
+        7 => include_str!("../../../contracts/project-v7.schema.json"),
+        8 => include_str!("../../../contracts/project.schema.json"),
         _ => return Err("Unsupported project schema version".into()),
     };
     let schema: Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
@@ -51,6 +52,9 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
     }
     if version >= 6 && project["geometry"]["kind"] == "cad" {
         validate_cad_references(&project["geometry"])?;
+    }
+    if version >= 8 {
+        validate_cad_domain(project)?;
     }
     Ok(())
 }
@@ -71,6 +75,11 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
         }
         let kind = selection["geometryKind"].as_str().unwrap();
         let dimension = selection["dimension"].as_str().unwrap();
+        if kind == "cad" && dimension == "3d" {
+            // CAD sets retain their original geometry stamp while orphaned.
+            // Current-source membership is checked before numerical execution.
+            continue;
+        }
         if dimension == "2d" && kind == "profile" {
             if selection["regions"]
                 .as_array()
@@ -102,7 +111,56 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
 }
 
 pub(crate) fn validate_project(project: &Value) -> Result<(), String> {
-    validate_version(project, 7)
+    validate_version(project, 8)
+}
+
+fn validate_cad_domain(project: &Value) -> Result<(), String> {
+    let Some(domain) = project["study"].get("domain") else {
+        return Ok(());
+    };
+    let mut identifiers = HashSet::new();
+    let mut faces = HashSet::new();
+    let output = domain["outputFeatureId"].as_str().unwrap();
+    if selection_trim(output).is_empty() {
+        return Err("CAD analysis output identity must not be blank".into());
+    }
+    // Exact receipts compact long UTF-8 owner identities before attaching a
+    // face digest. Check catalog-internal ownership even when its source is stale.
+    let owner = if output.len() > 100 {
+        format!(
+            "feature-{}",
+            &super::assets::source_hash(output.as_bytes())[..24]
+        )
+    } else {
+        output.to_string()
+    };
+    let prefix = format!("{owner}/face/");
+    for boundary in domain["boundaries"].as_array().unwrap() {
+        let id = boundary["id"].as_str().unwrap();
+        let face = boundary["faceId"].as_str().unwrap();
+        if !profile_region_id(id) || !identifiers.insert(id) || !faces.insert(face) {
+            return Err("CAD analysis boundary and face identities must be unique".into());
+        }
+        let owned = face.strip_prefix(&prefix).is_some_and(|digest| {
+            digest.len() == 24
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        });
+        if !owned {
+            return Err(
+                "CAD analysis face reference differs from its catalog output identity".into(),
+            );
+        }
+        if face.len() > 200 || selection_trim(boundary["name"].as_str().unwrap()).is_empty() {
+            return Err(
+                "CAD analysis boundaries require bounded face references and nonblank names".into(),
+            );
+        }
+    }
+    // Geometry stamps may be stale in an editable definition. The numerical
+    // worker must rebuild the immutable source and verify every face before use.
+    Ok(())
 }
 
 // An archive validates design intent, not a promise that a selected solver can
@@ -237,7 +295,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     validate_version(&project, version)?;
-    if version == 7 {
+    if version == 8 {
         return Ok((project, false));
     }
     if version == 1 {
@@ -255,7 +313,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
     if version < 5 {
         project["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     }
-    project["schemaVersion"] = json!(7);
+    project["schemaVersion"] = json!(8);
     validate_project(&project)?;
     Ok((project, true))
 }
@@ -285,7 +343,7 @@ mod rigid_transform_tests {
             }
             _ => unreachable!(),
         }
-        json!({"schemaVersion":7,"id":"project","name":"Construction","revision":0,
+        json!({"schemaVersion":8,"id":"project","name":"Construction","revision":0,
             "displayUnits":"mm","study":null,"namedSelections":[],
             "geometry":{"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"operation",
                 "features":[
@@ -358,7 +416,7 @@ mod rigid_transform_tests {
     #[test]
     fn bounded_rigid_placement_validates_axis_and_dependency() {
         let mut project = json!({
-            "schemaVersion":7,"id":"project","name":"Placement","revision":0,
+            "schemaVersion":8,"id":"project","name":"Placement","revision":0,
             "displayUnits":"mm","study":null,"namedSelections":[],
             "geometry":{"kind":"cad","dimension":"3d","assets":[],
                 "outputFeatureId":"placed","features":[
@@ -379,5 +437,153 @@ mod rigid_transform_tests {
         assert!(validate_project(&project)
             .unwrap_err()
             .contains("later feature"));
+    }
+}
+
+#[cfg(test)]
+mod cad_domain_tests {
+    use super::*;
+
+    fn definition() -> Value {
+        let mut project: Value =
+            serde_json::from_str(include_str!("../../../examples/cantilever.json")).unwrap();
+        project["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"box",
+            "features":[{"id":"box","kind":"box","name":"Box","length":0.1,"width":0.05,"height":0.02}]});
+        project["study"]["constraints"] = json!([]);
+        project["study"]["loads"] = json!([]);
+        project["study"]["domain"] = json!({"kind":"cad-solid","geometryFingerprint":"a".repeat(64),
+            "outputFeatureId":"box","boundaries":[{"id":"cad-face-a","faceId":format!("box/face/{}", "b".repeat(24)),"name":"Face A"}]});
+        project
+    }
+
+    #[test]
+    fn source_bound_definitions_remain_saveable_while_assignments_need_repair() {
+        let mut project = definition();
+        validate_project(&project).unwrap();
+        project["geometry"]["features"][0]["length"] = json!(0.2);
+        project["study"]["domain"]["outputFeatureId"] = json!("previous-output");
+        project["study"]["domain"]["boundaries"][0]["faceId"] =
+            json!(format!("previous-output/face/{}", "b".repeat(24)));
+        project["study"]["constraints"] = json!([{"id":"support","name":"Support","regions":["previous-face"],"components":[0,0,0]}]);
+        validate_project(&project).unwrap();
+        // Native validation bounds editable intent. Exact face/source admission
+        // belongs to the numerical worker, never to a schema-only claim.
+        let (migrated, changed) = migrate_project(project.clone()).unwrap();
+        assert!(!changed);
+        assert_eq!(migrated, project);
+    }
+
+    #[test]
+    fn domain_rejects_ambiguous_catalogs_and_incompatible_formulations() {
+        for defect in [
+            "duplicate-id",
+            "duplicate-face",
+            "blank-name",
+            "oversized-face",
+            "foreign-owner",
+            "alias-newline",
+            "primitive",
+            "plane",
+            "pinn",
+            "unknown-field",
+        ] {
+            let mut project = definition();
+            let mut second = project["study"]["domain"]["boundaries"][0].clone();
+            match defect {
+                "duplicate-id" => {
+                    second["faceId"] = json!(format!("box/face/{}", "c".repeat(24)));
+                    project["study"]["domain"]["boundaries"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(second);
+                }
+                "duplicate-face" => {
+                    second["id"] = json!("cad-face-b");
+                    project["study"]["domain"]["boundaries"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(second);
+                }
+                "blank-name" => {
+                    project["study"]["domain"]["boundaries"][0]["name"] = json!("\u{001c}\u{feff}")
+                }
+                "oversized-face" => {
+                    project["study"]["domain"]["boundaries"][0]["faceId"] =
+                        json!(format!("{}/face/{}", "界".repeat(70), "b".repeat(24)))
+                }
+                "foreign-owner" => {
+                    project["study"]["domain"]["boundaries"][0]["faceId"] =
+                        json!(format!("other-output/face/{}", "b".repeat(24)))
+                }
+                "alias-newline" => {
+                    project["study"]["domain"]["boundaries"][0]["id"] = json!("cad-face-a\n")
+                }
+                "primitive" => {
+                    project["geometry"] = serde_json::from_str::<Value>(include_str!(
+                        "../../../examples/cantilever.json"
+                    ))
+                    .unwrap()["geometry"]
+                        .clone()
+                }
+                "plane" => project["study"]["formulation"] = json!("plane-stress"),
+                "pinn" => project["study"]["solver"]["kind"] = json!("pinn"),
+                "unknown-field" => project["study"]["domain"]["meshId"] = json!("transient"),
+                _ => unreachable!(),
+            }
+            assert!(validate_project(&project).is_err(), "{defect}");
+        }
+    }
+
+    #[test]
+    fn copied_cad_sets_require_a_source_stamp_and_remain_repairable() {
+        let mut project = definition();
+        project["namedSelections"] = json!([{"id":"set","name":"Original faces","geometryKind":"cad","dimension":"3d","regions":["old-cad-face"],"geometryFingerprint":"c".repeat(64)}]);
+        validate_project(&project).unwrap();
+        project["namedSelections"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("geometryFingerprint");
+        assert!(validate_project(&project).is_err());
+    }
+
+    #[test]
+    fn exact_face_owners_use_utf8_bytes_and_hashed_long_identities() {
+        let mut project = definition();
+        let short = "界".repeat(33); // 99 UTF-8 bytes, preserved literally.
+        project["study"]["domain"]["outputFeatureId"] = json!(short);
+        project["study"]["domain"]["boundaries"][0]["faceId"] =
+            json!(format!("{short}/face/{}", "b".repeat(24)));
+        validate_project(&project).unwrap();
+        let long = "界".repeat(34); // 102 bytes; independently computed SHA-256 prefix.
+        project["study"]["domain"]["outputFeatureId"] = json!(long);
+        project["study"]["domain"]["boundaries"][0]["faceId"] = json!(format!(
+            "feature-cdd475159b5f992bbaee364b/face/{}",
+            "b".repeat(24)
+        ));
+        validate_project(&project).unwrap();
+        project["study"]["domain"]["boundaries"][0]["faceId"] =
+            json!(format!("{long}/face/{}", "b".repeat(24)));
+        assert!(validate_project(&project)
+            .unwrap_err()
+            .contains("catalog output identity"));
+        project["study"]["domain"]["boundaries"][0]["faceId"] = json!(format!(
+            "feature-000000000000000000000000/face/{}",
+            "b".repeat(24)
+        ));
+        assert!(validate_project(&project)
+            .unwrap_err()
+            .contains("catalog output identity"));
+    }
+
+    #[test]
+    fn frozen_version_seven_migrates_without_inventing_a_cad_domain() {
+        let mut previous = definition();
+        previous["schemaVersion"] = json!(7);
+        assert!(migrate_project(previous.clone()).is_err());
+        previous["study"].as_object_mut().unwrap().remove("domain");
+        let (migrated, changed) = migrate_project(previous.clone()).unwrap();
+        assert!(changed);
+        previous["schemaVersion"] = json!(8);
+        assert_eq!(migrated, previous);
     }
 }

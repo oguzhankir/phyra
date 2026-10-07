@@ -132,6 +132,37 @@ pub(crate) fn verify_sources(root: &Path, project: &Value) -> Result<(), String>
     Ok(())
 }
 
+/// A numerical worker reads a private snapshot, never the mutable source store.
+/// The guard removes its input copies on every success, failure or cancellation.
+pub(crate) fn stage_sources(
+    root: &Path,
+    project: &Value,
+    job_directory: &Path,
+) -> Result<Option<tempfile::TempDir>, String> {
+    let sources = metadata_sources(project)?;
+    if sources.is_empty() {
+        return Ok(None);
+    }
+    let staged = tempfile::Builder::new()
+        .prefix("cad-inputs-")
+        .tempdir_in(job_directory)
+        .map_err(|e| e.to_string())?;
+    let mut copied = std::collections::HashSet::new();
+    for source in sources {
+        let bytes = read_source(root, source)?;
+        let name = source_name(source["sha256"].as_str().ok_or("Missing CAD digest")?)?;
+        if copied.insert(name.clone()) {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(staged.path().join(name))
+                .map_err(|e| e.to_string())?;
+            file.write_all(&bytes).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(Some(staged))
+}
+
 pub(crate) fn store_source(root: &Path, source: &Value, bytes: &[u8]) -> Result<(), String> {
     let _write = SOURCE_WRITES.lock().map_err(|e| e.to_string())?;
     verify_source(source, bytes)?;
@@ -219,6 +250,31 @@ mod tests {
         .unwrap();
         assert!(read_source(root.path(), &metadata).is_err());
         assert!(store_source(root.path(), &metadata, bytes).is_err());
+    }
+    #[test]
+    fn numerical_input_snapshot_is_private_verified_and_removed_with_its_guard() {
+        let root = tempfile::tempdir().unwrap();
+        let job = tempfile::tempdir().unwrap();
+        let bytes = b"bounded immutable source fixture";
+        let metadata = source(bytes);
+        store_source(root.path(), &metadata, bytes).unwrap();
+        let project = json!({"geometry":{"kind":"cad","assets":[metadata, metadata]}});
+        let staged = stage_sources(root.path(), &project, job.path())
+            .unwrap()
+            .unwrap();
+        let path = staged.path().to_path_buf();
+        assert_eq!(fs::read_dir(&path).unwrap().count(), 1);
+        fs::write(
+            root.path()
+                .join(source_name(metadata["sha256"].as_str().unwrap()).unwrap()),
+            b"changed store",
+        )
+        .unwrap();
+        assert_eq!(read_source(&path, &metadata).unwrap(), bytes);
+        drop(staged);
+        assert!(!path.exists());
+        assert!(stage_sources(root.path(), &project, job.path()).is_err());
+        assert_eq!(fs::read_dir(job.path()).unwrap().count(), 0);
     }
     #[cfg(unix)]
     #[test]

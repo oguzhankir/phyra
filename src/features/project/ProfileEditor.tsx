@@ -1,3 +1,4 @@
+import { isNumericalProject } from '../../domain/project/document';
 import DetailDialog from '../../shared/ui/DetailDialog';
 import { Plus, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -11,11 +12,12 @@ import { moveSketchVertex } from '../../domain/project/sketch';
 
 export default function ProfileEditor({ workbench }: { workbench: ProjectInspectorModel }) {
   const { project, factor, edit } = workbench;
+  if (!isNumericalProject(project)) return null;
   const profile = project.geometry.profile;
   if (!profile) return null;
   const change = (mutation: (next: Profile) => void) =>
     edit((next) => {
-      if (next.geometry.profile) mutation(next.geometry.profile);
+      if (isNumericalProject(next) && next.geometry.profile) mutation(next.geometry.profile);
     });
   const uniqueId = (prefix: string) => freshBoundaryId(project, prefix);
   const pointEditor = (
@@ -72,6 +74,7 @@ export default function ProfileEditor({ workbench }: { workbench: ProjectInspect
               }
               workbench.reportDraftValidity?.('plane-profile-sketch', null);
               edit((next) => {
+                if (!isNumericalProject(next)) return;
                 next.geometry.profile = structuredClone(draft);
               });
               workbench.setSelected([]);

@@ -21,6 +21,7 @@ export default function CadDetailsPanel({
   featureName,
   featureKind,
   evaluation,
+  analysisStatus,
   units,
   exportUnits,
   onExportUnits,
@@ -34,6 +35,7 @@ export default function CadDetailsPanel({
   featureName?: string;
   featureKind?: string;
   evaluation: CadWorkspaceModel['evaluation'];
+  analysisStatus?: CadWorkspaceModel['analysisStatus'];
   units: 'm' | 'mm';
   exportUnits: 'm' | 'mm';
   onExportUnits: (units: 'm' | 'mm') => void;
@@ -128,17 +130,28 @@ export default function CadDetailsPanel({
             </p>
           ))}
         {section === 'analysis' &&
-          (evaluation ? (
+          (analysisStatus ? (
+            <div
+              className={`cad-analysis-support ${analysisStatus.ready ? 'supported' : 'unsupported'}`}
+            >
+              <h2>Analysis support</h2>
+              <strong>{analysisStatus.label}</strong>
+              <p>{analysisStatus.detail}</p>
+            </div>
+          ) : evaluation ? (
             <div className={`cad-analysis-support ${evaluation.analysisCompatibility.state}`}>
               <h2>Analysis support</h2>
               <strong>
                 {evaluation.analysisCompatibility.state === 'supported'
                   ? 'Supported analysis path'
-                  : 'CAD ready · analysis unavailable'}
+                  : 'Exact CAD · study not prepared'}
               </strong>
               <p>{evaluation.analysisCompatibility.reason}</p>
               {evaluation.analysisCompatibility.state === 'unsupported' && (
-                <span>You can continue modeling, save this geometry or export it.</span>
+                <span>
+                  For one closed solid, open Mesh inspection to check exact face correspondence and
+                  prepare solid FEM. Shells and assemblies remain unavailable for analysis.
+                </span>
               )}
               <p className="cad-hint">
                 Geometry validity and analysis support are separate. The project overview reports

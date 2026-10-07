@@ -357,7 +357,7 @@ export function setArcRadius(profile: Profile, index: number, radius: number): v
 }
 
 export function freshBoundaryId(
-  project: import('../contracts/types').Project,
+  project: import('../contracts/types').NumericalProject,
   prefix: string,
 ): string {
   const profile = project.geometry.profile;
@@ -373,8 +373,8 @@ export function freshBoundaryId(
 }
 
 export function changeGeometryKind(
-  project: import('../contracts/types').Project,
-  kind: import('../contracts/types').Project['geometry']['kind'],
+  project: import('../contracts/types').NumericalProject,
+  kind: import('../contracts/types').NumericalGeometry['kind'],
 ): void {
   const previous = project.geometry.kind;
   if (previous === kind) return;

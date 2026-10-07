@@ -7,7 +7,12 @@ import {
   undo as undoEdit,
   redo as redoEdit,
 } from '../domain/project/history';
-import { blankProject, documentError, documentSizeError } from '../domain/project/document';
+import {
+  blankProject,
+  documentError,
+  documentSizeError,
+  reconcileStudyAfterGeometryEdit,
+} from '../domain/project/document';
 import type { ResultData } from '../domain/results/fields';
 import { makeProject, type ExampleId } from '../features/examples/projects';
 import { loadReference, type ReferenceId } from '../features/examples/references';
@@ -127,17 +132,7 @@ export function useProjectSession(props: Props) {
       const previous = projectRef.current;
       const next = structuredClone(previous);
       change(next);
-      if (
-        JSON.stringify(previous.geometry) !== JSON.stringify(next.geometry) &&
-        (next.geometry.kind === 'cad' || next.geometry.kind === 'empty')
-      ) {
-        if (next.geometry.kind === 'empty' || next.study?.dimension !== next.geometry.dimension)
-          next.study = null;
-        else if (next.study) {
-          next.study.constraints = [];
-          next.study.loads = [];
-        }
-      }
+      reconcileStudyAfterGeometryEdit(previous, next);
       const sizeError = documentSizeError(next);
       if (sizeError) throw new Error(sizeError);
       const transition = recordEdit(historyRef.current, previous, next, physical);
