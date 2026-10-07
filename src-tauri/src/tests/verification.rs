@@ -73,3 +73,68 @@ fn invalid_or_oversized_reports_become_explicit_bounded_failures() {
         assert!(parsed["error"].is_string());
     }
 }
+
+fn advanced_definitions() -> Value {
+    let base: Value =
+        serde_json::from_str(include_str!("../../../examples/cantilever.json")).unwrap();
+    json!((0..4).map(|index| {
+        let mut definition = base.clone();
+        definition["study"] = Value::Null;
+        definition["namedSelections"] = json!([]);
+        let mut output = json!({"id":"output", "name":"Output", "kind":match index {0|1=>"loft", 2=>"sweep", _=>"assembly"}});
+        match index {
+            0 | 1 => {
+                output["sectionIds"] = json!(["first", "second"]);
+                output["solid"] = json!(index == 0);
+                output["ruled"] = json!(false);
+            }
+            2 => {
+                output["profileId"] = json!("first");
+                output["spineId"] = json!("second");
+                output["solid"] = json!(true);
+            }
+            _ => output["components"] = json!([{ "id":"instance", "name":"Instance", "featureId":"first" }]),
+        }
+        // Intent-only fixtures: exact kernel execution is covered by the owned
+        // desktop workflow, while this test isolates authoritative archive IO.
+        definition["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"output","features":[
+            {"id":"first","name":"First sketch","kind":"sketch","plane":"xy","sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}},
+            {"id":"second","name":"Second sketch","kind":"sketch","plane":"xz","sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}},
+            output]});
+        definition
+    }).collect::<Vec<_>>())
+}
+
+#[test]
+fn advanced_cad_verification_saves_and_reopens_canonical_intent_without_result_caches() {
+    use crate::verification::verify_advanced_cad_persistence;
+    let definitions = advanced_definitions();
+    verify_advanced_cad_persistence(&definitions).unwrap();
+    for defect in [
+        "missing",
+        "count",
+        "wrong-order",
+        "study",
+        "future-reference",
+        "frozen-version",
+    ] {
+        let mut bad = definitions.clone();
+        match defect {
+            "missing" => bad = Value::Null,
+            "count" => {
+                bad.as_array_mut().unwrap().pop();
+            }
+            "wrong-order" => bad.as_array_mut().unwrap().swap(0, 1),
+            "study" => {
+                bad[0]["study"] =
+                    serde_json::from_str::<Value>(include_str!("../../../examples/cantilever.json"))
+                        .unwrap()["study"]
+                        .clone()
+            }
+            "future-reference" => bad[2]["geometry"]["features"][2]["spineId"] = json!("absent"),
+            "frozen-version" => bad[0]["schemaVersion"] = json!(6),
+            _ => unreachable!(),
+        }
+        assert!(verify_advanced_cad_persistence(&bad).is_err(), "{defect}");
+    }
+}

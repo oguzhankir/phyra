@@ -286,6 +286,63 @@ pub(crate) fn verify_owned_runs(
     Ok(())
 }
 
+pub(crate) fn verify_advanced_cad_persistence(definitions: &Value) -> Result<(), String> {
+    let definitions = definitions
+        .as_array()
+        .ok_or("Missing advanced CAD definitions")?;
+    if definitions.len() != 4 {
+        return Err("Advanced CAD persistence requires four definition snapshots".into());
+    }
+    for (index, definition) in definitions.iter().enumerate() {
+        validate_project(definition)?;
+        if !definition["study"].is_null()
+            || definition["geometry"]["kind"] != "cad"
+            || definition["geometry"]["assets"]
+                .as_array()
+                .is_none_or(|assets| !assets.is_empty())
+        {
+            return Err(
+                "Advanced CAD persistence requires asset-free CAD definitions without studies"
+                    .into(),
+            );
+        }
+        let geometry = &definition["geometry"];
+        let output = geometry["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|feature| feature["id"] == geometry["outputFeatureId"])
+            .ok_or("Advanced CAD persistence output is unavailable")?;
+        let expected = match index {
+            0 | 1 => "loft",
+            2 => "sweep",
+            3 => "assembly",
+            _ => unreachable!(),
+        };
+        if output["kind"] != expected
+            || (index < 2 && output["solid"].as_bool() != Some(index == 0))
+        {
+            return Err("Advanced CAD snapshots must contain solid loft, surface loft, sweep and assembly in order".into());
+        }
+    }
+    let temporary = tempfile::Builder::new()
+        .prefix("verification-advanced-cad-")
+        .tempdir()
+        .map_err(|error| error.to_string())?;
+    for (index, definition) in definitions.iter().enumerate() {
+        let archive = temporary.path().join(format!("advanced {index} ü.phyra"));
+        write_archive(&archive, definition, None)?;
+        let reopened = read_archive(
+            &archive,
+            &temporary.path().join(format!("restored-{index}")),
+        )?;
+        if reopened != *definition {
+            return Err("Advanced CAD save/reopen changed the authoritative definition".into());
+        }
+    }
+    temporary.close().map_err(|error| error.to_string())
+}
+
 pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> Result<(), String> {
     if report.get("error").is_some() {
         return Ok(());
@@ -327,6 +384,9 @@ pub(crate) fn verify_persistence(app: &tauri::AppHandle, report: &mut Value) -> 
         report["cad"]["geometryFingerprint"] = receipt["geometryFingerprint"].clone();
         verify_cad_cancellation(app, &project, &job, &geometry)?;
         report["cad"]["cancellation"] = json!(true);
+        trace_verification("verification-advanced-cad-save-reopen");
+        verify_advanced_cad_persistence(&report["cad"]["advancedDefinitions"])?;
+        report["cad"]["advancedPersistence"] = json!(true);
     }
     let state = app.state::<EngineState>();
     let id = report["manifest"]["jobId"]

@@ -3,9 +3,12 @@ import type { Project, ProjectDefinition } from '../domain/contracts/types';
 import type { ResultData } from '../domain/results/fields';
 import { invokeVerification } from '../platform/desktop/verification';
 import type { useCadSession } from './useCadSession';
+import { cadVerificationCases } from './cadVerificationCases';
 
 type Phase =
   | 'start'
+  | 'advanced'
+  | 'advanced-evaluated'
   | 'sketch'
   | 'sketch-solved'
   | 'base'
@@ -50,6 +53,9 @@ export function useCadVerificationWorkflow(props: Props) {
   const pending = useRef(false),
     base = useRef<string | null>(null),
     previewRendered = useRef(false);
+  const advancedIndex = useRef(0),
+    advancedDefinitions = useRef<ProjectDefinition[]>([]);
+  const advancedEvidence = useRef<Record<string, unknown>[]>([]);
   const evidence = useRef({
     emptyStart: false,
     openSketchSolved: false,
@@ -88,10 +94,68 @@ export function useCadVerificationWorkflow(props: Props) {
     void (async () => {
       switch (phase) {
         case 'start': {
-          const definition = p.projectRef.current;
           evidence.current.emptyStart =
-            definition.geometry.kind === 'empty' && definition.study === null;
+            p.projectRef.current.geometry.kind === 'empty' && p.projectRef.current.study === null;
           if (!evidence.current.emptyStart) throw new Error('New document was not empty.');
+          previewRendered.current = false;
+          p.edit((next) => {
+            next.geometry = cadVerificationCases()[0].geometry;
+          });
+          nextPhase = 'advanced';
+          break;
+        }
+        case 'advanced':
+          if (!(await p.cad.evaluate()))
+            throw new Error('Advanced CAD evaluation did not publish.');
+          nextPhase = 'advanced-evaluated';
+          break;
+        case 'advanced-evaluated': {
+          if (!p.cad.current) {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          const test = cadVerificationCases()[advancedIndex.current],
+            receipt = p.cad.current.receipt;
+          if (
+            receipt.statistics.bodyCount !== test.bodies ||
+            Math.abs(receipt.statistics.volume - test.volume) >
+              Math.max(test.volume * 1e-9, 1e-15) ||
+            receipt.analysisCompatibility.state !== 'unsupported' ||
+            p.analysisProject !== null
+          )
+            throw new Error(
+              `${test.name}: exact volume/body count or analysis gate disagrees with independent reference.`,
+            );
+          if (!previewRendered.current) return;
+          if (
+            test.name === 'assembly' &&
+            (new Set(receipt.bodies.map((body) => body.componentId)).size !== 2 ||
+              receipt.faces.some((face) => !receipt.bodies.some((body) => body.id === face.bodyId)))
+          )
+            throw new Error(
+              'Assembly did not publish separate component identities and body mapping.',
+            );
+          advancedDefinitions.current.push(structuredClone(p.projectRef.current));
+          advancedEvidence.current.push({
+            name: test.name,
+            jobId: receipt.jobId,
+            volume: receipt.statistics.volume,
+            bodyCount: receipt.statistics.bodyCount,
+            rendered: true,
+            unsupportedBlocked: true,
+          });
+          advancedIndex.current++;
+          previewRendered.current = false;
+          if (advancedIndex.current < cadVerificationCases().length) {
+            p.edit((next) => {
+              next.geometry = cadVerificationCases()[advancedIndex.current].geometry;
+            });
+            nextPhase = 'advanced';
+            break;
+          }
+          const definition = p.projectRef.current;
+          if (definition.study !== null)
+            throw new Error('Advanced CAD unexpectedly created a study.');
           p.edit((next) => {
             next.geometry = {
               kind: 'cad',
@@ -305,6 +369,8 @@ export function useCadVerificationWorkflow(props: Props) {
           evidence.current.meshGenerated = true;
           p.report.current = {
             ...evidence.current,
+            advanced: advancedEvidence.current,
+            advancedDefinitions: advancedDefinitions.current,
             jobId: p.cad.current?.receipt.jobId,
             exportIntegrity: false,
           };
@@ -345,7 +411,7 @@ export function useCadVerificationWorkflow(props: Props) {
     if (props.enabled && report.nodes > 0 && report.triangles > 0 && report.drawCalls > 0) {
       if (!previewRendered.current) {
         previewRendered.current = true;
-        setRenderedTick(1);
+        setRenderedTick((tick) => tick + 1);
       }
     }
   };

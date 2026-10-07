@@ -324,6 +324,12 @@ async function verify(mode) {
       !report.cad?.meshGenerated ||
       !report.cad?.previewRendered ||
       !report.cad?.exportIntegrity ||
+      !report.cad?.advancedPersistence ||
+      !Array.isArray(report.cad?.advanced) ||
+      report.cad.advanced.length !== 4 ||
+      report.cad.advanced.some(
+        (item) => !item.rendered || !item.unsupportedBlocked || !Number.isFinite(item.volume),
+      ) ||
       report.cad?.cancellation !== true)
   )
     throw new Error(
