@@ -46,7 +46,7 @@ Saved CPU FEM/PINN comparison · matching physical locations · recorded measure
 
 ## Run locally
 
-Install Node **22.12+**, Python **3.12**, Rust **1.94** with rustfmt/clippy, Git and CMake **3.18+**. macOS needs Xcode command-line tools; Windows needs Visual Studio C++ Build Tools, Windows SDK and WebView2. Supported launch targets are macOS Apple Silicon, minimum macOS 14, and Windows x64.
+Install Node **22.12+**, Python **3.12**, Rust **1.94** with rustfmt/clippy, Git and CMake **3.18+**. macOS needs Xcode command-line tools; Windows needs Visual Studio C++ Build Tools, Windows SDK and WebView2. On Windows, CMake must support the installed Visual Studio generator; setup discovers an MSVC x64 toolchain and its matching generator. Supported launch targets are macOS Apple Silicon, minimum macOS 14, and Windows x64.
 
 ```sh
 git clone https://github.com/oguzhankir/phyra.git

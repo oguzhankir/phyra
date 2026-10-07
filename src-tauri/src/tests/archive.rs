@@ -437,6 +437,87 @@ fn empty_cad_document_is_valid_and_round_trips_without_a_dummy_study() {
 }
 
 #[test]
+fn cad_archives_reject_mismatched_study_dimensions_before_result_extraction() {
+    let temporary = tempfile::tempdir().unwrap();
+    for (geometry_dimension, study_dimension) in [("2d", "3d"), ("3d", "2d")] {
+        let mut document = project();
+        document["geometry"] = json!({"kind":"cad","dimension":geometry_dimension,
+            "assets":[],"outputFeatureId":"sketch","features":[
+                {"id":"sketch","name":"Sketch","kind":"sketch","plane":"xy",
+                    "sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}}]});
+        document["study"]["dimension"] = json!(study_dimension);
+        document["study"]["formulation"] = json!(if study_dimension == "2d" {
+            "plane-stress"
+        } else {
+            "solid"
+        });
+        assert!(validate_project(&document).is_err());
+        // Create the untrusted input directly; normal desktop save admission
+        // is separate from proving that an arbitrary archive cannot open.
+        let path = temporary.path().join(format!(
+            "cad-{geometry_dimension}-study-{study_dimension}.phyra"
+        ));
+        let mut archive = ZipWriter::new(File::create(&path).unwrap());
+        for (name, bytes) in [
+            ("project.json", serde_json::to_vec(&document).unwrap()),
+            ("manifest.json", b"{}".to_vec()),
+            ("buffer.bin", b"cached-field-buffer".to_vec()),
+        ] {
+            archive
+                .start_file(name, SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(&bytes).unwrap();
+        }
+        archive.finish().unwrap();
+        let original = fs::read(&path).unwrap();
+        let result_directory = temporary
+            .path()
+            .join(format!("results-{geometry_dimension}"));
+        let error = read_archive(&path, &result_directory).unwrap_err();
+        assert!(error.contains("Invalid version 7 project"), "{error}");
+        assert!(!result_directory.exists());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        // A frozen v6 definition is checked against its own schema, then the
+        // same invalid dimensional association must fail canonical migration.
+        document["schemaVersion"] = json!(6);
+        assert!(migrate_project(document).is_err());
+    }
+}
+
+#[test]
+fn cad_archives_allow_absent_studies_and_matching_dimensions() {
+    let temporary = tempfile::tempdir().unwrap();
+    for dimension in ["2d", "3d"] {
+        for has_study in [false, true] {
+            let mut document = project();
+            document["geometry"] = json!({"kind":"cad","dimension":dimension,
+                "assets":[],"outputFeatureId":"sketch","features":[
+                    {"id":"sketch","name":"Sketch","kind":"sketch","plane":"xy",
+                        "sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}}]});
+            if has_study {
+                document["study"]["dimension"] = json!(dimension);
+                document["study"]["formulation"] = json!(if dimension == "2d" {
+                    "plane-stress"
+                } else {
+                    "solid"
+                });
+            } else {
+                document["study"] = Value::Null;
+            }
+            validate_project(&document).unwrap();
+            let path = temporary
+                .path()
+                .join(format!("cad-{dimension}-{has_study}.phyra"));
+            write_archive(&path, &document, None).unwrap();
+            assert_eq!(read_archive(&path, temporary.path()).unwrap(), document);
+            let mut previous = document.clone();
+            previous["schemaVersion"] = json!(6);
+            assert_eq!(migrate_project(previous).unwrap().0, document);
+        }
+    }
+}
+
+#[test]
 fn cad_archive_transports_only_verified_immutable_definition_sources() {
     use crate::project::{
         archive::{read_archive_details_with_assets, write_archive_with_assets},

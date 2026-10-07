@@ -22,22 +22,55 @@ from phyra_engine.protocol.cad import CadRequest, read_cad_request
 from phyra_engine.protocol.stdio import emit
 
 
+def _native_fflush() -> Any:
+    """Bind the application's CRT, without a project-selected library path.
+
+    Python and OCCT's supported MSVC wheels use the system UCRT on Windows.
+    The legacy msvcrt.dll can refer to a different set of buffered streams.
+    https://learn.microsoft.com/en-us/cpp/windows/universal-crt-deployment
+    https://docs.python.org/3.12/library/ctypes.html#loading-shared-libraries
+    """
+    import ctypes
+
+    library = (
+        ctypes.CDLL("ucrtbase.dll", winmode=0x00000800)  # LOAD_LIBRARY_SEARCH_SYSTEM32
+        if sys.platform == "win32"
+        else ctypes.CDLL(None)
+    )
+    flush = library.fflush
+    flush.argtypes = [ctypes.c_void_p]
+    flush.restype = ctypes.c_int
+    return flush
+
+
 @contextlib.contextmanager
 def kernel_log_to_stderr() -> Iterator[None]:
     """OCCT's C++ stdout must never contaminate the versioned JSON wire protocol."""
+    flush = _native_fflush()
     sys.stdout.flush()
     original = os.dup(1)
     try:
         os.dup2(2, 1)
-        yield
-        # C++ std::cout is flushed by STEP writing; flush C stdio as well before
-        # restoring the file descriptor (Python redirect_stdout is insufficient).
-        import ctypes
-
-        ctypes.CDLL(None).fflush(None)
+        try:
+            yield
+        finally:
+            # Flush both success and failure paths while stdout still targets
+            # stderr. Python redirect_stdout cannot capture native C/C++ logs.
+            # fflush(NULL) flushes this CRT's open output streams; nonzero is a
+            # real write failure, not a CAD success with silently lost output.
+            # https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush
+            try:
+                sys.stdout.flush()
+            finally:
+                if flush(None) != 0:
+                    raise EngineError(
+                        "cad-log-flush-failed", "The native CAD log could not be flushed."
+                    )
     finally:
-        os.dup2(original, 1)
-        os.close(original)
+        try:
+            os.dup2(original, 1)
+        finally:
+            os.close(original)
 
 
 def _read_assets(request: CadRequest) -> dict[str, bytes]:

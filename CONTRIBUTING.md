@@ -8,7 +8,7 @@ Phyra is publicly distributed under GNU GPL-3.0-or-later. The CLA preserves the 
 
 ## Setup and verification
 
-Prerequisites and the GUI sequence are in [README.md](README.md). CAD setup also requires Git, CMake 3.18+ and a C/C++ compiler. Setup builds the pinned headless SolveSpace C ABI with pinned Eigen/mimalloc sources; it retains native notices and a Corresponding Source archive under ignored artifacts/sketch-solver/. Run commands from the repository root in macOS Terminal or Windows PowerShell:
+Prerequisites and the GUI sequence are in [README.md](README.md). CAD setup also requires Git, CMake 3.18+ and a C/C++ compiler. Windows setup selects an installed MSVC x64 instance with a generator advertised by CMake; update CMake if it cannot support the installed toolchain. Setup builds the pinned headless SolveSpace C ABI with pinned Eigen/mimalloc sources; it retains native notices and a Corresponding Source archive under ignored artifacts/sketch-solver/. Run commands from the repository root in macOS Terminal or Windows PowerShell:
 
 ```sh
 npm ci

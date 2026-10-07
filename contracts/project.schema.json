@@ -65,6 +65,55 @@
       }
     }
   },
+  "if": {
+    "properties": {
+      "geometry": {
+        "type": "object",
+        "properties": {
+          "kind": { "const": "cad" }
+        },
+        "required": ["kind"]
+      },
+      "study": { "type": "object" }
+    },
+    "required": ["geometry", "study"]
+  },
+  "then": {
+    "if": {
+      "properties": {
+        "geometry": {
+          "type": "object",
+          "properties": {
+            "dimension": { "const": "2d" }
+          },
+          "required": ["dimension"]
+        }
+      },
+      "required": ["geometry"]
+    },
+    "then": {
+      "properties": {
+        "study": {
+          "type": "object",
+          "properties": {
+            "dimension": { "const": "2d" }
+          },
+          "required": ["dimension"]
+        }
+      }
+    },
+    "else": {
+      "properties": {
+        "study": {
+          "type": "object",
+          "properties": {
+            "dimension": { "const": "3d" }
+          },
+          "required": ["dimension"]
+        }
+      }
+    }
+  },
   "definitions": {
     "Regions": {
       "type": "array",
