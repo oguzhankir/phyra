@@ -101,9 +101,15 @@ def lower_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
 def _verified(geometry: dict[str, Any], numerical: dict[str, Any]) -> dict[str, Any]:
     # The normal worker must independently establish exact CAD validity, even
     # without a frontend receipt. Allowed operations need no imported assets.
-    from phyra_engine.geometry.cad.kernel import build
+    from phyra_engine.geometry.cad.native_output import cad_log_to_stderr
 
-    build(geometry, {})
+    # Admission is repeated during mesh/result/cache validation as well as
+    # preparation. Route each actual kernel call at this ownership boundary;
+    # protocol progress/results are outside the native descriptor scope.
+    with cad_log_to_stderr():
+        from phyra_engine.geometry.cad.kernel import build
+
+        build(geometry, {})
     return numerical
 
 

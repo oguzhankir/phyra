@@ -1,6 +1,7 @@
 """One owned worker executes one validated immutable study request."""
 
 import argparse
+import contextlib
 import io
 import json
 import sys
@@ -25,13 +26,25 @@ def main() -> int:
     try:
         payload = read_request(sys.stdin.buffer)
         job_id = job_identity(payload["jobId"])
-        request = StudyRequest.from_payload(payload)
+        # This bounded, type-checked discriminator selects log routing only.
+        # StudyRequest still independently validates the complete definition.
+        project = payload["project"]
+        geometry = project.get("geometry") if isinstance(project, dict) else None
+        cad_definition = isinstance(geometry, dict) and geometry.get("kind") == "cad"
+        log_context: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+        if cad_definition:
+            from phyra_engine.execution.cad import cad_log_to_stderr
+
+            log_context = cad_log_to_stderr()
+        with log_context:
+            request = StudyRequest.from_payload(payload)
+            plan = RunPlan.prepare(request)
 
         def progress(stage: str, fraction: float | None) -> None:
             emit({"type": "progress", "jobId": job_id, "stage": stage, "progress": fraction})
 
         manifest = execute(
-            RunPlan.prepare(request),
+            plan,
             args.output,
             progress,
             lambda value: emit({"type": "metrics", **metric_record(job_id, value)}),

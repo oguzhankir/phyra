@@ -174,10 +174,25 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
             len(process.stdout) <= 1024 * 1024,
             "Bundled CAD stdout exceeds its framing limit.",
         )
-        frames = [
-            json.loads(line, parse_constant=reject_constant)
-            for line in process.stdout.splitlines()
-        ]
+        frames = []
+        for line_number, line in enumerate(process.stdout.splitlines(), start=1):
+            try:
+                frames.append(json.loads(line, parse_constant=reject_constant))
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
+                # Keep every frame strict, including blank/native-output lines.
+                # Byte repr makes invalid encoding and control bytes visible;
+                # bound diagnostics independently of captured worker output.
+                def excerpt(data: bytes, limit: int) -> str:
+                    suffix = " [truncated]" if len(data) > limit else ""
+                    return f"{data[:limit]!r}{suffix} ({len(data)} bytes)"
+
+                raise RuntimeError(
+                    f"Bundled CAD {job_id} stdout is not finite framed JSON: "
+                    f"exit={process.returncode}, line={line_number}, "
+                    f"invalid_line={excerpt(line, 2048)}, "
+                    f"stdout={excerpt(process.stdout, 4096)}, "
+                    f"stderr={excerpt(process.stderr, 4096)}"
+                ) from error
         require(
             process.returncode == 0
             and len(frames) == 1
