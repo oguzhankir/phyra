@@ -326,6 +326,9 @@ async function verify(mode) {
       !report.cad?.unsupportedBlocked ||
       !report.cad?.undoPreserved ||
       !report.cad?.meshGenerated ||
+      !report.cad?.inspectionGenerated ||
+      !report.cad?.inspectionPreservedCad ||
+      !report.cad?.inspectionInvalidated ||
       !report.cad?.previewRendered ||
       !report.cad?.exportIntegrity ||
       !report.cad?.advancedPersistence ||

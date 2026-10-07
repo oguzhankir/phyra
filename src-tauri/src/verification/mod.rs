@@ -514,6 +514,7 @@ fn verify_cad_cancellation(
             &sources,
             &uuid::Uuid::new_v4().to_string(),
             &worker_request,
+            None,
             |receipt| {
                 publication.store(true, Ordering::SeqCst);
                 // This verification never retains a candidate or changes document ownership.

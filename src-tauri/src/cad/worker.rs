@@ -28,10 +28,20 @@ pub(crate) fn evaluate(
     sources: &Path,
     job: &str,
     request: &RunRequestId,
+    target_size: Option<f64>,
     publish: impl FnOnce(Value) -> Result<Value, String>,
 ) -> Result<Value, String> {
     execute(
-        app, state, project, directory, sources, job, request, None, publish,
+        app,
+        state,
+        project,
+        directory,
+        sources,
+        job,
+        request,
+        None,
+        target_size,
+        publish,
     )
 }
 
@@ -56,6 +66,7 @@ pub(crate) fn solve_sketch(
         job,
         request,
         Some(feature_id),
+        None,
         publish,
     )
 }
@@ -70,6 +81,7 @@ fn execute(
     job: &str,
     request: &RunRequestId,
     sketch_id: Option<&str>,
+    target_size: Option<f64>,
     publish: impl FnOnce(Value) -> Result<Value, String>,
 ) -> Result<Value, String> {
     let cancelled = run_cancellation(state, Some(request))?;
@@ -81,6 +93,10 @@ fn execute(
     if let Some(feature_id) = sketch_id {
         envelope["operation"] = json!("solve-sketch");
         envelope["featureId"] = json!(feature_id);
+    } else if let Some(size) = target_size {
+        super::mesh::validate_target_size(size)?;
+        envelope["operation"] = json!("mesh-cad");
+        envelope["targetSize"] = json!(size);
     }
     let payload = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
     if payload.len() as u64 > MAX_JSON {
@@ -190,6 +206,8 @@ fn execute(
             || receipt["operation"]
                 != if sketch_id.is_some() {
                     "solve-sketch"
+                } else if target_size.is_some() {
+                    "mesh-cad"
                 } else {
                     "cad"
                 }
@@ -215,6 +233,10 @@ fn execute(
             return Err("CAD geometry metadata differs from its artifact".into());
         }
         let preview = read_bounded(&directory.join("buffer.bin"), MAX_BLOB)?;
+        if let Some(size) = target_size {
+            super::mesh::validate(&receipt, &preview, size)?;
+            return Ok(receipt);
+        }
         validate_preview(&receipt, &preview)?;
         let mut total_artifacts = receipt_bytes.len() as u64 + preview.len() as u64;
         for (key, filename) in [

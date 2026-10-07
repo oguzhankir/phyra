@@ -23,13 +23,16 @@ import {
   type CadCommandRequest,
 } from '../features/cad/commandDraft';
 import { previewCadCommand } from './cadCommandPreview';
+import { previewCadMesh } from './cadMeshPreview';
+import { inspectCadMesh, decodeCadMeshBuffer } from '../platform/desktop/cadMesh';
+import type { CadMeshPreview } from '../domain/geometry/cadMesh';
 
 type Lease = {
   id: string;
   base: ProjectDefinition;
   snapshot: ProjectDefinition;
   cancelled: boolean;
-  operation: 'evaluate' | 'preview' | 'solve-sketch' | 'import' | 'export';
+  operation: 'evaluate' | 'preview' | 'solve-sketch' | 'mesh' | 'import' | 'export';
 };
 interface Props {
   documentId: string;
@@ -50,6 +53,11 @@ export function useCadSession(props: Props) {
   callbacks.current = props;
   const lease = useRef<Lease | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retainedMesh, setRetainedMesh] = useState<{
+    projectId: string;
+    source: string;
+    preview: CadMeshPreview;
+  } | null>(null);
   const [commands] = useState(() => new CadCommandOwnership());
   const [commandDraft, setCommandDraft] = useState<CadCommandDraft | null>(null);
   const commandInputs = useRef(new Map<string, string>());
@@ -160,7 +168,7 @@ export function useCadSession(props: Props) {
       const request = lease.current;
       if (request) {
         request.cancelled = true;
-        if (['evaluate', 'preview', 'solve-sketch'].includes(request.operation))
+        if (['evaluate', 'preview', 'solve-sketch', 'mesh'].includes(request.operation))
           void cancelCad(request.id).catch(() => {});
         release(request);
       }
@@ -216,6 +224,43 @@ export function useCadSession(props: Props) {
         await finishCad(receipt.jobId, p.documentId, false).catch((error) => {
           if (live.current) p.onError(`CAD cleanup failed: ${String(error)}`);
         });
+      release(request);
+    }
+  };
+  const inspectMesh = async (size: number): Promise<boolean> => {
+    const p = callbacks.current;
+    if (p.projectRef.current.geometry.kind !== 'cad' || !Number.isFinite(size) || size <= 0)
+      return false;
+    const request = acquire('mesh');
+    if (!request) return false;
+    try {
+      const preview = await previewCadMesh(
+        request.snapshot,
+        size,
+        request.id,
+        p.documentId,
+        () => owns(request),
+        {
+          inspect: inspectCadMesh,
+          read: readCadBuffer,
+          decode: decodeCadMeshBuffer,
+          finish: finishCad,
+        },
+      );
+      if (!preview || !owns(request)) return false;
+      setRetainedMesh({
+        projectId: request.snapshot.id,
+        source: JSON.stringify(request.snapshot.geometry),
+        preview,
+      });
+      p.onNotice(
+        'Mesh inspection is ready. This preview does not assign boundaries or enable analysis.',
+      );
+      return true;
+    } catch (error) {
+      if (owns(request)) p.onError(String(error));
+      return false;
+    } finally {
       release(request);
     }
   };
@@ -275,7 +320,8 @@ export function useCadSession(props: Props) {
   };
   const cancel = async () => {
     const request = lease.current;
-    if (!request || !['evaluate', 'preview', 'solve-sketch'].includes(request.operation)) return;
+    if (!request || !['evaluate', 'preview', 'solve-sketch', 'mesh'].includes(request.operation))
+      return;
     request.cancelled = true;
     try {
       await cancelCad(request.id);
@@ -486,13 +532,21 @@ export function useCadSession(props: Props) {
   return {
     busy,
     cancellable:
-      !!lease.current && ['evaluate', 'preview', 'solve-sketch'].includes(lease.current.operation),
+      !!lease.current &&
+      ['evaluate', 'preview', 'solve-sketch', 'mesh'].includes(lease.current.operation),
     command,
     current,
     evaluation,
     retainedPreview,
     sketchSolve,
     solveSketch,
+    meshPreview:
+      retainedMesh?.projectId === props.project.id &&
+      retainedMesh.source === JSON.stringify(props.project.geometry)
+        ? retainedMesh.preview
+        : null,
+    meshBusy: busy && lease.current?.operation === 'mesh',
+    inspectMesh,
     evaluate,
     cancel,
     importSource,

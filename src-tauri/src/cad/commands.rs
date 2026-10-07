@@ -1,10 +1,10 @@
-use super::{worker, CadState};
+use super::{mesh, worker, CadState};
 use crate::{
     execution::{
         events::RunRequestId,
         state::{
             activate_result_owner, cancel_owned_request, commit_document_job, discard_document_job,
-            finish_run, owned_document_directory, register_run, stage_document_job,
+            finish_run, owned_document_directory, register_run, stage_document_job, EngineState,
         },
         worker::job_directory,
     },
@@ -23,6 +23,38 @@ use tauri::{Manager, State};
 pub(crate) async fn evaluate_cad(
     app: tauri::AppHandle,
     project: Value,
+    request_id: String,
+    document_id: String,
+    owner_id: String,
+) -> Result<Value, String> {
+    geometry_job(app, project, None, request_id, document_id, owner_id).await
+}
+
+#[tauri::command]
+pub(crate) async fn mesh_cad(
+    app: tauri::AppHandle,
+    project: Value,
+    target_size: f64,
+    request_id: String,
+    document_id: String,
+    owner_id: String,
+) -> Result<Value, String> {
+    mesh::validate_target_size(target_size)?;
+    geometry_job(
+        app,
+        project,
+        Some(target_size),
+        request_id,
+        document_id,
+        owner_id,
+    )
+    .await
+}
+
+async fn geometry_job(
+    app: tauri::AppHandle,
+    project: Value,
+    target_size: Option<f64>,
     request_id: String,
     document_id: String,
     owner_id: String,
@@ -58,6 +90,7 @@ pub(crate) async fn evaluate_cad(
                 &sources,
                 &job_id,
                 &request,
+                target_size,
                 |receipt| {
                     let documents = project_state.documents.lock().map_err(|e| e.to_string())?;
                     documents.require_owner(Some(&owner_id))?;
@@ -173,14 +206,25 @@ pub(crate) async fn finish_cad(
         documents.require_owner(Some(&owner_id))?;
         documents.require_open(document)?;
         let state = app.state::<CadState>();
-        if accept {
-            commit_document_job(&state.0, document, &job_id)
-        } else {
-            discard_document_job(&state.0, document, &job_id)
-        }
+        finish_document_cad(&state.0, document, &job_id, accept)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn finish_document_cad(
+    state: &EngineState,
+    document: &str,
+    job_id: &str,
+    accept: bool,
+) -> Result<(), String> {
+    if accept {
+        let directory = owned_document_directory(state, document, job_id)?;
+        mesh::require_exact_output(&directory)?;
+        commit_document_job(state, document, job_id)
+    } else {
+        discard_document_job(state, document, job_id)
+    }
 }
 
 #[tauri::command]
@@ -264,6 +308,7 @@ pub(crate) async fn export_cad(
             documents.generation(document)
         };
         let directory = owned_document_directory(&app.state::<CadState>().0, document, &job_id)?;
+        mesh::require_exact_output(&directory)?;
         let bytes = read_bounded(&directory.join(filename), MAX_BLOB)?;
         let Some(path) = rfd::FileDialog::new()
             .add_filter("CAD geometry", &[&format])
@@ -290,4 +335,47 @@ pub(crate) async fn export_cad(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution::state::retain_document_job;
+    use serde_json::json;
+
+    #[test]
+    fn mesh_inspection_cannot_replace_the_accepted_exact_shape_and_is_discardable() {
+        let root = tempfile::tempdir().unwrap();
+        let previous = root.path().join("previous");
+        let inspection = root.path().join("inspection");
+        for directory in [&previous, &inspection] {
+            fs::create_dir(directory).unwrap();
+        }
+        fs::write(
+            previous.join("receipt.json"),
+            json!({"operation":"cad","status":"succeeded"}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            inspection.join("receipt.json"),
+            json!({"operation":"mesh-cad","status":"succeeded","purpose":"inspection-only"})
+                .to_string(),
+        )
+        .unwrap();
+        let state = EngineState::default();
+        let document = uuid::Uuid::new_v4().to_string();
+        retain_document_job(&state, &document, "exact".into(), previous.clone()).unwrap();
+        stage_document_job(&state, &document, "mesh".into(), inspection.clone()).unwrap();
+        assert!(finish_document_cad(&state, &document, "mesh", true).is_err());
+        assert!(mesh::require_exact_output(&inspection).is_err());
+        assert!(mesh::require_exact_output(&previous).is_ok());
+        assert_eq!(
+            owned_document_directory(&state, &document, "exact").unwrap(),
+            previous
+        );
+        finish_document_cad(&state, &document, "mesh", false).unwrap();
+        assert!(!inspection.exists());
+        assert!(previous.exists());
+        assert!(owned_document_directory(&state, &document, "exact").is_ok());
+    }
 }

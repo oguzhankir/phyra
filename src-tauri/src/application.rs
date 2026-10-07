@@ -70,6 +70,7 @@ pub(crate) fn run() {
         .manage(project::recovery::RecoveryState::default())
         .invoke_handler(tauri::generate_handler![
             cad::commands::evaluate_cad,
+            cad::commands::mesh_cad,
             cad::commands::solve_cad_sketch,
             cad::commands::cancel_cad,
             cad::commands::finish_cad,

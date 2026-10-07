@@ -92,6 +92,8 @@ def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:
 def execute(request: CadRequest, output: Path) -> dict[str, Any]:
     if request.operation == "solve-sketch":
         return execute_sketch(request)
+    if request.operation == "mesh-cad":
+        return execute_mesh(request, output)
     geometry = request.geometry_definition()
     assets = _read_assets(request)
     with cad_log_to_stderr():
@@ -244,6 +246,34 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         temporary.write_bytes(payload)
         temporary.replace(output / name)
     return manifest
+
+
+def execute_mesh(request: CadRequest, output: Path) -> dict[str, Any]:
+    """Inspect one exact solid without creating a study, shape receipt or physical fields."""
+    assets = _read_assets(request)
+    with cad_log_to_stderr():
+        from phyra_engine.geometry.cad.kernel import build
+        from phyra_engine.meshing.cad import generate_cad_mesh
+        from phyra_engine.results.cad_mesh import write_cad_mesh
+
+        result = build(request.geometry_definition(), assets)
+        if any(instance.component_path for instance in result.body_instances):
+            raise EngineError(
+                "unsupported-cad-mesh",
+                "Assembly component meshes require explicit connectivity and are not supported.",
+            )
+        if request.target_size is None:
+            raise EngineError("invalid-cad-mesh", "A mesh inspection target size is required.")
+        inspected = generate_cad_mesh(result.shape, request.target_size)
+        return write_cad_mesh(
+            output,
+            inspected,
+            project_id=request.project_id,
+            revision=request.revision,
+            job_id=request.job_id,
+            geometry_fingerprint=hashlib.sha256(request._geometry_json).hexdigest(),
+            output_feature_id=result.output_feature_id,
+        )
 
 
 def execute_sketch(request: CadRequest) -> dict[str, Any]:

@@ -6,6 +6,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
+- Isolated exact-solid mesh inspection generates independent Gmsh tetra4 topology with bounded binary buffers, mesh-scoped boundary groups, element quality and exact-versus-mesh measurements. Inspection jobs are cancellable, preserve accepted CAD exports and cannot enable general-solid analysis or enter project archives.
+
 - New desktop CAD solid operations use editable command drafts with exact Preview, one-transaction Apply and Cancel. Provisional shapes cannot enable analysis/export or replace the last accepted shape; incomplete numeric drafts and late/cancelled previews remain blocked.
 - CAD navigation adds overlapping-entity selection with Alt-click, visible-model and selected-entity fitting that preserves viewing direction, and numbered standard-view shortcuts.
 

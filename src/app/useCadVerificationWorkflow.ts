@@ -16,6 +16,7 @@ type Phase =
   | 'base-evaluated'
   | 'unsupported'
   | 'unsupported-evaluated'
+  | 'inspection-evaluated'
   | 'restored'
   | 'restored-evaluated'
   | 'study'
@@ -71,6 +72,9 @@ export function useCadVerificationWorkflow(props: Props) {
     undoPreserved: false,
     previewRendered: false,
     meshGenerated: false,
+    inspectionGenerated: false,
+    inspectionPreservedCad: false,
+    inspectionInvalidated: false,
   });
   const failed = async (message: string) => {
     setPhase('failed');
@@ -336,6 +340,32 @@ export function useCadVerificationWorkflow(props: Props) {
             p.analysisProject === null;
           if (!evidence.current.unsupportedBlocked)
             throw new Error('Unsupported exact Boolean was allowed into a study.');
+          const before = JSON.stringify(p.projectRef.current);
+          const receipt = p.cad.current.receipt;
+          if (!(await p.cad.inspectMesh(0.01)))
+            throw new Error('Exact Boolean mesh inspection failed.');
+          const buffer = await readCadBuffer(receipt.jobId, p.documentId);
+          evidence.current.inspectionPreservedCad =
+            buffer.byteLength === receipt.byteLength &&
+            JSON.stringify(p.projectRef.current) === before;
+          if (!evidence.current.inspectionPreservedCad)
+            throw new Error('Mesh inspection replaced exact CAD or changed the definition.');
+          nextPhase = 'inspection-evaluated';
+          break;
+        }
+        case 'inspection-evaluated': {
+          if (!p.cad.meshPreview) {
+            if (p.error) throw new Error(p.error);
+            return;
+          }
+          const mesh = p.cad.meshPreview;
+          evidence.current.inspectionGenerated =
+            mesh.receipt.purpose === 'inspection-only' &&
+            mesh.cells.length > 0 &&
+            mesh.receipt.statistics.minQuality > 0 &&
+            p.analysisProject === null;
+          if (!evidence.current.inspectionGenerated)
+            throw new Error('Inspection evidence was invalid or enabled unsupported analysis.');
           const revision = p.projectRef.current.revision;
           p.undo();
           evidence.current.undoPreserved =
@@ -348,6 +378,9 @@ export function useCadVerificationWorkflow(props: Props) {
           break;
         }
         case 'restored':
+          evidence.current.inspectionInvalidated = p.cad.meshPreview === null;
+          if (!evidence.current.inspectionInvalidated)
+            throw new Error('Geometry edit retained a current mesh inspection.');
           if (!(await p.cad.evaluate()))
             throw new Error('CAD evaluation did not publish an owned geometry receipt.');
           nextPhase = 'restored-evaluated';
