@@ -16,6 +16,7 @@ import sys
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
+from time import monotonic
 from typing import Any, Literal, cast
 
 from phyra_engine.errors import EngineError
@@ -26,6 +27,8 @@ MAX_POINTS = 256
 MAX_ENTITIES = 256
 MAX_CONSTRAINTS = 512
 MAX_LOOPS = 64
+MAX_REDUNDANT_DIAGNOSTIC_TRIALS = 64
+REDUNDANT_DIAGNOSTIC_BUDGET_SECONDS = 0.25
 SketchStatus = Literal["solved", "redundant", "conflicting", "nonConverged", "tooManyUnknowns"]
 
 
@@ -338,6 +341,94 @@ def _load_library() -> ct.CDLL:
         ) from error
 
 
+def _redundant_constraint_hints(
+    sketch: SketchDefinition,
+    library: ct.CDLL,
+    params: ct.Array[_Param],
+    entities: ct.Array[_Entity],
+    constraints: ct.Array[_Constraint],
+    native_ids: list[str],
+    degrees_of_freedom: int,
+) -> tuple[str, ...]:
+    """Supplement native hints without changing the original solved snapshot.
+
+    At the pinned source commit, Slvs_Solve zero-initializes Group, including its
+    findToFixTimeout; System::FindWhichToRemoveToFixJacobian consequently stops
+    at the next millisecond boundary. The C ABI cannot set or report that budget.
+    Primary implementation (slvs/lib.cpp and system.cpp):
+    https://github.com/solvespace/solvespace/tree/27b6a080c8b669421bd4d444650c3b8eddec5687/src
+
+    Exact equivalent equations remain actionable even with multiple dependent
+    groups. Other hints require an actual full-rank native removal trial that
+    preserves the original DOF. Trials have a count cap and a deadline checked
+    between native calls; these bounded hints need not enumerate every repair.
+    """
+    found = set(native_ids)
+    equivalent: dict[tuple[str, tuple[str, ...], float | None], list[str]] = {}
+    for condition in sketch.constraints:
+        # Every implemented two-reference relation is symmetric. Single-point
+        # fixing and single-entity dimensions retain their authored references.
+        references = (
+            tuple(sorted(condition.references))
+            if condition.kind
+            in ("coincident", "distance", "equalLength", "parallel", "perpendicular", "equalRadius")
+            else condition.references
+        )
+        signature = condition.kind, references, condition.value
+        equivalent.setdefault(signature, []).append(condition.id)
+    for identifiers in equivalent.values():
+        if len(identifiers) > 1:
+            found.update(identifiers)
+
+    deadline = monotonic() + REDUNDANT_DIAGNOSTIC_BUDGET_SECONDS
+    trials = 0
+    for index, condition in enumerate(sketch.constraints):
+        if condition.id in found:
+            continue
+        if trials >= MAX_REDUNDANT_DIAGNOSTIC_TRIALS or monotonic() >= deadline:
+            break
+        # libslvs owns global state and mutates params. Independent array copies
+        # keep every probe at the original solution and protect its publication.
+        trial_params = type(params).from_buffer_copy(params)
+        trial_entities = type(entities).from_buffer_copy(entities)
+        trial_constraints = (_Constraint * (len(constraints) - 1))(
+            *(constraint for i, constraint in enumerate(constraints) if i != index)
+        )
+        trial = _System(
+            trial_params,
+            len(trial_params),
+            trial_entities,
+            len(trial_entities),
+            trial_constraints,
+            len(trial_constraints),
+            None,
+            0,
+            0,
+            None,
+            0,
+            -1,
+            -1,
+        )
+        library.Slvs_Solve(ct.byref(trial), 2)
+        trials += 1
+        if trial.result not in (0, 1, 2, 3, 4) or not -1 <= trial.dof <= len(params) - 7:
+            raise EngineError(
+                "invalid-sketch-result", "Sketch solver returned an invalid diagnostic trial."
+            )
+        if trial.result in (0, 4) and trial.dof < 0:
+            raise EngineError(
+                "invalid-sketch-result", "Sketch solver returned an invalid diagnostic DOF count."
+            )
+        for parameter in trial_params:
+            if not math.isfinite(parameter.val):
+                raise EngineError(
+                    "invalid-sketch-result", "Sketch solver returned a non-finite diagnostic trial."
+                )
+        if trial.result == 0 and trial.dof == degrees_of_freedom:
+            found.add(condition.id)
+    return tuple(condition.id for condition in sketch.constraints if condition.id in found)
+
+
 def solve_sketch(value: Any) -> SketchSolveResult:
     """Solve one immutable snapshot on the isolated CAD worker's main thread."""
     if threading.current_thread() is not threading.main_thread():
@@ -493,6 +584,10 @@ def solve_sketch(value: Any) -> SketchSolveResult:
             if item.kind == "circle"
             else item
             for item in output_entities
+        )
+    if system.result == 4:
+        failed_ids = list(
+            _redundant_constraint_hints(sketch, library, params, ents, cons, failed_ids, system.dof)
         )
     return SketchSolveResult(
         statuses[system.result],
