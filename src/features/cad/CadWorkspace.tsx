@@ -1133,7 +1133,7 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
               <div className="cad-shape-summary">
                 <h2>Exact shape measurements</h2>
                 <dl>
-                  <dt>Volume</dt>
+                  <dt>{componentOutput ? 'Component volume sum' : 'Volume'}</dt>
                   <dd>
                     {formatValue(evaluation.volume * factor ** 3)} {project.displayUnits}³
                   </dd>
@@ -1142,6 +1142,11 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                     {formatValue(evaluation.surfaceArea * factor ** 2)} {project.displayUnits}²
                   </dd>
                 </dl>
+                {componentOutput && (
+                  <p className="cad-hint">
+                    Overlaps are counted per instance. Placement creates no bonds or contact.
+                  </p>
+                )}
               </div>
             )}
             {evaluation && (
