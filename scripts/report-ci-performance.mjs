@@ -38,9 +38,7 @@ export function buildPerformanceSummary(run, jobs) {
   const runStarted = Date.parse(run.run_started_at ?? run.created_at ?? '');
   const lastPlatformCompletion = Math.max(
     0,
-    ...platformJobs
-      .map((job) => Date.parse(job.completed_at ?? ''))
-      .filter(Number.isFinite),
+    ...platformJobs.map((job) => Date.parse(job.completed_at ?? '')).filter(Number.isFinite),
   );
   const validationWall =
     Number.isFinite(runStarted) && lastPlatformCompletion >= runStarted
