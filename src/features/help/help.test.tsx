@@ -46,6 +46,35 @@ describe('offline workbench help', () => {
     expect(searchHelp('FLOAT32')[0].id).toBe('devices');
   });
 
+  it('finds practical advanced CAD guides in English and Turkish', () => {
+    expect(searchHelp('loft')[0].id).toBe('cad-loft');
+    expect(searchHelp('sweep path')[0].id).toBe('cad-sweep');
+    expect(searchHelp('montaj')[0].id).toBe('cad-assembly');
+    expect(searchHelp('yüzey kesit').map((article) => article.id)).toContain('cad-loft');
+    expect(retrieveHelp('Loft kesitlerini nasıl yerleştiririm?', 'cad')[0].id).toBe('cad-loft');
+    expect(retrieveHelp('Bir profili yol boyunca süpürmek istiyorum.', 'cad')[0].id).toBe(
+      'cad-sweep',
+    );
+    expect(retrieveHelp('Montaj bileşenlerini nasıl taşırım?', 'cad')[0].id).toBe('cad-assembly');
+    expect(retrieveHelp('Bu yüzey neden analiz edilemiyor?', 'overview')[0].id).toBe('cad');
+    for (const id of ['cad-loft', 'cad-sweep', 'cad-assembly'] as const) {
+      const article = helpArticles.find((item) => item.id === id)!;
+      expect(article.sections.some((section) => section.steps?.length)).toBe(true);
+      expect(article.related).toContain('cad');
+      expect(renderToStaticMarkup(<HelpPanel open onClose={() => {}} articleId={id} />)).toContain(
+        article.title,
+      );
+    }
+    const sweep = helpDocument(helpArticles.find((article) => article.id === 'cad-sweep')!);
+    expect(sweep).toContain('startPointId');
+    expect(sweep).toContain('does not silently move or rotate');
+    expect(sweep).toContain('no enclosed volume');
+    const assembly = helpDocument(helpArticles.find((article) => article.id === 'cad-assembly')!);
+    expect(assembly).toContain('including overlaps');
+    expect(assembly).toContain('do not create bonds');
+    expect(assembly).toContain('current studies cannot analyze it');
+  });
+
   it('normalizes punctuation and repeated terms without treating user input as code', () => {
     expect(searchHelp('  pressure!!! pressure  ')).toEqual(searchHelp('pressure'));
     expect(searchHelp('')).toEqual(helpArticles);
@@ -163,6 +192,7 @@ describe('offline workbench help', () => {
       'Explain PINN governing equations, elasticity, normalization and weak form.',
       'Düzlem gerilme, gerinim ve fizik bilgili sinir ağı denklemlerini açıkla.',
       'Explain geometry, loads, material, units and the source references.',
+      'Explain loft, sweep, assembly, surface shells and component placement.',
     ]) {
       const documents = retrieveHelp(question, 'overview', '2d');
       const content = documents.map(helpDocument).join('\n\n');

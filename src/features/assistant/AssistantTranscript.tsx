@@ -63,6 +63,54 @@ export default function AssistantTranscript({
   const setUiError = onError;
   const cadContext =
     !!study?.cad && (!study.project.study || ['cad', 'geometry'].includes(study.section));
+  const geometry = study?.project.geometry;
+  const output =
+    cadContext && geometry?.kind === 'cad'
+      ? geometry.features.find((feature) => feature.id === geometry.outputFeatureId)
+      : null;
+  const cadWelcome =
+    output?.kind === 'loft'
+      ? {
+          title: 'Let’s review your loft',
+          description:
+            'Check section order, placements and solid or surface output before rebuilding.',
+          prompts: [
+            'Review my loft section order and placements.',
+            'Explain solid versus surface shell for this loft.',
+            'What must I check before rebuilding or exporting this loft?',
+          ],
+        }
+      : output?.kind === 'sweep'
+        ? {
+            title: 'Let’s review your sweep',
+            description: 'Check the profile, connected path and explicit alignment at its start.',
+            prompts: [
+              'Review my sweep profile and open path.',
+              'Explain the sweep start endpoint and required profile orientation.',
+              'Why is this sweep unavailable for analysis?',
+            ],
+          }
+        : output?.kind === 'assembly'
+          ? {
+              title: 'Let’s review your assembly',
+              description:
+                'Understand component sources, independent placements and CAD analysis limits.',
+              prompts: [
+                'Explain my assembly components and their source placements.',
+                'How do I move one component and inspect it in isolation?',
+                'What physical connections are missing before this assembly can be analyzed?',
+              ],
+            }
+          : {
+              title: 'Let’s build your geometry',
+              description:
+                'Plan a sketch, review its constraints and find the next supported analysis step.',
+              prompts: [
+                'How do I draw a constrained sketch and turn it into a solid?',
+                'What does my selected CAD output support for analysis?',
+                'Explain my sketch degrees of freedom and constraints to review.',
+              ],
+            };
   return (
     <div
       ref={viewport}
@@ -81,25 +129,21 @@ export default function AssistantTranscript({
           </span>
           <h3>
             {cadContext
-              ? 'Let’s build your geometry'
+              ? cadWelcome.title
               : study
                 ? 'Let’s explore your study'
                 : 'Your engineering assistant'}
           </h3>
           <p>
             {cadContext
-              ? 'Plan a sketch, review its constraints and find the next supported analysis step.'
+              ? cadWelcome.description
               : study
                 ? 'Ask about your setup, the governing equations or what your results mean.'
                 : 'Explore the mechanics, plan a study or find your way around Phyra.'}
           </p>
           <div>
             {(cadContext
-              ? [
-                  'How do I draw a constrained sketch and turn it into a solid?',
-                  'What does my selected CAD output support for analysis?',
-                  'Explain my sketch degrees of freedom and constraints to review.',
-                ]
+              ? cadWelcome.prompts
               : study
                 ? [
                     'What have I defined, and what is missing?',
