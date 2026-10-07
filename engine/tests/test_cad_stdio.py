@@ -96,6 +96,7 @@ def test_runtime_binding_failure_happens_before_redirection_or_kernel_execution(
 def test_actual_native_buffered_log_stays_on_stderr_before_json_publication(fail):
     script = """
 import ctypes
+import os
 import sys
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.cad import kernel_log_to_stderr
@@ -103,21 +104,55 @@ from phyra_engine.protocol.stdio import emit
 
 runtime = (ctypes.CDLL('ucrtbase.dll', winmode=0x00000800)
            if sys.platform == 'win32' else ctypes.CDLL(None))
-printf = runtime.printf
-printf.argtypes = [ctypes.c_char_p]
-printf.restype = ctypes.c_int
+# Unlike printf's MSVC inline wrapper, these stream functions are exported by
+# the system UCRT. _fdopen owns descriptor 1, so fclose must restore it below.
+# https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen
+# https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/setvbuf
+fdopen = runtime._fdopen if sys.platform == 'win32' else runtime.fdopen
+fdopen.argtypes = [ctypes.c_int, ctypes.c_char_p]
+fdopen.restype = ctypes.c_void_p
+setvbuf = runtime.setvbuf
+setvbuf.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t]
+setvbuf.restype = ctypes.c_int
+fwrite = runtime.fwrite
+fwrite.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p]
+fwrite.restype = ctypes.c_size_t
+fclose = runtime.fclose
+fclose.argtypes = [ctypes.c_void_p]
+fclose.restype = ctypes.c_int
+saved_stdout = os.dup(1)
+stream = fdopen(1, b'wb')
+if not stream:
+    os.close(saved_stdout)
+    raise RuntimeError('native fdopen failed')
+buffer = ctypes.create_string_buffer(4096)
 try:
-    with kernel_log_to_stderr():
-        # No newline: flushing the native buffer after fd restoration would
-        # contaminate stdout, even if the exception is correctly converted.
-        if printf(b'buffered-native-cad-log') < 0:
-            raise RuntimeError('native printf failed')
-        if sys.argv[1] == 'fail':
-            raise EngineError('invalid-cad', 'Expected kernel failure')
-except EngineError as error:
-    emit({'type': 'error', 'code': error.code})
-else:
-    emit({'type': 'complete'})
+    # _IOFBF is 0 in the supported UCRT/libc headers. Keep this caller-owned
+    # buffer alive through fclose; the log is shorter than its capacity.
+    if setvbuf(stream, buffer, 0, len(buffer)) != 0:
+        raise RuntimeError('native setvbuf failed')
+    try:
+        with kernel_log_to_stderr():
+            # No newline or explicit flush: test the production fflush(NULL).
+            payload = b'buffered-native-cad-log'
+            if fwrite(payload, 1, len(payload), stream) != len(payload):
+                raise RuntimeError('native fwrite failed')
+            if sys.argv[1] == 'fail':
+                raise EngineError('invalid-cad', 'Expected kernel failure')
+    except EngineError as error:
+        message = {'type': 'error', 'code': error.code}
+    else:
+        message = {'type': 'complete'}
+finally:
+    try:
+        # Closing after restoration exposes an omitted/late native flush as
+        # stdout contamination, rather than hiding it with test-side flushing.
+        if fclose(stream) != 0:
+            raise RuntimeError('native fclose failed')
+    finally:
+        os.dup2(saved_stdout, 1)
+        os.close(saved_stdout)
+emit(message)
 """
     result = subprocess.run(
         [sys.executable, "-c", script, "fail" if fail else "success"],
