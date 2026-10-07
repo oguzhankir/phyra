@@ -1673,6 +1673,7 @@ The reported normalized potential is strain energy minus external work. It may b
       'about',
       'GitHub',
       'source',
+      'Apache',
       'GPL',
       'license',
       'copyright',
@@ -1684,7 +1685,8 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Source and license',
         paragraphs: [
-          'Phyra is distributed under GPL-3.0-or-later. The source repository contains LICENSE, canonical README/CONTRIBUTING/ROADMAP/SECURITY and citation metadata, plus required upstream notices in notices/THIRD_PARTY.txt. Target-specific redistribution and Corresponding Source obligations remain relevant to packaged binaries.',
+          "Phyra's original source code is licensed under Apache-2.0. The source repository contains LICENSE and NOTICE, canonical README/CONTRIBUTING/ROADMAP/SECURITY and citation metadata, plus required upstream notices in notices/THIRD_PARTY.txt. Earlier GPL-3.0-or-later releases retain their granted rights.",
+          'Bundled Gmsh, SolveSpace and other third-party components retain their own licenses. The combined application must comply with GPLv3 and applicable upstream terms; it is not an Apache-only binary. Target-specific dependency audits and complete Corresponding Source remain required before public redistribution.',
           'Provider marks identify optional connections. The four bundled SVG marks are a subset of @lobehub/icons-static-svg 1.95.1, with its MIT license and provenance notice under public/providers. Names and marks belong to their respective owners; their appearance does not imply endorsement.',
         ],
         references: [

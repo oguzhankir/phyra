@@ -14,6 +14,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Changed
 
+- Phyra-owned source code is now Apache-2.0. Bundled GPL-covered dependencies retain their licenses; combined application metadata, notices and Corresponding Source gates explicitly preserve the applicable GPLv3 distribution obligations. Earlier GPL grants remain valid.
+
 - Application menu actions activate before the menu closes, preserving theme and other command selections during focus changes.
 - Native sketch builds discover a compatible installed MSVC toolchain on Windows; CAD worker output flushing uses the platform's native C runtime to preserve JSON framing.
 - Project schema v7 extends geometry documents and optional studies with loft, sweep and named assembly instances. Validated v1–v6 inputs migrate explicitly; unchanged numerical and v6 CAD inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.

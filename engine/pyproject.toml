@@ -7,7 +7,7 @@ name = "phyra-engine"
 version = "0.1.0"
 description = "Headless SI linear-static mechanics for Phyra"
 requires-python = ">=3.12"
-license = "GPL-3.0-or-later"
+license = "Apache-2.0"
 dependencies = ["numpy==2.5.3", "scipy==1.18.1", "scikit-fem==12.0.2", "gmsh==4.15.2", "jsonschema==4.26.0", "torch==2.14.0", "cadquery-ocp-novtk==8.0.1.1.0", "cadquery-ocp-proxy==8.0.1.1.0"]
 
 [tool.setuptools.packages.find]

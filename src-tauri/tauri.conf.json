@@ -27,13 +27,16 @@
   },
   "bundle": {
     "active": true,
+    "license": "GPL-3.0-only",
+    "licenseFile": "../notices/GPL-3.0.txt",
     "targets": "all",
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": {
       "resources/engine/": "engine/",
       "resources/licenses/": "licenses/",
       "../notices/": "notices/",
-      "../LICENSE": "LICENSE"
+      "../LICENSE": "LICENSE",
+      "../NOTICE": "NOTICE"
     },
     "category": "DeveloperTool",
     "shortDescription": "Engineering analysis with FEM and experimental Physics ML",

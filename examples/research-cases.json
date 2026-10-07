@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "license": "GPL-3.0-or-later",
+  "license": "Apache-2.0",
   "dataPolicy": "Original editable SI definitions; no paper software, weights or datasets are redistributed. FEM fields are evaluation references, never training labels.",
   "measurementCommand": "npm run verify:research -- [case-id]",
   "cases": [

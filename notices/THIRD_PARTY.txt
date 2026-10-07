@@ -1,4 +1,14 @@
-Phyra is licensed under GPL-3.0-or-later; see the root LICENSE.
+Phyra's original source code is licensed under Apache-2.0; see the root
+LICENSE and NOTICE. Separately identified third-party code, assets, legal
+texts and notices retain their own licenses and copyright holders.
+
+The bundled application combines this source with GPL-covered Gmsh and
+SolveSpace. Distribution of the combined application must comply with GPLv3
+and the applicable third-party terms; it is not an Apache-only binary.
+The GPLv3 text is retained in notices/GPL-3.0.txt. Apache-2.0 is compatible
+with inclusion in a GPLv3-covered combined work, but does not replace or
+remove the dependencies' copyleft obligations. Previous GPL-3.0-or-later
+releases retain the rights already granted to recipients.
 
 The managed engine includes Gmsh 4.15.2 (GPL-2.0-or-later with the
 Gmsh exception), Python (PSF license), NumPy and SciPy (BSD licenses),
@@ -32,8 +42,11 @@ binary release is configured here. Review the generated native and Rust
 dependency inventory for the target package before public redistribution.
 
 Primary upstream sources:
+https://www.apache.org/licenses/LICENSE-2.0
+https://www.apache.org/licenses/GPL-compatibility.html
 https://gmsh.info/
 https://gmsh.info/src/gmsh-4.15.2-source.tgz
+https://solvespace.com/library.pl
 https://www.python.org/downloads/source/
 https://numpy.org/
 https://scipy.org/
