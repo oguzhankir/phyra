@@ -70,12 +70,12 @@ export default function Menu({
             data-ui-overlay
             className={`menu-popover ${className}`}
             style={position}
-            onClickCapture={(event) => {
+            onClick={(event) => {
               if (
                 event.target instanceof Element &&
                 event.target.closest('button:not(:disabled)')
               ) {
-                trigger.current?.focus();
+                if (popup.current?.contains(document.activeElement)) trigger.current?.focus();
                 setOpen(false);
               }
             }}
