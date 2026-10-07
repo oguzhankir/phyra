@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { makeProject } from '../features/examples/projects';
-import { studyPreparationSourceKey } from './CanonicalProjectWorkspace';
+import { canPrepareCadStudy, studyPreparationSourceKey } from './CanonicalProjectWorkspace';
 
 describe('study preparation draft ownership', () => {
+  it('allows a verified CAD solid to replace an adapter study but protects an existing CAD study', () => {
+    const project = makeProject();
+    expect(canPrepareCadStudy(project, true)).toBe(true);
+    project.study.domain = {
+      kind: 'cad-solid',
+      geometryFingerprint: 'a'.repeat(64),
+      outputFeatureId: 'output',
+      boundaries: [{ id: 'x1', faceId: 'face-1', name: 'Face 1' }],
+    };
+    expect(canPrepareCadStudy(project, true)).toBe(false);
+    expect(canPrepareCadStudy(project, true, true)).toBe(true);
+  });
+
   it('revokes a draft after source geometry, document or study replacement', () => {
     const source = makeProject();
     const key = studyPreparationSourceKey(source);

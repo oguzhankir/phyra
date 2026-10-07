@@ -18,6 +18,17 @@ import ProjectWorkspaceBar from '../features/workbench/ProjectWorkspaceBar';
 import WorkbenchOverlays from './WorkbenchOverlays';
 import './CanonicalProjectWorkspace.css';
 
+export function canPrepareCadStudy(
+  project: ProjectDefinition,
+  hasVerifiedCandidate: boolean,
+  sourceNeedsReview = false,
+) {
+  return (
+    hasVerifiedCandidate &&
+    (!project.study || project.study.domain?.kind !== 'cad-solid' || sourceNeedsReview)
+  );
+}
+
 export default function CanonicalProjectWorkspace({
   workbench,
   mode,
@@ -44,7 +55,7 @@ export default function CanonicalProjectWorkspace({
   const compatibility = w.cad.current?.receipt.analysisCompatibility;
   const canCreateStudy =
     !w.project.study && (compatibility?.state === 'supported' || !!w.cadStudyCandidate);
-  const canPrepareCad = !!w.cadStudyCandidate && (!w.project.study || !!w.cadSourceError);
+  const canPrepareCad = canPrepareCadStudy(w.project, !!w.cadStudyCandidate, !!w.cadSourceError);
   const source = studyPreparationSourceKey(w.project);
   const validDraft =
     !!creatingStudy &&
