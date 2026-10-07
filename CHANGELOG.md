@@ -6,6 +6,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
+- Exact no-hole loft/sweep solids or surface shells with ordered section/path selectors, placed section duplication and editable named assembly instances. Multi-body picking and isolation preserve component identity; these new operations remain definition-only for analysis. Offline tutorials and AI guidance describe their implemented scope.
 - Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
 - Direct blank-plane sketch editing with endpoint/grid/axis snapping, on-canvas dimensions, selection-driven constraints, local open-sketch solving and conflict/degree-of-freedom feedback. Modeling adds rigid placement, guided edge operations, standard orthographic views, retained stale previews and optional automatic rebuild.
 - AI assistance accepts CAD-only project context, bounded current exact-geometry and sketch-solve evidence, and read-only CAD inspection without attaching source files or field buffers.
@@ -13,7 +14,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Changed
 
-- Project schema v6 separates geometry documents from optional studies. Validated v1–v5 inputs migrate explicitly; unchanged numerical inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
+- Application menu actions activate before the menu closes, preserving theme and other command selections during focus changes.
+- Project schema v7 extends geometry documents and optional studies with loft, sweep and named assembly instances. Validated v1–v6 inputs migrate explicitly; unchanged numerical and v6 CAD inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
 
 
 ## 0.4.0
