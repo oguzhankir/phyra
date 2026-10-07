@@ -12,6 +12,7 @@ export default function CadViewControls({
   onView,
   onFit,
   canFitSelection,
+  inspection = false,
   onFitSelection,
   style,
   onStyle,
@@ -24,6 +25,7 @@ export default function CadViewControls({
   onView: (view: CadStandardView) => void;
   onFit: () => void;
   canFitSelection: boolean;
+  inspection?: boolean;
   onFitSelection: () => void;
   style: CadDisplayStyle;
   onStyle: (style: CadDisplayStyle) => void;
@@ -70,8 +72,10 @@ export default function CadViewControls({
           <Maximize size={15} />
         </button>
         <button
-          aria-label="Fit selected CAD entities to view"
-          title="Fit selection (Shift+F)"
+          aria-label={
+            inspection ? 'Fit inspected face to view' : 'Fit selected CAD entities to view'
+          }
+          title={inspection ? 'Fit inspected face (Shift+F)' : 'Fit selection (Shift+F)'}
           disabled={!canFitSelection}
           onClick={onFitSelection}
         >

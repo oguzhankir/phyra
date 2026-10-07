@@ -107,6 +107,8 @@ export const helpArticles: readonly HelpArticle[] = [
       'mesh inspection',
       'tetrahedral',
       'mesh quality',
+      'boundary correspondence',
+      'CAD faces',
     ],
     sections: [
       {
@@ -133,11 +135,14 @@ export const helpArticles: readonly HelpArticle[] = [
           'In the desktop CAD workspace, finish the active command and rebuild one closed solid. Open Inspect > Mesh inspection.',
           'Enter Target element size in the displayed length unit, then choose Generate mesh. Gmsh rebuilds a first-order tetrahedral mesh from the exact BRep; it never reuses display triangles as finite elements.',
           'Review boundary triangles in the main viewport, node and tetrahedron counts, minimum/mean/maximum element quality and the quality distribution. Orbit, pan, zoom and change standard views as usual. Close Mesh inspection to return to the exact CAD view.',
+          'Boundary correspondence reports whether every imported face matches the exact CAD source. Select a boundary in the list or click the viewport, then switch between Mesh and CAD faces to inspect the same face. Shift+F fits it; Escape in the viewport clears only the inspected selection. Use Find a boundary for larger models.',
           'Reduce the target size and choose Regenerate mesh to compare discretizations. Compare the mesh volume against the exact solid volume, especially for curved features. A changed size does not change the displayed mesh until regeneration succeeds.',
         ],
         paragraphs: [
           'Mesh inspection is transient preparation evidence. It does not create a study, assign boundaries, enable an unsupported solver, replace the exact CAD export or enter the .phyra archive. Geometry edits invalidate the preview. Failed or cancelled meshing preserves the definition and the previous preview for unchanged geometry.',
-          'Only one valid closed solid is admitted. Surface shells, independent assembly instances, multiple solids and disconnected meshes are rejected. Existing numerical resource limits remain enforced. Region labels are scoped to this generated mesh; they are not persistent CAD face references and cannot carry loads or supports.',
+          'Only one valid closed solid is admitted. Surface shells, independent assembly instances, multiple solids and disconnected meshes are rejected. Existing numerical resource limits remain enforced. Region labels are scoped to this generated mesh and cannot carry loads or supports.',
+          'Face correspondence checks complete exact face geometry after import. A complete unique match links each mesh boundary to its source face for this unchanged geometry. Face order, centroid proximity and visual similarity are never used as identity. If the exact comparison cannot establish a unique match, the panel explains why and keeps mesh-only inspection available.',
+          'A matched face selection survives a new mesh size for the same project and exact geometry. An unmatched mesh boundary selection belongs to its original mesh job. Inspection selection is separate from modeling selection. No boundary assignments are saved; changing geometry invalidates the preview and requires another correspondence check.',
           'Mean-ratio tetrahedral quality ranges from zero for degenerate elements to one for a regular tetrahedron. It measures element shape, not solution accuracy. Volume difference reports discretization error against the exact solid, not stress or displacement error. General CAD face assignment and the full general-solid analysis workflow remain separate development work.',
           'The assistant can explain this workflow from the same offline help. Transient inspection meshes, mesh-quality measurements and their buffers are not automatically attached to assistant context; it must not claim to have inspected them.',
         ],

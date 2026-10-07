@@ -15,6 +15,10 @@ export interface CadMeshReceipt {
   targetSize: number;
   meshId: string;
   mesher: { name: 'Gmsh'; version: string; element: 'tetra4' };
+  correspondence: {
+    scope: 'unchanged-geometry';
+    method: 'exact-brep-round-trip';
+  } & ({ status: 'verified' } | { status: 'unavailable'; reason: string });
   byteLength: number;
   bufferHash: string;
   arrays: Record<
@@ -27,6 +31,7 @@ export interface CadMeshReceipt {
     identity: 'mesh-scoped';
     triangleCount: number;
     area: number;
+    cadFaceId?: string;
   }[];
   statistics: {
     bounds: [[number, number, number], [number, number, number]];
@@ -132,6 +137,62 @@ export function validateCadMeshReceipt(
     stats.meanQuality > stats.maxQuality
   )
     throw new Error('Mesh inspection receipt failed identity or resource validation.');
+  const mapping = receipt.correspondence;
+  const references = receipt.regions.map((region) => region.cadFaceId);
+  if (
+    !mapping ||
+    mapping.scope !== 'unchanged-geometry' ||
+    mapping.method !== 'exact-brep-round-trip' ||
+    !['verified', 'unavailable'].includes(mapping.status) ||
+    Object.keys(mapping).some(
+      (key) =>
+        ![
+          'status',
+          'scope',
+          'method',
+          ...(mapping.status === 'unavailable' ? ['reason'] : []),
+        ].includes(key),
+    ) ||
+    (mapping.status === 'verified'
+      ? references.some(
+          (reference) =>
+            typeof reference !== 'string' ||
+            new TextEncoder().encode(reference).length > 200 ||
+            !/^.+\/face\/[a-f0-9]{24}$/u.test(reference),
+        ) || new Set(references).size !== references.length
+      : typeof mapping.reason !== 'string' ||
+        !mapping.reason.trim() ||
+        new TextEncoder().encode(mapping.reason).length > 500 ||
+        receipt.regions.some((region) => 'cadFaceId' in region))
+  )
+    throw new Error('Invalid CAD-to-mesh boundary correspondence.');
+}
+
+/** Match transport evidence to the accepted exact geometry, never just to row numbers. */
+export function validateCadMeshSource(
+  receipt: CadMeshReceipt,
+  exact: {
+    projectId: string;
+    geometryFingerprint: string;
+    outputFeatureId: string;
+    faces: { id: string; identity: 'content-reference' | 'ambiguous' }[];
+  },
+): void {
+  if (
+    receipt.projectId !== exact.projectId ||
+    receipt.geometryFingerprint !== exact.geometryFingerprint ||
+    receipt.outputFeatureId !== exact.outputFeatureId ||
+    (receipt.correspondence.status === 'verified' &&
+      (receipt.regions.length !== exact.faces.length ||
+        new Set(exact.faces.map((face) => face.id)).size !== exact.faces.length ||
+        receipt.regions.some(
+          (region) =>
+            !exact.faces.some(
+              (face) => face.id === region.cadFaceId && face.identity === 'content-reference',
+            ),
+        )))
+  )
+    throw new Error('Mesh boundary correspondence does not match the current exact CAD shape.');
 }
 
 /** Validate every binary view before it can reach the renderer. */

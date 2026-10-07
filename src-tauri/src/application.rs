@@ -123,6 +123,14 @@ pub(crate) fn run() {
     application.run(|app, event| {
         if matches!(event, tauri::RunEvent::Ready) {
             trace_verification("native-ready");
+            if let Some(mode) = verification::verification_configuration() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let title = format!("Phyra — {} verification", mode.to_uppercase());
+                    if let Err(error) = window.set_title(&title).and_then(|_| window.set_focus()) {
+                        trace_verification(&format!("verification-window-focus: {error}"));
+                    }
+                }
+            }
         }
         if matches!(event, tauri::RunEvent::Exit) {
             stop_owned(&app.state::<EngineState>());

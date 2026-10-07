@@ -3,6 +3,7 @@ import {
   cadMeshDisplay,
   decodeCadMesh,
   validateCadMeshReceipt,
+  validateCadMeshSource,
   type CadMeshReceipt,
 } from './cadMesh';
 
@@ -27,6 +28,12 @@ export function meshFixture() {
     targetSize: 0.4,
     meshId: 'b'.repeat(64),
     mesher: { name: 'Gmsh', version: 'test', element: 'tetra4' },
+    correspondence: {
+      status: 'unavailable',
+      method: 'exact-brep-round-trip',
+      scope: 'unchanged-geometry',
+      reason: 'No exact source supplied in this independent tetrahedron fixture.',
+    },
     byteLength: buffer.byteLength,
     bufferHash: 'c'.repeat(64),
     arrays: {
@@ -109,6 +116,78 @@ export function meshFixture() {
 }
 
 describe('transient exact-solid mesh inspection', () => {
+  it('binds a complete face correspondence to exact source content, independently of face ordering', () => {
+    const { receipt } = meshFixture();
+    receipt.correspondence = {
+      status: 'verified',
+      method: 'exact-brep-round-trip',
+      scope: 'unchanged-geometry',
+    };
+    receipt.regions.forEach((region, i) => {
+      region.cadFaceId = `solid/face/${String(i).repeat(24)}`;
+    });
+    const exact = {
+      projectId: receipt.projectId,
+      geometryFingerprint: receipt.geometryFingerprint,
+      outputFeatureId: receipt.outputFeatureId,
+      faces: receipt.regions
+        .map((r) => ({ id: r.cadFaceId!, identity: 'content-reference' as const }))
+        .reverse(),
+    };
+    expect(() => validateCadMeshReceipt(receipt, { id: 'part', revision: 3 }, 0.4)).not.toThrow();
+    expect(() => validateCadMeshSource(receipt, exact)).not.toThrow();
+    for (const changed of [
+      { ...exact, projectId: 'other' },
+      { ...exact, geometryFingerprint: 'e'.repeat(64) },
+      { ...exact, outputFeatureId: 'other' },
+      { ...exact, faces: exact.faces.slice(1) },
+      { ...exact, faces: exact.faces.map((face) => ({ ...face, identity: 'ambiguous' as const })) },
+    ])
+      expect(() => validateCadMeshSource(receipt, changed)).toThrow('current exact CAD');
+    for (const change of [
+      (r: CadMeshReceipt) => {
+        delete r.regions[0].cadFaceId;
+      },
+      (r: CadMeshReceipt) => {
+        r.regions[1].cadFaceId = r.regions[0].cadFaceId;
+      },
+      (r: CadMeshReceipt) => {
+        r.regions[0].cadFaceId += '/ambiguous-1';
+      },
+      (r: CadMeshReceipt) => {
+        Object.assign(r.correspondence, { reason: 'guess' });
+      },
+      (r: CadMeshReceipt) => {
+        Object.assign(r.correspondence, { scope: 'all-edits' });
+      },
+    ]) {
+      const bad = structuredClone(receipt);
+      change(bad);
+      expect(() => validateCadMeshReceipt(bad, { id: 'part', revision: 3 }, 0.4)).toThrow(
+        'correspondence',
+      );
+    }
+  });
+  it('keeps an unavailable correspondence explicit and rejects unsupported identity claims', () => {
+    const { receipt } = meshFixture();
+    for (const change of [
+      (r: CadMeshReceipt) => {
+        Object.assign(r.correspondence, { reason: '' });
+      },
+      (r: CadMeshReceipt) => {
+        Object.assign(r.correspondence, { method: 'nearest-face' });
+      },
+      (r: CadMeshReceipt) => {
+        r.regions[0].cadFaceId = `solid/face/${'a'.repeat(24)}`;
+      },
+    ]) {
+      const bad = structuredClone(receipt);
+      change(bad);
+      expect(() => validateCadMeshReceipt(bad, { id: 'part', revision: 3 }, 0.4)).toThrow(
+        'correspondence',
+      );
+    }
+  });
   it('preserves SI data and draws unique boundary edges without assignable CAD identities', () => {
     const { receipt, buffer } = meshFixture();
     const mesh = decodeCadMesh(receipt, buffer);

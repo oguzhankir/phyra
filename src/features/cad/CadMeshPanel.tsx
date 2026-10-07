@@ -4,6 +4,8 @@ import type { CadMeshPreview } from '../../domain/geometry/cadMesh';
 import { formatValue, lengthFactor } from '../../domain/units';
 import { parseNumericDraft } from '../../shared/forms/numericDraft';
 import './CadMeshPanel.css';
+import CadMeshBoundaries from './CadMeshBoundaries';
+import type { CadMeshInspection } from './useCadMeshInspection';
 
 export default function CadMeshPanel({
   mesh,
@@ -15,6 +17,7 @@ export default function CadMeshPanel({
   onGenerate,
   onCancel,
   onClose,
+  inspection,
 }: {
   mesh: CadMeshPreview | null;
   units: 'm' | 'mm';
@@ -25,6 +28,7 @@ export default function CadMeshPanel({
   onGenerate: (size: number) => Promise<boolean>;
   onCancel: () => Promise<void>;
   onClose: () => void;
+  inspection: CadMeshInspection;
 }) {
   const factor = lengthFactor(units);
   const [text, setText] = useState(() =>
@@ -111,6 +115,7 @@ export default function CadMeshPanel({
         </form>
         {stats && (
           <>
+            <CadMeshBoundaries inspection={inspection} units={units} />
             <div className="cad-mesh-method">
               <strong>
                 Tetra4 · {mesh!.receipt.mesher.name} {mesh!.receipt.mesher.version}
@@ -183,8 +188,8 @@ export default function CadMeshPanel({
         )}
         <p className="cad-mesh-note">
           Inspection only. This mesh is temporary and does not enable a solver, assign loads or
-          change the saved geometry. Boundary labels belong to this mesh, not to persistent CAD
-          faces.
+          change the saved geometry. Face correspondence applies only to the current geometry and
+          does not create saved boundary assignments.
         </p>
       </div>
     </aside>

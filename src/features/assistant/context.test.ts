@@ -138,9 +138,9 @@ it('explains transient mesh inspection without treating it as study or supplied 
   );
   expect(context.sourceIds).toContain('cad');
   expect(context.text).toContain('Mean-ratio tetrahedral quality');
-  expect(context.text).toContain('not persistent CAD face references');
+  expect(context.text).toContain('No boundary assignments are saved');
   expect(context.text).not.toContain('private-assembly-project');
   expect(ASSISTANT_SYSTEM).toContain(
-    'Transient mesh previews and their quality measurements are not supplied',
+    'Transient mesh previews, correspondence reports, selections and quality measurements are not supplied',
   );
 });

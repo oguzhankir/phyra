@@ -17,6 +17,13 @@ type Phase =
   | 'unsupported'
   | 'unsupported-evaluated'
   | 'inspection-evaluated'
+  | 'inspection-selected-model'
+  | 'inspection-menu'
+  | 'inspection-panel'
+  | 'inspection-selected'
+  | 'inspection-cad'
+  | 'inspection-cleared'
+  | 'inspection-closed'
   | 'restored'
   | 'restored-evaluated'
   | 'study'
@@ -52,6 +59,7 @@ export function useCadVerificationWorkflow(props: Props) {
   const current = useRef(props);
   current.current = props;
   const [phase, setPhase] = useState<Phase>('start');
+  const scheduledPhase = useRef<Phase>('start');
   const [renderedTick, setRenderedTick] = useState(0);
   const pending = useRef(false),
     base = useRef<string | null>(null),
@@ -59,6 +67,9 @@ export function useCadVerificationWorkflow(props: Props) {
   const advancedIndex = useRef(0),
     advancedDefinitions = useRef<ProjectDefinition[]>([]);
   const advancedEvidence = useRef<Record<string, unknown>[]>([]);
+  const rendererIds = useRef(new Set<string>());
+  const inspectionFrames = useRef({ mesh: false, cad: false });
+  const inspectionSource = useRef('');
   const evidence = useRef({
     emptyStart: false,
     commandPreviewIsolated: false,
@@ -71,12 +82,17 @@ export function useCadVerificationWorkflow(props: Props) {
     unsupportedBlocked: false,
     undoPreserved: false,
     previewRendered: false,
+    rendererReused: false,
     meshGenerated: false,
     inspectionGenerated: false,
     inspectionPreservedCad: false,
     inspectionInvalidated: false,
+    inspectionCorrespondence: false,
+    inspectionUi: false,
+    inspectionSelectionIsolated: false,
   });
   const failed = async (message: string) => {
+    scheduledPhase.current = 'failed';
     setPhase('failed');
     await invokeVerification('verification_trace', { message: `CAD workflow failed: ${message}` });
     await invokeVerification('verification_complete', {
@@ -91,6 +107,7 @@ export function useCadVerificationWorkflow(props: Props) {
       !props.enabled ||
       !props.ready ||
       pending.current ||
+      phase !== scheduledPhase.current ||
       phase === 'complete' ||
       phase === 'failed'
     )
@@ -137,6 +154,9 @@ export function useCadVerificationWorkflow(props: Props) {
               `${test.name}: exact volume/body count or analysis gate disagrees with independent reference.`,
             );
           if (!previewRendered.current) return;
+          if (rendererIds.current.size !== 1)
+            throw new Error('CAD rebuilding recreated the viewport graphics context.');
+          evidence.current.rendererReused = advancedIndex.current > 0;
           if (
             test.name === 'assembly' &&
             (new Set(receipt.bodies.map((body) => body.componentId)).size !== 2 ||
@@ -366,6 +386,106 @@ export function useCadVerificationWorkflow(props: Props) {
             p.analysisProject === null;
           if (!evidence.current.inspectionGenerated)
             throw new Error('Inspection evidence was invalid or enabled unsupported analysis.');
+          evidence.current.inspectionCorrespondence =
+            mesh.receipt.correspondence.status === 'verified' &&
+            mesh.receipt.regions.every((region) => !!region.cadFaceId);
+          if (!evidence.current.inspectionCorrespondence)
+            throw new Error('Exact CAD face correspondence was not established for the Boolean.');
+          inspectionSource.current = JSON.stringify(p.projectRef.current);
+          const summary = document.querySelector<HTMLElement>('.cad-entity-section summary');
+          if (!summary) throw new Error('Model navigator did not expose geometry entities.');
+          if (!summary.closest('details')?.open) summary.click();
+          const face = document.querySelector<HTMLInputElement>(
+            '.cad-entity-list input[type="checkbox"]',
+          );
+          if (!face) throw new Error('Authored CAD face selection was unavailable.');
+          face.click();
+          nextPhase = 'inspection-selected-model';
+          break;
+        }
+        case 'inspection-selected-model': {
+          if (!document.querySelector<HTMLInputElement>('.cad-entity-list input')?.checked)
+            throw new Error('Authored face selection did not update through its control.');
+          verificationButton(document, 'button[aria-label="Inspect"]').click();
+          nextPhase = 'inspection-menu';
+          break;
+        }
+        case 'inspection-menu': {
+          const menu = document.querySelector('[role="menu"][aria-label="Inspect"]');
+          const item = Array.from(menu?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
+            (button) => button.textContent?.trim() === 'Mesh inspection',
+          );
+          if (!item || item.disabled)
+            throw new Error('Inspect menu did not offer mesh inspection.');
+          item.click();
+          nextPhase = 'inspection-panel';
+          break;
+        }
+        case 'inspection-panel': {
+          if (!inspectionFrames.current.mesh) return;
+          const panel = verificationInspectionPanel();
+          verificationButton(panel, '[aria-label="Mesh boundaries"] button').click();
+          nextPhase = 'inspection-selected';
+          break;
+        }
+        case 'inspection-selected': {
+          const panel = verificationInspectionPanel();
+          if (
+            verificationButton(panel, '[aria-label="Mesh boundaries"] button').getAttribute(
+              'aria-pressed',
+            ) !== 'true' ||
+            !document.querySelector<HTMLSelectElement>('[aria-label="Model selection mode"]')
+              ?.disabled
+          )
+            throw new Error('Mesh boundary selection did not stay scoped to inspection.');
+          verificationButton(document, '[aria-label="Fit inspected face to view"]').click();
+          const cad = Array.from(panel.querySelectorAll<HTMLButtonElement>('button')).find(
+            (button) => button.textContent?.trim() === 'CAD faces',
+          );
+          if (!cad || cad.disabled) throw new Error('Matched CAD face view was unavailable.');
+          cad.click();
+          nextPhase = 'inspection-cad';
+          break;
+        }
+        case 'inspection-cad': {
+          if (!inspectionFrames.current.cad) return;
+          const panel = verificationInspectionPanel();
+          if (
+            !Array.from(panel.querySelectorAll<HTMLButtonElement>('button')).some(
+              (button) =>
+                button.textContent?.trim() === 'CAD faces' &&
+                button.getAttribute('aria-pressed') === 'true',
+            ) ||
+            verificationButton(panel, '[aria-label="Mesh boundaries"] button').getAttribute(
+              'aria-pressed',
+            ) !== 'true'
+          )
+            throw new Error('CAD correspondence view did not retain its inspected face.');
+          verificationButton(panel, '[aria-label="Clear inspected boundary"]').click();
+          nextPhase = 'inspection-cleared';
+          break;
+        }
+        case 'inspection-cleared': {
+          const panel = verificationInspectionPanel();
+          if (panel.querySelector('[aria-label="Mesh boundaries"] button[aria-pressed="true"]'))
+            throw new Error('Clear inspected boundary did not clear the inspection.');
+          verificationButton(panel, '[aria-label="Close mesh inspection"]').click();
+          nextPhase = 'inspection-closed';
+          break;
+        }
+        case 'inspection-closed': {
+          evidence.current.inspectionUi =
+            inspectionFrames.current.mesh &&
+            inspectionFrames.current.cad &&
+            !document.querySelector('aside[aria-label="Mesh inspection"]');
+          evidence.current.inspectionSelectionIsolated =
+            document.querySelector<HTMLInputElement>('.cad-entity-list input')?.checked === true &&
+            inspectionSource.current === JSON.stringify(p.projectRef.current);
+          if (!evidence.current.inspectionUi || !evidence.current.inspectionSelectionIsolated)
+            throw new Error('Inspection changed authored face selection or project definitions.');
+          trace(
+            'actual inspection panel -> boundary selection -> rendered mesh/CAD -> clear/close',
+          );
           const revision = p.projectRef.current.revision;
           p.undo();
           evidence.current.undoPreserved =
@@ -462,7 +582,9 @@ export function useCadVerificationWorkflow(props: Props) {
         return failed(String(error));
       })
       .finally(() => {
-        // The next phase must observe an unlocked transaction even if React flushed its edits early.
+        // Edits/render callbacks can enqueue an effect with the previous phase.
+        // Revoke that phase before unlocking, even before React commits setPhase.
+        if (nextPhase) scheduledPhase.current = nextPhase;
         pending.current = false;
         if (nextPhase) setPhase(nextPhase);
       });
@@ -476,8 +598,22 @@ export function useCadVerificationWorkflow(props: Props) {
     props.error,
     renderedTick,
   ]);
-  const rendered = (report: { nodes: number; triangles: number; drawCalls: number }) => {
+  const rendered = (report: {
+    nodes: number;
+    triangles: number;
+    drawCalls: number;
+    rendererId?: string;
+    inspectionView?: 'mesh' | 'cad';
+  }) => {
     if (props.enabled && report.nodes > 0 && report.triangles > 0 && report.drawCalls > 0) {
+      if (report.inspectionView) {
+        if (!inspectionFrames.current[report.inspectionView]) {
+          inspectionFrames.current[report.inspectionView] = true;
+          setRenderedTick((tick) => tick + 1);
+        }
+        return;
+      }
+      if (report.rendererId) rendererIds.current.add(report.rendererId);
       if (!previewRendered.current) {
         previewRendered.current = true;
         setRenderedTick((tick) => tick + 1);
@@ -497,4 +633,16 @@ export function useCadVerificationWorkflow(props: Props) {
         : 'cad'
       : null,
   } as const;
+}
+
+function verificationButton(root: ParentNode, selector: string) {
+  const button = root.querySelector<HTMLButtonElement>(selector);
+  if (!button || button.disabled) throw new Error(`Verification control unavailable: ${selector}`);
+  return button;
+}
+
+function verificationInspectionPanel() {
+  const panel = document.querySelector<HTMLElement>('aside[aria-label="Mesh inspection"]');
+  if (!panel) throw new Error('Mesh inspection panel did not open.');
+  return panel;
 }

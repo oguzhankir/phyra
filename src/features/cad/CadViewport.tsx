@@ -5,6 +5,7 @@ import CadViewControls from './CadViewControls';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
 import type { CadAuthoringGuide } from './authoringGuide';
 import { cadBodyAtTriangle, cadLegacyBodyId, cadVisiblePrimitives } from './cadVisibility';
+import { cadSelectionScope, publishCadSelection } from './cadSelectionScope';
 import {
   cadFrameHeight,
   cadBoundsVisible,
@@ -22,6 +23,15 @@ type Graphics = {
   triangleSources: number[];
   segmentSources: number[];
 };
+type RendererResources = {
+  id: string;
+  renderer: THREE.WebGLRenderer;
+  surfaceMaterial: THREE.MeshStandardMaterial;
+  edgeMaterial: THREE.LineBasicMaterial;
+  guideMaterial: THREE.LineDashedMaterial;
+  contextLost: boolean;
+  removeContextListeners: () => void;
+};
 
 export default function CadViewport({
   preview,
@@ -30,6 +40,8 @@ export default function CadViewport({
   stale = false,
   provisional = false,
   inspection = false,
+  inspectionView = 'mesh',
+  onInspectionSelect,
   selected,
   hiddenBodies = [],
   selectionKind,
@@ -45,6 +57,8 @@ export default function CadViewport({
   stale?: boolean;
   provisional?: boolean;
   inspection?: boolean;
+  inspectionView?: 'mesh' | 'cad';
+  onInspectionSelect?: (id: string | null) => void;
   selected: string[];
   hiddenBodies?: string[];
   selectionKind: SelectionKind;
@@ -52,10 +66,17 @@ export default function CadViewport({
   onSelect: (id: string, additive: boolean) => void;
   onClearSelection: () => void;
   dark: boolean;
-  onRendered?: (report: { nodes: number; triangles: number; drawCalls: number }) => void;
+  onRendered?: (report: {
+    nodes: number;
+    triangles: number;
+    drawCalls: number;
+    rendererId: string;
+    inspectionView?: 'mesh' | 'cad';
+  }) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const graphics = useRef<Graphics | null>(null);
+  const resources = useRef<RendererResources | null>(null);
   const savedCamera = useRef<{
     position: THREE.Vector3;
     target: THREE.Vector3;
@@ -71,6 +92,8 @@ export default function CadViewport({
     stale,
     provisional,
     inspection,
+    inspectionView,
+    onInspectionSelect,
     onRendered,
     selected,
     hiddenBodies,
@@ -82,6 +105,8 @@ export default function CadViewport({
     stale,
     provisional,
     inspection,
+    inspectionView,
+    onInspectionSelect,
     onRendered,
     selected,
     hiddenBodies,
@@ -93,25 +118,56 @@ export default function CadViewport({
   const [generation, setGeneration] = useState(0);
   useEffect(() => {
     const host = container.current!;
-    let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      if (!resources.current) {
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const lost = () => {
+          if (resources.current) resources.current.contextLost = true;
+          setFailure('The graphics context was lost. Waiting for the CAD view to recover.');
+        };
+        const restored = () => {
+          if (resources.current) resources.current.contextLost = false;
+          setFailure(null);
+        };
+        renderer.domElement.addEventListener('webglcontextlost', lost);
+        renderer.domElement.addEventListener('webglcontextrestored', restored);
+        resources.current = {
+          id: crypto.randomUUID(),
+          renderer,
+          surfaceMaterial: new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8,
+            metalness: 0.05,
+            side: THREE.DoubleSide,
+          }),
+          edgeMaterial: new THREE.LineBasicMaterial({ vertexColors: true }),
+          guideMaterial: new THREE.LineDashedMaterial({ dashSize: 0.002, gapSize: 0.001 }),
+          contextLost: false,
+          removeContextListeners: () => {
+            renderer.domElement.removeEventListener('webglcontextlost', lost);
+            renderer.domElement.removeEventListener('webglcontextrestored', restored);
+          },
+        };
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.domElement.setAttribute('tabindex', '0');
+        host.appendChild(renderer.domElement);
+      }
     } catch {
       setFailure('The graphics renderer is unavailable. The CAD definition remains editable.');
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const { renderer, surfaceMaterial, edgeMaterial, guideMaterial } = resources.current;
     renderer.setClearColor(dark ? '#202323' : '#f4f5f3');
     renderer.domElement.setAttribute(
       'aria-label',
       inspection
-        ? 'Mesh inspection view. Left drag orbits; right drag pans; wheel zooms. F fits the displayed mesh; 1 to 4 choose standard views. This view does not select CAD topology.'
+        ? onInspectionSelect
+          ? 'Boundary inspection view. Click inspects a face; Escape clears the inspection. Left drag orbits; right drag pans; wheel zooms. F fits the model; Shift+F fits the inspected face; 1 to 4 choose standard views.'
+          : 'Boundary inspection view. Left drag orbits; right drag pans; wheel zooms. F fits the model; 1 to 4 choose standard views.'
         : 'CAD model view. Left drag orbits; right drag pans; wheel zooms; click selects; Shift adds to selection. Alt-click cycles overlapping entities. F fits the model; Shift+F fits selection; 1 to 4 choose standard views.',
     );
-    renderer.domElement.setAttribute('tabindex', '0');
-    setFailure(null);
+    if (!resources.current.contextLost) setFailure(null);
     setHovered(null);
-    host.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.00001, 10000);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -121,7 +177,7 @@ export default function CadViewport({
     const light = new THREE.DirectionalLight(0xffffff, 2);
     light.position.set(2, -3, 5);
     scene.add(light);
-    const disposable: (THREE.BufferGeometry | THREE.Material)[] = [];
+    const disposable: THREE.BufferGeometry[] = [];
     let surface: Graphics['surface'] = null,
       edges: Graphics['edges'] = null;
     const bounds = new THREE.Box3();
@@ -138,15 +194,12 @@ export default function CadViewport({
         new THREE.BufferAttribute(new Float32Array(positions.length), 3),
       );
       geometry.computeVertexNormals();
-      const material = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.8,
-        metalness: 0.05,
-        side: THREE.DoubleSide,
-      });
-      surface = new THREE.Mesh(geometry, material);
+      surfaceMaterial.wireframe = style === 'wireframe';
+      surfaceMaterial.transparent = stale;
+      surfaceMaterial.opacity = stale ? 0.45 : 1;
+      surface = new THREE.Mesh(geometry, surfaceMaterial);
       scene.add(surface);
-      disposable.push(geometry, material);
+      disposable.push(geometry);
       const edgeVertices = new Float32Array(preview.edgeSegments.length * 3);
       for (let i = 0; i < preview.edgeSegments.length; i++) {
         const source = preview.edgeSegments[i] * 3;
@@ -158,10 +211,9 @@ export default function CadViewport({
         'color',
         new THREE.BufferAttribute(new Float32Array(edgeVertices.length), 3),
       );
-      const lineMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
-      edges = new THREE.LineSegments(lineGeometry, lineMaterial);
+      edges = new THREE.LineSegments(lineGeometry, edgeMaterial);
       scene.add(edges);
-      disposable.push(lineGeometry, lineMaterial);
+      disposable.push(lineGeometry);
       const point = new THREE.Vector3();
       for (let i = 0; i < preview.positions.length; i += 3)
         bounds.expandByPoint(
@@ -171,15 +223,11 @@ export default function CadViewport({
     if (guide) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(guide.positions, 3));
-      const material = new THREE.LineDashedMaterial({
-        color: dark ? '#9dbde3' : '#345a8d',
-        dashSize: 0.002,
-        gapSize: 0.001,
-      });
-      const outline = new THREE.LineSegments(geometry, material);
+      guideMaterial.color.set(dark ? '#9dbde3' : '#345a8d');
+      const outline = new THREE.LineSegments(geometry, guideMaterial);
       outline.computeLineDistances();
       scene.add(outline);
-      disposable.push(geometry, material);
+      disposable.push(geometry);
       const point = new THREE.Vector3();
       for (let i = 0; i < guide.positions.length; i += 3)
         bounds.expandByPoint(
@@ -249,14 +297,16 @@ export default function CadViewport({
     graphics.current = { surface, edges, fit, triangleSources: [], segmentSources: [] };
     setGeneration((n) => n + 1);
     const ray = new THREE.Raycaster();
+    const selectionScope = () =>
+      cadSelectionScope({
+        hasPreview: !!preview,
+        stale: callbacks.current.stale,
+        provisional: callbacks.current.provisional,
+        inspection: callbacks.current.inspection,
+        canInspect: !!callbacks.current.onInspectionSelect,
+      });
     const hitEntities = (event: PointerEvent) => {
-      if (
-        !preview ||
-        callbacks.current.stale ||
-        callbacks.current.provisional ||
-        callbacks.current.inspection
-      )
-        return [];
+      if (!preview || selectionScope() === 'none') return [];
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(
         new THREE.Vector2(
@@ -267,7 +317,7 @@ export default function CadViewport({
       );
       // Keep edge targeting at a stable screen-pixel distance through zoom and resize.
       ray.params.Line.threshold = (halfHeight * 12) / (Math.max(rect.height, 1) * camera.zoom);
-      const kind = callbacks.current.selectionKind;
+      const kind = callbacks.current.inspection ? 'face' : callbacks.current.selectionKind;
       if (kind === 'edge' && edges) {
         return ray.intersectObject(edges).flatMap((hit) => {
           if (hit.index == null) return [];
@@ -311,26 +361,26 @@ export default function CadViewport({
         return;
       }
       start = null;
-      if (callbacks.current.inspection || callbacks.current.provisional) return;
+      const scope = selectionScope();
+      if (scope === 'none') return;
       pickCycle = cadNextPick(
         pickCycle,
         hitEntities(event),
         event.clientX,
         event.clientY,
-        callbacks.current.selectionKind,
+        callbacks.current.inspection ? 'face' : callbacks.current.selectionKind,
         event.altKey,
       );
       const entity = pickCycle.ids[pickCycle.index];
       const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-      if (entity) callbacks.current.onSelect(entity, additive);
-      else if (!additive) callbacks.current.onClearSelection();
+      publishCadSelection(scope, entity ?? null, additive, callbacks.current);
     };
     const keyboard = (event: KeyboardEvent) => {
-      const readOnly = callbacks.current.inspection || callbacks.current.provisional;
-      if (event.key === 'Escape' && !readOnly) callbacks.current.onClearSelection();
+      const scope = selectionScope();
+      if (event.key === 'Escape') publishCadSelection(scope, null, false, callbacks.current);
       if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
-        fit(undefined, event.shiftKey && !readOnly && !callbacks.current.stale);
+        fit(undefined, event.shiftKey && scope !== 'none');
       }
       const standard = ({ '1': 'iso', '2': 'front', '3': 'top', '4': 'right' } as const)[
         event.key as '1' | '2' | '3' | '4'
@@ -355,9 +405,15 @@ export default function CadViewport({
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     resize();
-    let frame = 0,
+    let active = true,
+      frame = 0,
       reported = false;
     const render = () => {
+      if (!active) return;
+      if (resources.current?.contextLost) {
+        frame = requestAnimationFrame(render);
+        return;
+      }
       controls.update();
       renderer.render(scene, camera);
       if (
@@ -373,12 +429,26 @@ export default function CadViewport({
           nodes: preview.positions.length / 3,
           triangles: renderer.info.render.triangles,
           drawCalls: renderer.info.render.calls,
+          rendererId: resources.current!.id,
+          inspectionView: callbacks.current.inspection
+            ? callbacks.current.inspectionView
+            : undefined,
         });
       }
       frame = requestAnimationFrame(render);
     };
-    render();
+    // Three waits for KHR_parallel_shader_compile when available, keeping the
+    // document responsive while the GPU prepares its first shader programs.
+    void renderer
+      .compileAsync(scene, camera)
+      .then(() => {
+        if (active) render();
+      })
+      .catch((error: unknown) => {
+        if (active) setFailure(`The CAD view could not be rendered: ${String(error)}`);
+      });
     return () => {
+      active = false;
       savedCamera.current =
         preview || guide
           ? {
@@ -400,10 +470,24 @@ export default function CadViewport({
       renderer.domElement.removeEventListener('pointerleave', leave);
       renderer.domElement.removeEventListener('keydown', keyboard);
       disposable.forEach((item) => item.dispose());
-      renderer.dispose();
-      renderer.domElement.remove();
     };
   }, [preview, guide, dark, inspection]);
+  // Keep the context and compiled materials for the viewport lifetime. Declaring
+  // this cleanup after scene ownership stops frames before releasing the context.
+  useEffect(() => {
+    return () => {
+      const current = resources.current;
+      if (!current) return;
+      current.removeContextListeners();
+      current.surfaceMaterial.dispose();
+      current.edgeMaterial.dispose();
+      current.guideMaterial.dispose();
+      current.renderer.dispose();
+      current.renderer.forceContextLoss();
+      current.renderer.domElement.remove();
+      resources.current = null;
+    };
+  }, []);
   useEffect(() => {
     const current = graphics.current;
     if (!current || !preview) return;
@@ -462,8 +546,9 @@ export default function CadViewport({
     <div className="cad-viewport">
       <div ref={container} className="cad-graphics" />
       <CadViewControls
-        selectionKind={selectionKind}
+        selectionKind={inspection ? 'face' : selectionKind}
         canSelect={!!preview && !stale && !provisional && !inspection}
+        inspection={inspection}
         hasBodies={!!preview?.bodies.length}
         onSelectionKind={onSelectionKind}
         view={view}
@@ -472,7 +557,13 @@ export default function CadViewport({
           graphics.current?.fit(next);
         }}
         onFit={() => graphics.current?.fit()}
-        canFitSelection={!!selected.length && !stale && !provisional && !inspection && !!preview}
+        canFitSelection={
+          !!selected.length &&
+          !stale &&
+          !provisional &&
+          (!inspection || !!onInspectionSelect) &&
+          !!preview
+        }
         onFitSelection={() => graphics.current?.fit(undefined, true)}
         style={style}
         onStyle={setStyle}
@@ -485,7 +576,9 @@ export default function CadViewport({
       )}
       {inspection && (
         <div className="cad-guide-banner" role="status">
-          Mesh inspection · boundary triangles
+          {inspectionView === 'cad'
+            ? 'CAD correspondence · exact faces'
+            : 'Mesh inspection · boundary triangles'}
         </div>
       )}
       {provisional && !inspection && (
@@ -501,7 +594,12 @@ export default function CadViewport({
       <div className="cad-view-footer">
         <span>
           {inspection
-            ? 'Boundary mesh display · drag to orbit or pan'
+            ? (hoverName ??
+              (selected.length
+                ? 'Face inspected · Esc clears inspection'
+                : onInspectionSelect
+                  ? 'Click a face to inspect its correspondence · drag to orbit or pan'
+                  : 'Boundary mesh display · drag to orbit or pan'))
             : (hoverName ??
               (selected.length
                 ? `${selected.length} selected · Esc clears selection`
@@ -509,7 +607,7 @@ export default function CadViewport({
         </span>
         <span>
           F · Fit view
-          {!inspection && !provisional && !stale && !!preview && (
+          {(!inspection || !!onInspectionSelect) && !provisional && !stale && !!preview && (
             <> &nbsp; Shift+F · Fit selection</>
           )}
         </span>

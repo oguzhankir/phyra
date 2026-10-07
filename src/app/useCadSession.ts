@@ -25,7 +25,7 @@ import {
 import { previewCadCommand } from './cadCommandPreview';
 import { previewCadMesh } from './cadMeshPreview';
 import { inspectCadMesh, decodeCadMeshBuffer } from '../platform/desktop/cadMesh';
-import type { CadMeshPreview } from '../domain/geometry/cadMesh';
+import { validateCadMeshSource, type CadMeshPreview } from '../domain/geometry/cadMesh';
 
 type Lease = {
   id: string;
@@ -231,6 +231,11 @@ export function useCadSession(props: Props) {
     const p = callbacks.current;
     if (p.projectRef.current.geometry.kind !== 'cad' || !Number.isFinite(size) || size <= 0)
       return false;
+    const exact = current?.receipt;
+    if (!exact) {
+      p.onError('Rebuild the current exact geometry before inspecting its mesh.');
+      return false;
+    }
     const request = acquire('mesh');
     if (!request) return false;
     try {
@@ -248,6 +253,7 @@ export function useCadSession(props: Props) {
         },
       );
       if (!preview || !owns(request)) return false;
+      validateCadMeshSource(preview.receipt, exact);
       setRetainedMesh({
         projectId: request.snapshot.id,
         source: JSON.stringify(request.snapshot.geometry),

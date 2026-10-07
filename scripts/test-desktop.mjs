@@ -329,7 +329,11 @@ async function verify(mode) {
       !report.cad?.inspectionGenerated ||
       !report.cad?.inspectionPreservedCad ||
       !report.cad?.inspectionInvalidated ||
+      !report.cad?.inspectionCorrespondence ||
+      !report.cad?.inspectionUi ||
+      !report.cad?.inspectionSelectionIsolated ||
       !report.cad?.previewRendered ||
+      !report.cad?.rendererReused ||
       !report.cad?.exportIntegrity ||
       !report.cad?.advancedPersistence ||
       !Array.isArray(report.cad?.advanced) ||

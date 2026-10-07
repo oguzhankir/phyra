@@ -37,7 +37,7 @@ import { cadRebuildIssue, usableSketch } from './featureWorkflow';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import CadViewport from './CadViewport';
 import CadMeshPanel from './CadMeshPanel';
-import { cadMeshDisplay } from '../../domain/geometry/cadMesh';
+import { useCadMeshInspection } from './useCadMeshInspection';
 import CadCommandPanel from './CadCommandPanel';
 import CadFeatureDialog from './CadFeatureDialog';
 import CadFeatureProperties from './CadFeatureProperties';
@@ -76,9 +76,9 @@ export default function CadWorkspace({
   const [treeWidth, setTreeWidth] = useState(238);
   const [detailsSection, setDetailsSection] = useState<CadDetailsSection | null>(null);
   const [meshOpen, setMeshOpen] = useState(false);
-  const meshDisplay = useMemo(
-    () => (model.meshPreview ? cadMeshDisplay(model.meshPreview) : null),
-    [model.meshPreview],
+  const meshInspection = useCadMeshInspection(
+    model.meshPreview ?? null,
+    evaluation?.preview ?? null,
   );
   const layout = useRef<HTMLDivElement>(null);
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
@@ -917,20 +917,22 @@ export default function CadWorkspace({
               <CadViewport
                 preview={
                   inspectingMesh
-                    ? meshDisplay
+                    ? meshInspection.preview
                     : (draft?.preview?.preview ??
                       evaluation?.preview ??
                       model.retainedPreview ??
                       null)
                 }
                 inspection={inspectingMesh}
+                inspectionView={meshInspection.view}
+                onInspectionSelect={inspectingMesh ? meshInspection.selectEntity : undefined}
                 provisional={!!draft?.preview}
                 guide={!inspectingMesh && !evaluation && !draft?.preview ? authoringGuide : null}
                 definitionPresent={!!geometry}
                 stale={!inspectingMesh && !evaluation && !draft?.preview && !!model.retainedPreview}
-                selected={inspectingMesh ? [] : selected}
+                selected={inspectingMesh ? meshInspection.selected : selected}
                 hiddenBodies={inspectingMesh ? [] : hiddenBodies}
-                selectionKind={selectionKind}
+                selectionKind={inspectingMesh ? 'face' : selectionKind}
                 onSelectionKind={(kind) => {
                   setSelectionKind(kind);
                   setSelected([]);
@@ -938,7 +940,7 @@ export default function CadWorkspace({
                 onSelect={chooseEntity}
                 onClearSelection={() => setSelected([])}
                 dark={model.dark}
-                onRendered={!inspectingMesh && evaluation ? model.onRendered : undefined}
+                onRendered={evaluation ? model.onRendered : undefined}
               />
             </>
           )}
@@ -989,6 +991,7 @@ export default function CadWorkspace({
           <CadMeshPanel
             key={`${project.id}:${project.displayUnits}`}
             mesh={model.meshPreview ?? null}
+            inspection={meshInspection}
             units={project.displayUnits}
             defaultSize={defaultMeshSize}
             busy={!!model.meshBusy}
