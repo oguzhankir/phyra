@@ -23,11 +23,11 @@ SELECTION_WHITESPACE = (
 )
 
 
-@lru_cache(maxsize=6)
-def project_validator(version: int = 6) -> Draft7Validator:
+@lru_cache(maxsize=7)
+def project_validator(version: int = 7) -> Draft7Validator:
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
-    filename = "project.schema.json" if version == 6 else f"project-v{version}.schema.json"
+    filename = "project.schema.json" if version == 7 else f"project-v{version}.schema.json"
     schema = json.loads((root / "contracts" / filename).read_text(encoding="utf-8"))
     Draft7Validator.check_schema(schema)
     return Draft7Validator(schema)
@@ -100,8 +100,8 @@ def _validate_named_selections(project: dict[str, Any]) -> None:
 def validate_project(project: Any) -> dict[str, Any]:
     _finite_tree(project)
     version = project.get("schemaVersion") if isinstance(project, dict) else None
-    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6):
-        raise EngineError("unsupported-version", "Supported project versions are 1 through 6.")
+    if type(version) is not int or version not in (1, 2, 3, 4, 5, 6, 7):
+        raise EngineError("unsupported-version", "Supported project versions are 1 through 7.")
     errors = sorted(project_validator(version).iter_errors(project), key=lambda e: str(e.path))
     if errors:
         error = errors[0]
@@ -126,7 +126,7 @@ def validate_project(project: Any) -> dict[str, Any]:
     ):
         validate_physical_project(project, version)
     if project["geometry"]["kind"] == "cad":
-        validate_cad_geometry(project["geometry"])
+        validate_cad_geometry(project["geometry"], version)
     return project
 
 
@@ -162,10 +162,10 @@ def numerical_view(project: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
-def validate_cad_geometry(geometry: Any) -> dict[str, Any]:
+def validate_cad_geometry(geometry: Any, version: int = 7) -> dict[str, Any]:
     """Bounded canonical design intent, without implying mesher/solver support."""
     _finite_tree(geometry)
-    schema = project_validator(6).schema
+    schema = project_validator(version).schema
     validator = Draft7Validator(
         {"$ref": "#/definitions/CadGeometry", "definitions": schema["definitions"]}
     )
@@ -184,10 +184,39 @@ def validate_cad_geometry(geometry: Any) -> dict[str, Any]:
     for feature in geometry["features"]:
         if feature["id"] in features:
             raise EngineError("invalid-geometry", "CAD feature identities must be unique.")
-        for key in ("sketchId", "inputId", "targetId", "toolId", "leftId", "rightId"):
+        for key in (
+            "sketchId",
+            "inputId",
+            "targetId",
+            "toolId",
+            "leftId",
+            "rightId",
+            "profileId",
+            "spineId",
+        ):
             if key in feature and feature[key] not in features:
                 raise EngineError(
                     "invalid-geometry", "CAD dependencies must refer to an earlier feature."
+                )
+        if any(section not in features for section in feature.get("sectionIds", [])):
+            raise EngineError("invalid-geometry", "CAD sections must refer to an earlier feature.")
+        if feature["kind"] in ("loft", "sweep", "assembly") and not feature["name"].strip(
+            SELECTION_WHITESPACE
+        ):
+            raise EngineError("invalid-geometry", "CAD feature names must not be blank.")
+        component_ids: set[str] = set()
+        for component in feature.get("components", []):
+            if component["id"] in component_ids:
+                raise EngineError(
+                    "invalid-geometry",
+                    "CAD component identities must be unique within an assembly.",
+                )
+            component_ids.add(component["id"])
+            if not component["name"].strip(SELECTION_WHITESPACE):
+                raise EngineError("invalid-geometry", "CAD component names must not be blank.")
+            if component["featureId"] not in features:
+                raise EngineError(
+                    "invalid-geometry", "CAD components must refer to an earlier feature."
                 )
         if "assetId" in feature and feature["assetId"] not in assets:
             raise EngineError("invalid-geometry", "CAD import refers to a missing source.")
@@ -200,11 +229,11 @@ def validate_cad_geometry(geometry: Any) -> dict[str, Any]:
 def migrate_project(project: Any) -> dict[str, Any]:
     """Validate legacy inputs before explicitly upgrading their study contract."""
     validate_project(project)
-    if project["schemaVersion"] == 6:
+    if project["schemaVersion"] == 7:
         return project
     source_version = project["schemaVersion"]
     upgraded = deepcopy(project)
-    upgraded["schemaVersion"] = 6
+    upgraded["schemaVersion"] = 7
     if source_version < 3:
         upgraded["namedSelections"] = []
     if source_version == 1:
@@ -240,10 +269,21 @@ def fingerprint(project: dict[str, Any]) -> str:
         for key, value in project.items()
         if key not in {"name", "revision", "displayUnits", "namedSelections"}
     }
-    # v6 separates CAD documents from studies. Existing numerical definitions
-    # retain exactly the v5 physical contract and its independently checked cache.
+    # Unchanged v6 CAD keeps its original physical digest. New operations and
+    # explicit sketch purposes retain the distinct v7 authoring contract.
     if (
-        canonical.get("schemaVersion") == 6
+        canonical.get("schemaVersion") == 7
+        and canonical["geometry"]["kind"] == "cad"
+        and not any(
+            feature["kind"] in ("loft", "sweep", "assembly") or "purpose" in feature
+            for feature in canonical["geometry"]["features"]
+        )
+    ):
+        canonical["schemaVersion"] = 6
+    # Empty/CAD documents separated from studies in v6. Existing numerical
+    # definitions retain exactly the v5 physical contract and checked cache.
+    if (
+        canonical.get("schemaVersion") in (6, 7)
         and canonical["geometry"]["kind"] in ("box", "cylinder", "bracket", "profile")
         and canonical["study"] is not None
     ):

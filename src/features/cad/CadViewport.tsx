@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Maximize, MousePointer2 } from 'lucide-react';
 import type { CadPreview } from '../../domain/geometry/cadPreview';
 import type { CadAuthoringGuide } from './authoringGuide';
+import { cadBodyAtTriangle, cadLegacyBodyId, cadVisiblePrimitives } from './cadVisibility';
 
 type SelectionKind = 'face' | 'edge' | 'body';
 type View = 'iso' | 'front' | 'top' | 'right';
@@ -11,6 +12,8 @@ type Graphics = {
   surface: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null;
   edges: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null;
   fit: (view?: View) => void;
+  triangleSources: number[];
+  segmentSources: number[];
 };
 
 export default function CadViewport({
@@ -19,6 +22,7 @@ export default function CadViewport({
   definitionPresent = false,
   stale = false,
   selected,
+  hiddenBodies = [],
   selectionKind,
   onSelectionKind,
   onSelect,
@@ -31,6 +35,7 @@ export default function CadViewport({
   definitionPresent?: boolean;
   stale?: boolean;
   selected: string[];
+  hiddenBodies?: string[];
   selectionKind: SelectionKind;
   onSelectionKind: (kind: SelectionKind) => void;
   onSelect: (id: string, additive: boolean) => void;
@@ -175,7 +180,7 @@ export default function CadViewport({
       camera.zoom = savedCamera.current.zoom;
       controls.target.copy(savedCamera.current.target);
     }
-    graphics.current = { surface, edges, fit };
+    graphics.current = { surface, edges, fit, triangleSources: [], segmentSources: [] };
     setGeneration((n) => n + 1);
     const ray = new THREE.Raycaster();
     const hitEntity = (event: PointerEvent) => {
@@ -193,17 +198,21 @@ export default function CadViewport({
       if (kind === 'edge' && edges) {
         const hit = ray.intersectObject(edges)[0];
         return hit?.index != null
-          ? preview.edges[preview.segmentEdges[Math.floor(hit.index / 2)]]
+          ? preview.edges[
+              preview.segmentEdges[
+                graphics.current?.segmentSources[Math.floor(hit.index / 2)] ??
+                  Math.floor(hit.index / 2)
+              ]
+            ]
           : null;
       }
       if (surface) {
         const hit = ray.intersectObject(surface)[0];
-        if (hit?.faceIndex != null)
-          return kind === 'body'
-            ? preview.bodies.length === 1
-              ? preview.bodies[0]
-              : null
-            : preview.faces[preview.triangleFaces[hit.faceIndex]];
+        if (hit?.faceIndex != null) {
+          const source = graphics.current?.triangleSources[hit.faceIndex] ?? hit.faceIndex;
+          const face = preview.faces[preview.triangleFaces[source]];
+          return kind === 'body' ? cadBodyAtTriangle(preview, source) : face;
+        }
       }
       return null;
     };
@@ -308,6 +317,17 @@ export default function CadViewport({
   useEffect(() => {
     const current = graphics.current;
     if (!current || !preview) return;
+    const visible = cadVisiblePrimitives(preview, hiddenBodies);
+    current.triangleSources = visible.triangles;
+    current.segmentSources = visible.segments;
+    current.surface?.geometry.setIndex(
+      visible.triangles.flatMap((i) => [i * 3, i * 3 + 1, i * 3 + 2]),
+    );
+    current.edges?.geometry.setIndex(visible.segments.flatMap((i) => [i * 2, i * 2 + 1]));
+  }, [preview, hiddenBodies, generation]);
+  useEffect(() => {
+    const current = graphics.current;
+    if (!current || !preview) return;
     const normal = new THREE.Color(dark ? '#aebbb6' : '#b8c8c2'),
       edgeNormal = new THREE.Color(dark ? '#546b61' : '#455e54');
     const picked = new THREE.Color('#c8994a'),
@@ -315,10 +335,11 @@ export default function CadViewport({
     const colorFor = (id: string, base: THREE.Color) =>
       selected.includes(id) ? picked : hovered === id ? hover : base;
     if (current.surface) {
+      const legacyBodyId = cadLegacyBodyId(preview);
       const colors = current.surface.geometry.getAttribute('color') as THREE.BufferAttribute;
       for (let i = 0; i < preview.triangleFaces.length; i++) {
         const face = preview.faces[preview.triangleFaces[i]].id;
-        const body = preview.bodies.length === 1 ? preview.bodies[0].id : '';
+        const body = preview.faces[preview.triangleFaces[i]].bodyId ?? legacyBodyId ?? '';
         const color =
           selected.includes(body) || hovered === body
             ? colorFor(body, normal)
@@ -357,10 +378,10 @@ export default function CadViewport({
             <button
               key={kind}
               aria-pressed={selectionKind === kind}
-              disabled={!preview || stale || (kind === 'body' && preview.bodies.length !== 1)}
+              disabled={!preview || stale || (kind === 'body' && preview.bodies.length === 0)}
               onClick={() => onSelectionKind(kind)}
             >
-              {kind === 'face' ? 'Faces' : kind === 'edge' ? 'Edges' : 'Body'}
+              {kind === 'face' ? 'Faces' : kind === 'edge' ? 'Edges' : 'Bodies'}
             </button>
           ))}
         </div>

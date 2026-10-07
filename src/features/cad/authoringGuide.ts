@@ -39,6 +39,17 @@ export function cadAuthoringGuide(geometry: CadGeometry): CadAuthoringGuide | nu
     const feature = features.get(id);
     if (!feature) return [];
     if (feature.kind === 'sketch') return bounded(sketchSegments(feature));
+    if (feature.kind === 'loft')
+      return bounded(feature.sectionIds.flatMap((section) => visit(section, depth + 1)));
+    if (feature.kind === 'sweep')
+      return bounded([
+        ...visit(feature.profileId, depth + 1),
+        ...visit(feature.spineId, depth + 1),
+      ]);
+    if (feature.kind === 'assembly')
+      return bounded(
+        feature.components.flatMap((component) => visit(component.featureId, depth + 1)),
+      );
     if (feature.kind === 'box') {
       const p: Point3[] = [
         [0, 0, 0],
@@ -139,7 +150,7 @@ export function cadAuthoringGuide(geometry: CadGeometry): CadAuthoringGuide | nu
   const label =
     feature.kind === 'sketch'
       ? 'Saved sketch outline'
-      : ['boolean', 'fillet', 'chamfer', 'revolve'].includes(feature.kind)
+      : ['boolean', 'fillet', 'chamfer', 'revolve', 'loft', 'sweep'].includes(feature.kind)
         ? 'Input outlines · operation awaits exact rebuild'
         : 'Authoring outline · exact rebuild required';
   return { positions: new Float64Array(segments.flat(2)), label, truncated };

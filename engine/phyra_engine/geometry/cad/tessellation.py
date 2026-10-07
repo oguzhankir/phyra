@@ -13,7 +13,13 @@ from OCP.TopLoc import TopLoc_Location  # type: ignore[import-untyped]
 from OCP.TopoDS import TopoDS  # type: ignore[import-untyped]
 
 from phyra_engine.errors import EngineError
-from phyra_engine.geometry.cad.topology import KERNEL_PER_METRE, Entity, bounds, entities
+from phyra_engine.geometry.cad.topology import (
+    KERNEL_PER_METRE,
+    BodyInstance,
+    Entity,
+    bounds,
+    entities,
+)
 
 MAX_POINTS = 250_000
 MAX_DISPLAY_TRIANGLES = 250_000
@@ -28,7 +34,9 @@ class CadDisplay:
     deflection: float
 
 
-def tessellate(shape: Any, owner_id: str) -> CadDisplay:
+def tessellate(
+    shape: Any, owner_id: str, body_instances: tuple[BodyInstance, ...] = ()
+) -> CadDisplay:
     low, high = np.asarray(bounds(shape))
     extent = float(np.max(high - low))
     if not np.isfinite(extent) or not 1e-9 <= extent <= 10_000:
@@ -36,7 +44,9 @@ def tessellate(shape: Any, owner_id: str) -> CadDisplay:
             "unsupported-cad-scale", "CAD display requires an extent between 1 nm and 10 km."
         )
     deflection = max(extent / 1000, 1e-9)
-    faces, edges, bodies = (entities(shape, owner_id, kind) for kind in ("face", "edge", "body"))
+    faces, edges, bodies = (
+        entities(shape, owner_id, kind, body_instances) for kind in ("face", "edge", "body")
+    )
     mesher = BRepMesh_IncrementalMesh(shape, deflection * KERNEL_PER_METRE, False, 0.3, False)
     if not mesher.IsDone():
         raise EngineError("cad-display-failed", "The exact CAD shape could not be tessellated.")

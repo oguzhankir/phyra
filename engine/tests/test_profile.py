@@ -321,7 +321,7 @@ def test_v2_definition_is_validated_before_migration_and_preserved():
     original.pop("namedSelections")
     retained = deepcopy(original)
     upgraded = migrate_project(original)
-    assert original == retained and upgraded["schemaVersion"] == 6
+    assert original == retained and upgraded["schemaVersion"] == 7
     expected_study = deepcopy(original["study"])
     expected_study["solver"]["pinn"]["formulation"] = "strong-form"
     assert upgraded["study"] == expected_study

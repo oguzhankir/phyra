@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cadPreview, type CadArrayDescriptor } from './cadPreview';
+import { cadPreview, type CadArrayDescriptor, type CadEntity } from './cadPreview';
 
 function fixture() {
   const buffer = new ArrayBuffer(256);
@@ -34,6 +34,42 @@ function fixture() {
   };
 }
 describe('CAD display buffers and durable entity association', () => {
+  it('preserves Unicode labels and rejects unavailable bodies and mismatched component paths', () => {
+    const { receipt, buffer } = fixture();
+    const body: CadEntity = {
+      id: 'body_ref',
+      name: '🧩'.repeat(200),
+      identity: 'content-reference',
+      componentId: 'left',
+      componentPath: ['left', 'nested'],
+      sourceFeatureId: 'placed_box',
+    };
+    const attached = {
+      ...receipt,
+      bodies: [body],
+      faces: [
+        {
+          ...receipt.faces[0],
+          bodyId: body.id,
+          componentId: 'left',
+          componentPath: ['left', 'nested'],
+        },
+      ],
+    };
+    expect(cadPreview(attached, buffer).bodies[0].name).toBe(body.name);
+    expect(() =>
+      cadPreview({ ...attached, faces: [{ ...attached.faces[0], bodyId: 'missing' }] }, buffer),
+    ).toThrow('unavailable body');
+    expect(() =>
+      cadPreview(
+        { ...attached, faces: [{ ...attached.faces[0], componentPath: ['right'] }] },
+        buffer,
+      ),
+    ).toThrow('component identity');
+    expect(() =>
+      cadPreview({ ...attached, bodies: [{ ...body, name: `${body.name}x` }] }, buffer),
+    ).toThrow('metadata');
+  });
   it('retains authoritative float64 SI coordinates and maps every displayed primitive to its exact reference', () => {
     const { receipt, buffer } = fixture();
     const preview = cadPreview(receipt, buffer);

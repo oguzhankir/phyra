@@ -30,6 +30,16 @@ import { sketchReadiness } from './sketchInteractions';
 import { cadRebuildIssue, usableSketch } from './featureWorkflow';
 import { useModalFocus } from '../../shared/ui/useModalFocus';
 import CadViewport from './CadViewport';
+import CadFeatureDialog from './CadFeatureDialog';
+import CadAdvancedFields from './CadAdvancedFields';
+import {
+  bodyInputs,
+  cadId,
+  componentPlacement,
+  pathIssue,
+  profileInputs,
+  type AdvancedKind,
+} from './advancedFeatures';
 import { cadAuthoringGuide } from './authoringGuide';
 import type { CadWorkspaceModel } from './model';
 import './CadWorkspace.css';
@@ -47,6 +57,9 @@ const labels: Record<CadFeature['kind'], string> = {
   fillet: 'Fillet',
   chamfer: 'Chamfer',
   transform: 'Move / rotate',
+  loft: 'Loft',
+  sweep: 'Sweep',
+  assembly: 'Assembly',
 };
 
 export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
@@ -55,7 +68,10 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   const geometry = project.geometry.kind === 'cad' ? project.geometry : null;
   const [sketchDirty, setSketchDirty] = useState(false);
   const [editingSketch, setEditingSketch] = useState<string | null>(null);
+  const [advancedTool, setAdvancedTool] = useState<AdvancedKind | null>(null);
+  const [hiddenBodies, setHiddenBodies] = useState<string[]>([]);
   const [newSketchPlane, setNewSketchPlane] = useState<'xy' | 'xz' | 'yz' | null>(null);
+  const [newSketchPurpose, setNewSketchPurpose] = useState<'profile' | 'path'>('profile');
   const planeDialog = useRef<HTMLDivElement>(null);
   useModalFocus(!!newSketchPlane, () => setNewSketchPlane(null), 'cad-plane-title', planeDialog);
   const [autoRebuild, setAutoRebuild] = useState(model.desktop);
@@ -66,6 +82,7 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
   evaluateRef.current = model.evaluate;
   useEffect(() => {
     setSelected([]);
+    setHiddenBodies([]);
   }, [evaluation?.preview]);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [selectionKind, setSelectionKind] = useState<'face' | 'edge' | 'body'>('face');
@@ -161,9 +178,15 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
     if (editingSketch && !activeSketch) setEditingSketch(null);
   }, [editingSketch, activeSketch]);
   const sketches = geometry?.features.filter((item) => item.kind === 'sketch') ?? [];
-  const shapes = geometry?.features.filter((item) => item.kind !== 'sketch') ?? [];
+  const shapes = bodyInputs(geometry?.features ?? []);
+  const earlier =
+    geometry?.features.slice(
+      0,
+      geometry.features.findIndex((item) => item.id === feature?.id),
+    ) ?? [];
   const sourceSketch = usableSketch(sketches, feature?.kind === 'sketch' ? feature.id : undefined);
   const rebuildIssue = geometry ? cadRebuildIssue(geometry) : null;
+  const componentOutput = evaluation?.preview.bodies.some((body) => body.componentPath?.length);
   const selectedEdges =
     evaluation?.preview.edges
       .filter((edge) => selected.includes(edge.id) && edge.identity !== 'ambiguous')
@@ -326,7 +349,13 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
           >
             <Circle size={16} /> Cylinder
           </button>
-          <button disabled={model.locked || !!activeSketch} onClick={() => setNewSketchPlane('xy')}>
+          <button
+            disabled={model.locked || !!activeSketch}
+            onClick={() => {
+              setNewSketchPurpose('profile');
+              setNewSketchPlane('xy');
+            }}
+          >
             <Square size={16} /> New sketch
           </button>
           <span className="toolbar-divider" />
@@ -376,7 +405,12 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             <Scissors size={16} /> Boolean
           </button>
           <button
-            disabled={model.locked || !output || !evaluation}
+            disabled={model.locked || !output || !evaluation?.bodyCount || componentOutput}
+            title={
+              componentOutput
+                ? 'Apply fillets to a source part before assembling it.'
+                : 'Round edges on the current solid output'
+            }
             onClick={() => {
               setSelectionKind('edge');
               setSelected([]);
@@ -386,7 +420,12 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             Fillet
           </button>
           <button
-            disabled={model.locked || !output || !evaluation}
+            disabled={model.locked || !output || !evaluation?.bodyCount || componentOutput}
+            title={
+              componentOutput
+                ? 'Apply chamfers to a source part before assembling it.'
+                : 'Bevel edges on the current solid output'
+            }
             onClick={() => {
               setSelectionKind('edge');
               setSelected([]);
@@ -396,13 +435,13 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             Chamfer
           </button>
           <button
-            disabled={model.locked || !shapes.length}
+            disabled={model.locked || !feature}
             onClick={() =>
               add({
                 id: freshId('transform'),
                 name: 'Move / rotate',
                 kind: 'transform',
-                inputId: feature && feature.kind !== 'sketch' ? feature.id : shapes.at(-1)!.id,
+                inputId: feature!.id,
                 translation: [0, 0, 0],
                 axisOrigin: [0, 0, 0],
                 axisDirection: [0, 0, 1],
@@ -421,11 +460,59 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
           </button>
         </div>
       )}
+      {!activeSketch && (
+        <div
+          className="cad-ribbon cad-advanced-ribbon"
+          role="toolbar"
+          aria-label="Surface and assembly tools"
+        >
+          <strong>Surface & assembly</strong>
+          <button
+            disabled={
+              model.locked ||
+              dimension === '2d' ||
+              !geometry ||
+              profileInputs(geometry.features).length < 2
+            }
+            title="Connect two or more placed sketch sections"
+            onClick={() => setAdvancedTool('loft')}
+          >
+            <Layers size={16} /> Loft
+          </button>
+          <button
+            disabled={model.locked || dimension === '2d' || !geometry}
+            title="Sweep a closed profile along a connected open sketch"
+            onClick={() => setAdvancedTool('sweep')}
+          >
+            <Move3D size={16} /> Sweep
+          </button>
+          <button
+            disabled={
+              model.locked ||
+              dimension === '2d' ||
+              !geometry ||
+              !bodyInputs(geometry.features).length
+            }
+            title="Group separate component instances without fusing their bodies"
+            onClick={() => setAdvancedTool('assembly')}
+          >
+            <Box size={16} /> Assembly
+          </button>
+          <span>
+            Place sketches and parts with Move / rotate. Select a feature in the tree to edit it.
+          </span>
+        </div>
+      )}
       {activeSketch && (
         <div className="cad-sketch-session" role="toolbar" aria-label="Sketch session">
           <div>
             <strong>Editing {activeSketch.name}</strong>
-            <span>{activeSketch.plane.toUpperCase()} plane · draw and constrain your profile</span>
+            <span>
+              {activeSketch.plane.toUpperCase()} plane ·{' '}
+              {activeSketch.purpose === 'path'
+                ? 'draw a connected open path for Sweep'
+                : 'draw and constrain your profile'}
+            </span>
           </div>
           <button
             className="primary"
@@ -472,15 +559,20 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                     disabled={sketchDirty || model.locked}
                     onClick={() => {
                       setChosenId(item.id);
-                      setEditingSketch(item.kind === 'sketch' ? item.id : null);
+                      setEditingSketch(null);
                       setSelected([]);
+                    }}
+                    onDoubleClick={() => {
+                      if (item.kind === 'sketch') setEditingSketch(item.id);
                     }}
                   >
                     <small>{index + 1}</small>
                     <span>
                       {item.name}
                       <em>
-                        {labels[item.kind]}
+                        {item.kind === 'sketch' && item.purpose === 'path'
+                          ? 'Sweep path'
+                          : labels[item.kind]}
                         {item.id === geometry.outputFeatureId ? ' · Output' : ''}
                       </em>
                     </span>
@@ -538,6 +630,37 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                   </label>
                 ))}
               </div>
+              {evaluation.preview.bodies.length > 0 && (
+                <div className="cad-body-controls">
+                  <button
+                    className="secondary full"
+                    disabled={
+                      !selected.some((id) =>
+                        evaluation.preview.bodies.some((body) => body.id === id),
+                      )
+                    }
+                    onClick={() =>
+                      setHiddenBodies(
+                        evaluation.preview.bodies
+                          .filter((body) => !selected.includes(body.id))
+                          .map((body) => body.id),
+                      )
+                    }
+                  >
+                    Isolate selected bodies
+                  </button>
+                  <button
+                    className="secondary full"
+                    disabled={!hiddenBodies.length}
+                    onClick={() => setHiddenBodies([])}
+                  >
+                    Show all bodies
+                  </button>
+                  <p className="cad-hint">
+                    Visibility affects only this view. Select Bodies, then click a component.
+                  </p>
+                </div>
+              )}
             </>
           )}
         </aside>
@@ -631,6 +754,7 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                 definitionPresent={!!geometry}
                 stale={!evaluation && !!model.retainedPreview}
                 selected={selected}
+                hiddenBodies={hiddenBodies}
                 selectionKind={selectionKind}
                 onSelectionKind={(kind) => {
                   setSelectionKind(kind);
@@ -647,7 +771,9 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             {model.busy
               ? 'Evaluating exact geometry in the local worker…'
               : activeSketch
-                ? 'Completed drawing gestures are saved in the project. Finish sketch to rebuild the exact geometry.'
+                ? activeSketch.purpose === 'path'
+                  ? 'Completed drawing gestures are saved. Finish sketch, then choose Sweep with a closed profile.'
+                  : 'Completed drawing gestures are saved in the project. Finish sketch to rebuild the exact geometry.'
                 : evaluation
                   ? `${evaluation.kernel} · ${evaluation.bodyCount} bodies · ${evaluation.faceCount} faces · ${evaluation.edgeCount} edges`
                   : (rebuildIssue ??
@@ -810,14 +936,76 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                       {feature.plane.toUpperCase()} plane · {feature.sketch.entities.length}{' '}
                       entities · {feature.sketch.constraints.length} constraints
                     </p>
-                    {sketchReadiness(feature.sketch).issue && (
+                    <label className="field-label">
+                      <span>Sketch purpose</span>
+                      <Select
+                        aria-label="Sketch purpose"
+                        value={feature.purpose ?? 'profile'}
+                        options={[
+                          { value: 'profile', label: 'Closed profile' },
+                          { value: 'path', label: 'Sweep path' },
+                        ]}
+                        onChange={(value) =>
+                          update((next) => {
+                            if (next.kind === 'sketch') {
+                              if (value === 'path') next.purpose = 'path';
+                              else delete next.purpose;
+                            }
+                          })
+                        }
+                      />
+                    </label>
+                    {feature.purpose === 'path' ? (
                       <p className="cad-hint">
-                        {sketchReadiness(feature.sketch).issue} The sketch remains saved and
-                        editable.
+                        {pathIssue(feature.sketch) ??
+                          'Path connected. Choose Sweep and pair it with a closed profile.'}
                       </p>
+                    ) : (
+                      sketchReadiness(feature.sketch).issue && (
+                        <p className="cad-hint">
+                          {sketchReadiness(feature.sketch).issue} The sketch remains saved and
+                          editable.
+                        </p>
+                      )
                     )}
                     <button className="primary" onClick={() => setEditingSketch(feature.id)}>
                       Edit sketch
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={
+                        dimension === '2d' ||
+                        feature.purpose === 'path' ||
+                        !!sketchReadiness(feature.sketch).issue ||
+                        model.draftBlocked
+                      }
+                      onClick={() => {
+                        const copy = structuredClone(feature);
+                        copy.id = cadId('sketch');
+                        copy.name = `${feature.name} section`;
+                        const placement: Extract<CadFeature, { kind: 'transform' }> = {
+                          id: cadId('transform'),
+                          name: `${copy.name} placement`,
+                          kind: 'transform',
+                          inputId: copy.id,
+                          translation:
+                            feature.plane === 'xy'
+                              ? [0, 0, 0.05]
+                              : feature.plane === 'xz'
+                                ? [0, -0.05, 0]
+                                : [0.05, 0, 0],
+                          axisOrigin: [0, 0, 0],
+                          axisDirection: [0, 0, 1],
+                          angle: 0,
+                        };
+                        model.editGeometry((next) => {
+                          next.features.push(copy, placement);
+                          next.outputFeatureId = placement.id;
+                        });
+                        setChosenId(placement.id);
+                      }}
+                    >
+                      Duplicate as placed section
                     </button>
                   </>
                 )}
@@ -829,6 +1017,19 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                         'input shape'}
                       .
                     </p>
+                    <label className="field-label">
+                      <span>Source geometry</span>
+                      <Select
+                        aria-label="Placement source geometry"
+                        value={feature.inputId}
+                        options={earlier.map((item) => ({ value: item.id, label: item.name }))}
+                        onChange={(id) =>
+                          update((next) => {
+                            if (next.kind === 'transform') next.inputId = id;
+                          })
+                        }
+                      />
+                    </label>
                     {([0, 1, 2] as const).map((axis) => (
                       <NumberInput
                         commitMode="finish"
@@ -887,6 +1088,39 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                       ))}
                     </details>
                   </>
+                )}
+                {(feature.kind === 'loft' ||
+                  feature.kind === 'sweep' ||
+                  feature.kind === 'assembly') && (
+                  <CadAdvancedFields
+                    value={feature}
+                    features={earlier}
+                    onChange={(replacement) => update((next) => Object.assign(next, replacement))}
+                    onPlaceComponent={
+                      feature.kind === 'assembly'
+                        ? (id) => {
+                            const prepared = componentPlacement(geometry!.features, feature, id);
+                            if (!prepared) return;
+                            const { placement, insert } = prepared;
+                            if (!insert) {
+                              setChosenId(placement.id);
+                              return;
+                            }
+                            model.editGeometry((next) => {
+                              const index = next.features.findIndex(
+                                (item) => item.id === feature.id,
+                              );
+                              next.features.splice(index, 0, placement);
+                              const assembly = next.features[index + 1];
+                              if (assembly.kind === 'assembly')
+                                assembly.components.find((item) => item.id === id)!.featureId =
+                                  placement.id;
+                            });
+                            setChosenId(placement.id);
+                          }
+                        : undefined
+                    }
+                  />
                 )}
                 <button className="secondary full" disabled={sketchDirty} onClick={deleteFeature}>
                   <Trash2 size={14} /> Delete feature
@@ -978,10 +1212,23 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
           aria-labelledby="cad-plane-title"
         >
           <div ref={planeDialog} className="cad-plane-dialog modal">
-            <h2 id="cad-plane-title">Choose a sketch plane</h2>
+            <h2 id="cad-plane-title">Create a sketch</h2>
+            <label className="field-label">
+              <span>Sketch purpose</span>
+              <Select
+                aria-label="New sketch purpose"
+                value={newSketchPurpose}
+                options={[
+                  { value: 'profile', label: 'Closed profile' },
+                  { value: 'path', label: 'Sweep path' },
+                ]}
+                onChange={(value) => setNewSketchPurpose(value as 'profile' | 'path')}
+              />
+            </label>
             <p>
-              Draw a 2D profile on a principal plane. You can extrude or revolve it after closing
-              the profile.
+              {newSketchPurpose === 'path'
+                ? 'Draw one connected open chain with Line, Polyline or Arc. Its first-created endpoint is the sweep start; place your profile perpendicular to the path there.'
+                : 'Draw a closed profile on a principal plane for Extrude, Revolve or Loft. Place sections with Move / rotate.'}
             </p>
             <div className="cad-plane-options">
               {(['xy', 'xz', 'yz'] as const).map((plane) => (
@@ -1010,6 +1257,7 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
                     name: `Sketch ${sketches.length + 1}`,
                     kind: 'sketch',
                     plane: newSketchPlane,
+                    ...(newSketchPurpose === 'path' ? { purpose: 'path' as const } : {}),
                     sketch: { points: [], entities: [], constraints: [], loops: [] },
                   });
                   setNewSketchPlane(null);
@@ -1020,6 +1268,15 @@ export default function CadWorkspace({ model }: { model: CadWorkspaceModel }) {
             </div>
           </div>
         </div>
+      )}
+      {advancedTool && geometry && (
+        <CadFeatureDialog
+          kind={advancedTool}
+          features={geometry.features}
+          selectedId={feature?.id}
+          onCreate={add}
+          onClose={() => setAdvancedTool(null)}
+        />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Check  # type: ignore[import-untyped]
 from OCP.BRepBuilderAPI import (  # type: ignore[import-untyped]
     BRepBuilderAPI_MakeEdge,
     BRepBuilderAPI_MakeFace,
@@ -35,6 +36,50 @@ MODELING_TOLERANCE_SI = 1e-10  # OCCT Precision::Confusion = 1e-7 working millim
 class _LoopWire:
     shape: Any
     signed_area: float
+
+
+def _curve(
+    item: SketchEntity,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    points: dict[str, tuple[float, float]],
+    plane: str,
+    reverse: bool,
+    origin: tuple[float, float],
+) -> tuple[Any, float]:
+    if math.dist(start, end) <= MODELING_TOLERANCE_SI:
+        raise EngineError("invalid-cad-sketch", "A curve is below the CAD modeling tolerance.")
+    if item.kind == "line":
+        return BRepBuilderAPI_MakeEdge(_point(start, plane), _point(end, plane)).Edge(), (
+            (start[0] - origin[0]) * (end[1] - origin[1])
+            - (end[0] - origin[0]) * (start[1] - origin[1])
+        ) / 2
+    center = points[item.point_ids[0]]
+    radius = math.dist(start, center)
+    if radius <= MODELING_TOLERANCE_SI or not math.isclose(
+        radius, math.dist(end, center), rel_tol=1e-9, abs_tol=MODELING_TOLERANCE_SI
+    ):
+        raise EngineError("invalid-cad-sketch", "Arc endpoints need the same radius.")
+    angle = math.atan2(start[1] - center[1], start[0] - center[0])
+    final = math.atan2(end[1] - center[1], end[0] - center[0])
+    clockwise = item.clockwise != reverse
+    sweep = -((angle - final) % math.tau) if clockwise else (final - angle) % math.tau
+    midpoint = [
+        center[0] + radius * math.cos(angle + sweep / 2),
+        center[1] + radius * math.sin(angle + sweep / 2),
+    ]
+    edge = BRepBuilderAPI_MakeEdge(
+        GC_MakeArcOfCircle(
+            _point(start, plane), _point(midpoint, plane), _point(end, plane)
+        ).Value()
+    ).Edge()
+    # Exact Green integral only orients a derived closed loop.
+    area = (
+        (center[0] - origin[0]) * radius * (math.sin(angle + sweep) - math.sin(angle))
+        - (center[1] - origin[1]) * radius * (math.cos(angle + sweep) - math.cos(angle))
+        + radius**2 * sweep
+    ) / 2
+    return edge, area
 
 
 def _point(position: tuple[float, float] | list[float], plane: str) -> Any:
@@ -102,46 +147,8 @@ def _wire(
                     "open-cad-sketch", "Loop curves must share point identities in their order."
                 )
             start, end = points[start_id], points[end_id]
-            if math.dist(start, end) <= MODELING_TOLERANCE_SI:
-                raise EngineError(
-                    "invalid-cad-sketch", "A loop curve is below the CAD modeling tolerance."
-                )
-            if item.kind == "line":
-                edge = BRepBuilderAPI_MakeEdge(_point(start, plane), _point(end, plane)).Edge()
-                area += (
-                    (start[0] - origin[0]) * (end[1] - origin[1])
-                    - (end[0] - origin[0]) * (start[1] - origin[1])
-                ) / 2
-            else:
-                center = points[item.point_ids[0]]
-                radius = math.dist(start, center)
-                if radius <= MODELING_TOLERANCE_SI or not math.isclose(
-                    radius,
-                    math.dist(end, center),
-                    rel_tol=1e-9,
-                    abs_tol=MODELING_TOLERANCE_SI,
-                ):
-                    raise EngineError("invalid-cad-sketch", "Arc endpoints need the same radius.")
-                angle = math.atan2(start[1] - center[1], start[0] - center[0])
-                final = math.atan2(end[1] - center[1], end[0] - center[0])
-                clockwise = item.clockwise != reverse
-                sweep = -((angle - final) % math.tau) if clockwise else (final - angle) % math.tau
-                midpoint = [
-                    center[0] + radius * math.cos(angle + sweep / 2),
-                    center[1] + radius * math.sin(angle + sweep / 2),
-                ]
-                edge = BRepBuilderAPI_MakeEdge(
-                    GC_MakeArcOfCircle(
-                        _point(start, plane), _point(midpoint, plane), _point(end, plane)
-                    ).Value()
-                ).Edge()
-                # Exact Green integral; area is used only to orient derived
-                # wires, never as a sampled approximation or solver domain.
-                area += (
-                    (center[0] - origin[0]) * radius * (math.sin(angle + sweep) - math.sin(angle))
-                    - (center[1] - origin[1]) * radius * (math.cos(angle + sweep) - math.cos(angle))
-                    + radius**2 * sweep
-                ) / 2
+            edge, contribution = _curve(item, start, end, points, plane, reverse, origin)
+            area += contribution
             maker.Add(edge)
             current_id = end_id
         if current_id != first_id:
@@ -183,4 +190,74 @@ def sketch_face(value: Any, plane: str) -> tuple[Any, dict[str, Any]]:
         "status": result.status,
         "degreesOfFreedom": result.degrees_of_freedom,
         "failedConstraintIds": list(result.failed_constraint_ids),
+    }
+
+
+def sketch_spine(value: Any, plane: str) -> tuple[Any, dict[str, Any]]:
+    """An exact connected, nonbranching open wire using authored point identities."""
+    sketch = decode_sketch(value)
+    result = solve_sketch(value)
+    if result.status not in ("solved", "redundant"):
+        raise EngineError(
+            "sketch-constraints-failed",
+            f"Sketch constraints {result.status}: {', '.join(result.failed_constraint_ids)}.",
+        )
+    if (
+        sketch.loops
+        or not result.entities
+        or any(item.kind == "circle" for item in result.entities)
+    ):
+        raise EngineError(
+            "invalid-sweep-spine",
+            "A sweep path needs open lines/arcs without closed loops or circles.",
+        )
+    points = {point.id: point.position for point in result.points}
+    adjoining: dict[str, list[SketchEntity]] = {}
+    for entity in result.entities:
+        for endpoint in entity.point_ids[-2:]:
+            adjoining.setdefault(endpoint, []).append(entity)
+    endpoints = [point.id for point in result.points if len(adjoining.get(point.id, [])) == 1]
+    if len(endpoints) != 2 or any(len(items) > 2 for items in adjoining.values()):
+        raise EngineError(
+            "invalid-sweep-spine", "A sweep path must have two endpoints and no branches."
+        )
+    current = endpoints[0]
+    used: set[str] = set()
+    maker = BRepBuilderAPI_MakeWire()
+    while len(used) < len(result.entities):
+        candidates = [item for item in adjoining.get(current, []) if item.id not in used]
+        if len(candidates) != 1:
+            raise EngineError(
+                "invalid-sweep-spine", "All sweep curves must form one connected open path."
+            )
+        item = candidates[0]
+        start_id, end_id = item.point_ids[-2:]
+        reverse = start_id != current
+        if reverse:
+            start_id, end_id = end_id, start_id
+        edge, _ = _curve(
+            item, points[start_id], points[end_id], points, plane, reverse, points[start_id]
+        )
+        maker.Add(edge)
+        used.add(item.id)
+        current = end_id
+    if (
+        not maker.IsDone()
+        or current != endpoints[1]
+        or maker.Wire().Closed()
+        or not BRepCheck_Analyzer(maker.Wire(), True, False, True).IsValid()
+        or not BRepAlgoAPI_Check(maker.Wire(), False, True).IsValid()
+    ):
+        raise EngineError(
+            "invalid-sweep-spine", "A sweep path must be open, noncoincident and nonintersecting."
+        )
+    return maker.Wire(), {
+        "kernel": result.kernel,
+        "sourceCommit": result.source_commit,
+        "status": result.status,
+        "degreesOfFreedom": result.degrees_of_freedom,
+        "failedConstraintIds": list(result.failed_constraint_ids),
+        "role": "sweep-spine",
+        "startPointId": endpoints[0],
+        "endPointId": endpoints[1],
     }

@@ -34,6 +34,16 @@ def lower_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
     features = {feature["id"]: feature for feature in output_features(geometry)}
     output = features[geometry["outputFeatureId"]]
     kind, dimension = output["kind"], geometry["dimension"]
+    if kind in ("assembly", "loft", "sweep"):
+        reason = (
+            "Current analyses do not support multiple component bodies, contacts or assembly bonds."
+            if kind == "assembly"
+            else "Current analyses do not support lofted or swept solid/surface domains."
+        )
+        raise EngineError(
+            "unsupported-cad-study",
+            f"{reason} This exact design remains editable and can be saved or exported.",
+        )
     if kind == "transform":
         raise EngineError(
             "unsupported-cad-study",

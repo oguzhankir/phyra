@@ -16,7 +16,10 @@ export type CadFeature =
   | CadBooleanFeature
   | CadTransformFeature
   | CadFilletFeature
-  | CadChamferFeature;
+  | CadChamferFeature
+  | CadLoftFeature
+  | CadSweepFeature
+  | CadAssemblyFeature;
 export type CadSketchEntity = CadSketchLine | CadSketchCircle | CadSketchArc;
 export type CadSketchConstraint =
   | CadSketchFixedPointConstraint
@@ -41,7 +44,7 @@ export type Regions = [BoundaryId, ...BoundaryId[]];
 export type Vector = [number, number, number];
 
 export interface ProjectDefinition {
-  schemaVersion: 6;
+  schemaVersion: 7;
   id: string;
   name: string;
   revision: number;
@@ -119,6 +122,7 @@ export interface CadSketchFeature {
   kind: "sketch";
   plane: "xy" | "xz" | "yz";
   sketch: CadSketchDefinition;
+  purpose?: "profile" | "path";
 }
 export interface CadSketchDefinition {
   /**
@@ -324,6 +328,41 @@ export interface CadChamferFeature {
    */
   edgeIds: [string, ...string[]];
   distance: number;
+}
+export interface CadLoftFeature {
+  id: string;
+  name: string;
+  kind: "loft";
+  /**
+   * @minItems 2
+   * @maxItems 16
+   */
+  sectionIds: [string, string, ...string[]];
+  solid: boolean;
+  ruled: boolean;
+}
+export interface CadSweepFeature {
+  id: string;
+  name: string;
+  kind: "sweep";
+  profileId: string;
+  spineId: string;
+  solid: boolean;
+}
+export interface CadAssemblyFeature {
+  id: string;
+  name: string;
+  kind: "assembly";
+  /**
+   * @minItems 1
+   * @maxItems 32
+   */
+  components: [CadAssemblyComponent, ...CadAssemblyComponent[]];
+}
+export interface CadAssemblyComponent {
+  id: string;
+  name: string;
+  featureId: string;
 }
 export interface NativeAssetMetadata {
   id: string;

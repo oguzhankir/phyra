@@ -37,7 +37,8 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
         3 => include_str!("../../../contracts/project-v3.schema.json"),
         4 => include_str!("../../../contracts/project-v4.schema.json"),
         5 => include_str!("../../../contracts/project-v5.schema.json"),
-        6 => include_str!("../../../contracts/project.schema.json"),
+        6 => include_str!("../../../contracts/project-v6.schema.json"),
+        7 => include_str!("../../../contracts/project.schema.json"),
         _ => return Err("Unsupported project schema version".into()),
     };
     let schema: Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
@@ -48,7 +49,7 @@ fn validate_version(project: &Value, version: u64) -> Result<(), String> {
     if version >= 3 {
         validate_named_selections(project)?;
     }
-    if version == 6 && project["geometry"]["kind"] == "cad" {
+    if version >= 6 && project["geometry"]["kind"] == "cad" {
         validate_cad_references(&project["geometry"])?;
     }
     Ok(())
@@ -101,7 +102,7 @@ fn validate_named_selections(project: &Value) -> Result<(), String> {
 }
 
 pub(crate) fn validate_project(project: &Value) -> Result<(), String> {
-    validate_version(project, 6)
+    validate_version(project, 7)
 }
 
 // An archive validates design intent, not a promise that a selected solver can
@@ -149,12 +150,67 @@ fn validate_cad_references(geometry: &Value) -> Result<(), String> {
             return Err("CAD feature identities must be unique".into());
         }
         for key in [
-            "sketchId", "inputId", "targetId", "toolId", "leftId", "rightId",
+            "sketchId",
+            "inputId",
+            "targetId",
+            "toolId",
+            "leftId",
+            "rightId",
+            "profileId",
+            "spineId",
         ] {
             if let Some(reference) = feature[key].as_str() {
                 if !features.contains(reference) {
                     return Err(format!(
                         "CAD feature {id} refers to a missing or later feature"
+                    ));
+                }
+            }
+        }
+        if let Some(sections) = feature["sectionIds"].as_array() {
+            if sections.iter().any(|section| {
+                section
+                    .as_str()
+                    .is_none_or(|reference| !features.contains(reference))
+            }) {
+                return Err(format!(
+                    "CAD feature {id} refers to a missing or later section"
+                ));
+            }
+        }
+        if matches!(
+            feature["kind"].as_str(),
+            Some("loft" | "sweep" | "assembly")
+        ) && selection_trim(feature["name"].as_str().ok_or("Missing CAD feature name")?)
+            .is_empty()
+        {
+            return Err("CAD feature names must not be blank".into());
+        }
+        if let Some(components) = feature["components"].as_array() {
+            let mut component_ids = HashSet::new();
+            for component in components {
+                let component_id = component["id"]
+                    .as_str()
+                    .ok_or("Missing CAD component identity")?;
+                if !component_ids.insert(component_id) {
+                    return Err("CAD component identities must be unique within an assembly".into());
+                }
+                if selection_trim(
+                    component["name"]
+                        .as_str()
+                        .ok_or("Missing CAD component name")?,
+                )
+                .is_empty()
+                {
+                    return Err("CAD component names must not be blank".into());
+                }
+                if !features.contains(
+                    component["featureId"]
+                        .as_str()
+                        .ok_or("Missing CAD component feature")?,
+                ) {
+                    return Err(format!(
+                        "CAD component {component_id} refers to a missing or later feature"
                     ));
                 }
             }
@@ -181,7 +237,7 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
         .as_u64()
         .ok_or("Unsupported project schema version")?;
     validate_version(&project, version)?;
-    if version == 6 {
+    if version == 7 {
         return Ok((project, false));
     }
     if version == 1 {
@@ -199,20 +255,110 @@ pub(crate) fn migrate_project(mut project: Value) -> Result<(Value, bool), Strin
     if version < 5 {
         project["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     }
-    project["schemaVersion"] = json!(6);
+    project["schemaVersion"] = json!(7);
     validate_project(&project)?;
     Ok((project, true))
 }
 
 #[cfg(test)]
 mod rigid_transform_tests {
-    use super::validate_project;
-    use serde_json::json;
+    use super::{migrate_project, validate_project};
+    use serde_json::{json, Value};
+
+    fn construction(kind: &str) -> Value {
+        let mut feature = json!({"id":"operation","name":"Operation","kind":kind});
+        match kind {
+            "loft" => {
+                feature["sectionIds"] = json!(["first", "second"]);
+                feature["solid"] = json!(true);
+                feature["ruled"] = json!(false);
+            }
+            "sweep" => {
+                feature["profileId"] = json!("first");
+                feature["spineId"] = json!("second");
+                feature["solid"] = json!(true);
+            }
+            "assembly" => {
+                feature["components"] = json!([
+                {"id":"instance-a","name":"First component","featureId":"first"},
+                {"id":"instance-b","name":"Second component","featureId":"second"}])
+            }
+            _ => unreachable!(),
+        }
+        json!({"schemaVersion":7,"id":"project","name":"Construction","revision":0,
+            "displayUnits":"mm","study":null,"namedSelections":[],
+            "geometry":{"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"operation",
+                "features":[
+                    {"id":"first","name":"First sketch","kind":"sketch","plane":"xy","sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}},
+                    {"id":"second","name":"Second sketch","kind":"sketch","plane":"xz","sketch":{"points":[],"entities":[],"constraints":[],"loops":[]}},
+                    feature]}})
+    }
+
+    #[test]
+    fn version_seven_operations_require_ordered_dependencies_and_frozen_version_six_rejects_them() {
+        for kind in ["loft", "sweep", "assembly"] {
+            let current = construction(kind);
+            validate_project(&current).unwrap();
+            let mut previous = current.clone();
+            previous["schemaVersion"] = json!(6);
+            assert!(migrate_project(previous).is_err(), "{kind}");
+            for reference in ["absent", "operation"] {
+                let mut invalid = current.clone();
+                let feature = &mut invalid["geometry"]["features"][2];
+                match kind {
+                    "loft" => feature["sectionIds"][1] = json!(reference),
+                    "sweep" => feature["spineId"] = json!(reference),
+                    "assembly" => feature["components"][1]["featureId"] = json!(reference),
+                    _ => unreachable!(),
+                }
+                assert!(
+                    validate_project(&invalid).unwrap_err().contains("later"),
+                    "{kind}: {reference}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn assembly_component_ids_names_counts_and_loft_sections_are_bounded() {
+        for defect in [
+            "duplicate-component",
+            "blank-component",
+            "blank-control",
+            "oversized-assembly",
+            "duplicate-sections",
+            "undersized-sections",
+            "oversized-sections",
+            "nonboolean",
+            "blank-feature",
+        ] {
+            let mut current =
+                construction(if defect.contains("sections") || defect == "nonboolean" {
+                    "loft"
+                } else {
+                    "assembly"
+                });
+            let feature = &mut current["geometry"]["features"][2];
+            match defect {
+                "duplicate-component" => feature["components"][1]["id"] = json!("instance-a"),
+                "blank-component" => feature["components"][0]["name"] = json!("   "),
+                "blank-control" => feature["components"][0]["name"] = json!("\u{001C}\u{FEFF}"),
+                "oversized-assembly" => feature["components"] = json!((0..33).map(|index| json!({"id":format!("instance-{index}"),"name":"Instance","featureId":"first"})).collect::<Vec<_>>()),
+                "duplicate-sections" => feature["sectionIds"] = json!(["first", "first"]),
+                "undersized-sections" => feature["sectionIds"] = json!(["first"]),
+                "oversized-sections" => feature["sectionIds"] = json!((0..17).map(|index| format!("section-{index}")).collect::<Vec<_>>()),
+                "nonboolean" => feature["solid"] = json!(1),
+                "blank-feature" => feature["name"] = json!("\u{FEFF}"),
+                _ => unreachable!(),
+            }
+            assert!(validate_project(&current).is_err(), "{defect}");
+        }
+    }
 
     #[test]
     fn bounded_rigid_placement_validates_axis_and_dependency() {
         let mut project = json!({
-            "schemaVersion":6,"id":"project","name":"Placement","revision":0,
+            "schemaVersion":7,"id":"project","name":"Placement","revision":0,
             "displayUnits":"mm","study":null,"namedSelections":[],
             "geometry":{"kind":"cad","dimension":"3d","assets":[],
                 "outputFeatureId":"placed","features":[

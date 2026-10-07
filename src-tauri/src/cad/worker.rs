@@ -404,6 +404,21 @@ fn drain_diagnostics(mut input: impl Read, mut log: impl Write) -> Result<(), St
 }
 
 fn validate_preview(receipt: &Value, bytes: &[u8]) -> Result<(), String> {
+    let canonical_id = |value: &Value| {
+        value.as_str().is_some_and(|id| {
+            !id.is_empty()
+                && id.len() <= 100
+                && id
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        })
+    };
+    let body_ids = receipt["bodies"]
+        .as_array()
+        .ok_or("Missing CAD body metadata")?
+        .iter()
+        .filter_map(|body| body["id"].as_str())
+        .collect::<std::collections::HashSet<_>>();
     for collection in ["faces", "edges", "bodies"] {
         let entities = receipt[collection]
             .as_array()
@@ -414,7 +429,8 @@ fn validate_preview(receipt: &Value, bytes: &[u8]) -> Result<(), String> {
         let mut ids = std::collections::HashSet::new();
         for entity in entities {
             let id = entity["id"].as_str().ok_or("Missing CAD entity identity")?;
-            if id.len() > 200
+            if id.is_empty()
+                || id.len() > 200
                 || !ids.insert(id)
                 || !matches!(
                     entity["identity"].as_str(),
@@ -422,6 +438,40 @@ fn validate_preview(receipt: &Value, bytes: &[u8]) -> Result<(), String> {
                 )
             {
                 return Err("Invalid CAD entity identity".into());
+            }
+            if collection == "bodies" {
+                if entity
+                    .get("sourceFeatureId")
+                    .is_some_and(|value| !canonical_id(value))
+                {
+                    return Err("Invalid CAD source feature identity".into());
+                }
+                match (entity.get("componentId"), entity.get("componentPath")) {
+                    (None, None) => {}
+                    (Some(component), Some(path)) => {
+                        let path = path.as_array().ok_or("Invalid CAD component path")?;
+                        if !canonical_id(component)
+                            || path.is_empty()
+                            || path.len() > 128
+                            || path.iter().any(|value| !canonical_id(value))
+                            || path.first() != Some(component)
+                        {
+                            return Err("Invalid CAD component identity or path".into());
+                        }
+                    }
+                    _ => {
+                        return Err(
+                            "CAD component identity and path must be supplied together".into()
+                        )
+                    }
+                }
+            } else if let Some(body) = entity.get("bodyId") {
+                if body
+                    .as_str()
+                    .is_none_or(|id| id.is_empty() || id.len() > 200 || !body_ids.contains(id))
+                {
+                    return Err("CAD entity refers to an unavailable body".into());
+                }
             }
             let centroid = entity["centroid"]
                 .as_array()
@@ -667,5 +717,71 @@ mod tests {
             }
             assert!(validate_preview(&receipt, &bytes).is_err(), "{defect}");
         }
+    }
+
+    #[test]
+    fn topology_body_relationships_and_component_paths_are_bounded_and_checked() {
+        let (mut receipt, bytes) = preview();
+        let mut body = receipt["faces"][0].clone();
+        body["id"] = json!("body-0");
+        body["identity"] = json!("ambiguous");
+        body["componentId"] = json!("outer");
+        body["componentPath"] = json!(["outer", "inner"]);
+        body["sourceFeatureId"] = json!("source");
+        receipt["bodies"] = json!([body]);
+        receipt["faces"][0]["bodyId"] = json!("body-0");
+        validate_preview(&receipt, &bytes).unwrap();
+        for defect in [
+            "missing-body",
+            "nonstring-body",
+            "long-body",
+            "long-component",
+            "invalid-component",
+            "missing-path",
+            "empty-path",
+            "long-path",
+            "invalid-path-entry",
+            "wrong-root",
+            "missing-component",
+            "invalid-source",
+        ] {
+            let mut bad = receipt.clone();
+            match defect {
+                "missing-body" => bad["faces"][0]["bodyId"] = json!("absent"),
+                "nonstring-body" => bad["faces"][0]["bodyId"] = json!(4),
+                "long-body" => bad["faces"][0]["bodyId"] = json!("x".repeat(201)),
+                "long-component" => bad["bodies"][0]["componentId"] = json!("x".repeat(101)),
+                "invalid-component" => bad["bodies"][0]["componentId"] = json!("invalid name"),
+                "missing-path" => {
+                    bad["bodies"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("componentPath");
+                }
+                "empty-path" => bad["bodies"][0]["componentPath"] = json!([]),
+                "long-path" => bad["bodies"][0]["componentPath"] = json!(vec!["outer"; 129]),
+                "invalid-path-entry" => bad["bodies"][0]["componentPath"][1] = json!(null),
+                "wrong-root" => bad["bodies"][0]["componentPath"][0] = json!("different"),
+                "missing-component" => {
+                    bad["bodies"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("componentId");
+                }
+                "invalid-source" => bad["bodies"][0]["sourceFeatureId"] = json!(""),
+                _ => unreachable!(),
+            }
+            assert!(validate_preview(&bad, &bytes).is_err(), "{defect}");
+        }
+        // Surfaces without bodies and legacy nonassembly body metadata remain valid.
+        receipt["bodies"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("componentId");
+        receipt["bodies"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("componentPath");
+        validate_preview(&receipt, &bytes).unwrap();
     }
 }

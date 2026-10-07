@@ -122,7 +122,7 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         brep = export_brep(result.shape)
         step = export_step(result.shape)
         step_mm = export_step(result.shape, "mm")
-        display = tessellate(result.shape, result.output_feature_id)
+        display = tessellate(result.shape, result.output_feature_id, result.body_instances)
     buffer, descriptors = _pack(display.arrays)
     if any(not 0 < len(payload) <= MAX_BUFFER_BYTES for payload in (brep, step, step_mm)):
         raise EngineError("cad-resource-limit", "An exact CAD artifact exceeds 64 MiB.")
@@ -147,6 +147,18 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         },
     ]
     ambiguous = [e.reference for e in display.faces + display.edges + display.bodies if e.ambiguous]
+    if any(member.component_path for member in result.body_instances):
+        diagnostics.append(
+            {
+                "code": "independent-components",
+                "severity": "info",
+                "message": (
+                    "Assembly components are independent solids without inferred "
+                    "bonds or contacts. "
+                    "Displayed volume sums component volumes, including overlapping regions."
+                ),
+            }
+        )
     inactive = len(geometry["features"]) - len(result.feature_metadata)
     if inactive:
         diagnostics.append(

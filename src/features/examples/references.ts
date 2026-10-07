@@ -136,10 +136,10 @@ export function validateReference(
     );
     project.study.solver.pinn.formulation = 'strong-form';
   }
-  if ([4, 5].includes(source.schemaVersion as number)) project.schemaVersion = 6;
+  if ([4, 5, 6].includes(source.schemaVersion as number)) project.schemaVersion = 7;
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 6 && project.study.dimension === dimension,
+    project.schemaVersion === 7 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(

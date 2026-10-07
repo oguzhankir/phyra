@@ -44,6 +44,7 @@ import {
   type SnappedPoint,
 } from './sketchInteractions';
 import './CadSketchEditor.css';
+import { pathIssue } from './advancedFeatures';
 
 export interface CadSketchEditorProps {
   feature: CadSketchFeature;
@@ -130,7 +131,9 @@ function SketchEditorSession({
   const spacing = sketchGridSpacing(view),
     pixel = view.width / size.width;
   const gridId = useId().replaceAll(':', '');
-  const readiness = sketchReadiness(graph);
+  const contours = sketchReadiness(graph);
+  const readiness =
+    feature.purpose === 'path' ? { ...contours, issue: pathIssue(graph) } : contours;
   const points = new Map(graph.points.map((point) => [point.id, point.position]));
   const chosenPoints = selection
     .filter((item) => item.kind === 'point')
@@ -1161,7 +1164,7 @@ function SketchEditorSession({
                   )}
               </div>
             ))}
-            <h4>Contours</h4>
+            <h4>{feature.purpose === 'path' ? 'Sweep path' : 'Contours'}</h4>
             <p>
               {readiness.closedLoops} closed · {readiness.openEntities} open curve
               {readiness.openEntities === 1 ? '' : 's'}
@@ -1195,7 +1198,9 @@ function SketchEditorSession({
             )}
             {!readiness.issue && (
               <p className="cad-sketch-readiness">
-                Contours closed · Rebuild checks intersections and hole placement.
+                {feature.purpose === 'path'
+                  ? 'Path connected · Finish sketch, then choose Sweep and a closed profile.'
+                  : 'Contours closed · Rebuild checks intersections and hole placement.'}
               </p>
             )}
             {solveReport && (
