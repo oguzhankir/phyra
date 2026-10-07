@@ -5,6 +5,7 @@ on:
     tags: ['v*']
 
 permissions:
+  actions: read
   contents: read
 
 jobs:

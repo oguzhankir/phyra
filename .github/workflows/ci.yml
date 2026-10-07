@@ -2,15 +2,22 @@ name: Check and package
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_call:
     inputs:
       release_assets:
         type: boolean
         default: false
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -18,12 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15, macos-26, windows-2022, windows-2025]
-        include:
-          - os: macos-15
-            release_assets: true
-          - os: windows-2025
-            release_assets: true
+        os: ${{ fromJSON((inputs.release_assets || github.event_name == 'workflow_dispatch') && '["macos-14","macos-15","macos-26","windows-2022","windows-2025"]' || '["macos-14","windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,19 +41,34 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        id: rust-cache
+        continue-on-error: true
+        with:
+          shared-key: ${{ matrix.os }}-${{ runner.arch }}
+          workspaces: src-tauri -> target
+          cache-on-failure: false
+      - name: Report Rust dependency cache result
+        if: always()
+        env:
+          RUST_CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: >-
+          node -e 'require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+          "## CI cache\n- Rust dependencies: " + (process.env.RUST_CACHE_HIT === "true" ? "exact hit" : "miss or partial restore") + "\n")'
       - run: npm ci
       - run: npm run setup
       - run: npm run check
       - run: npm test
-      - run: npm run test:numerics-slow
-      - run: npm run package
-      - run: npm run test:desktop
       - run: npm run test:native
       - run: npm run check:native
+      - run: npm run test:numerics-slow
+        if: github.event_name != 'pull_request'
+      - run: npm run package
+      - run: npm run test:desktop
       - run: node scripts/stage-release.mjs
-        if: inputs.release_assets && matrix.release_assets == true
+        if: inputs.release_assets && (matrix.os == 'macos-15' || matrix.os == 'windows-2025')
       - uses: actions/upload-artifact@v4
-        if: inputs.release_assets && matrix.release_assets == true && success()
+        if: inputs.release_assets && (matrix.os == 'macos-15' || matrix.os == 'windows-2025') && success()
         with:
           name: release-${{ matrix.os }}
           path: artifacts/release/*
@@ -70,3 +87,24 @@ jobs:
             artifacts/packaged-physicsml-viewport.png
             artifacts/engine-platform.json
           if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}
+
+  ci-performance:
+    if: always()
+    needs: desktop
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Report workflow and platform timings
+        env:
+          CI_GITHUB_TOKEN: ${{ github.token }}
+          CI_REPOSITORY: ${{ github.repository }}
+          CI_RUN_ID: ${{ github.run_id }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: node scripts/report-ci-performance.mjs
