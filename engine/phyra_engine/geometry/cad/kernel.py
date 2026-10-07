@@ -52,7 +52,8 @@ from OCP.gp import (  # type: ignore[import-untyped]
 )
 from OCP.IFSelect import IFSelect_RetDone  # type: ignore[import-untyped]
 from OCP.Interface import Interface_Static  # type: ignore[import-untyped]
-from OCP.Standard import Standard_Failure  # type: ignore[import-untyped]
+from OCP.Precision import Precision  # type: ignore[import-untyped]
+from OCP.Standard import Standard_DomainError, Standard_Failure  # type: ignore[import-untyped]
 from OCP.STEPControl import (  # type: ignore[import-untyped]
     STEPControl_AsIs,
     STEPControl_Reader,
@@ -217,6 +218,30 @@ def read_brep(payload: bytes) -> Any:
     return shape
 
 
+def _primitive_sizes(feature: dict[str, Any], names: tuple[str, ...]) -> tuple[float, ...]:
+    """Check authored SI sizes before entering platform-specific kernel bindings.
+
+    Boxes and cylinders reject sizes <=Precision::Confusion in working units.
+    Keep that actual kernel tolerance; never clamp, enlarge or scale the design.
+    https://occt3d.com/dev/doc/refman/html/class_b_rep_prim_a_p_i___make_box.html
+    https://occt3d.com/dev/doc/refman/html/class_b_rep_prim_a_p_i___make_cylinder.html
+    """
+    minimum_si = Precision.Confusion_s() * (1 / KERNEL_PER_METRE)
+    values = []
+    for name in names:
+        value = feature[name]
+        # This interval also rejects NaN/infinities without converting a huge
+        # untrusted Python integer to float. The upper bound is canonical SI.
+        if type(value) not in (int, float) or not minimum_si < value <= 1000:
+            raise EngineError(
+                "invalid-cad-dimensions",
+                f"{name.title()} must be finite, greater than OCCT's {minimum_si:g} m "
+                "modeling tolerance and at most 1000 m. Revise the authored dimension.",
+            )
+        values.append(value * KERNEL_PER_METRE)
+    return tuple(values)
+
+
 def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
     shapes: dict[str, Any] = {}
     ownership: dict[str, tuple[BodyInstance, ...]] = {}
@@ -245,13 +270,12 @@ def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
         try:
             if kind == "box":
                 shape = BRepPrimAPI_MakeBox(
-                    *(feature[k] * KERNEL_PER_METRE for k in ("length", "width", "height"))
+                    *_primitive_sizes(feature, ("length", "width", "height"))
                 ).Shape()
             elif kind == "cylinder":
                 shape = BRepPrimAPI_MakeCylinder(
                     gp_Ax2(gp_Pnt(), gp_Dir(1, 0, 0)),
-                    feature["radius"] * KERNEL_PER_METRE,
-                    feature["length"] * KERNEL_PER_METRE,
+                    *_primitive_sizes(feature, ("radius", "length")),
                 ).Shape()
             elif kind == "import-step":
                 shape, units = import_step(assets[feature["assetId"]], feature["scaleFactor"])
@@ -496,7 +520,13 @@ def build(geometry: dict[str, Any], assets: dict[str, bytes]) -> CadBuild:
             metadata.append(details)
         except EngineError as error:
             raise EngineError(error.code, f"Feature {feature['name']}: {error}") from error
-        except (KeyError, ValueError, RuntimeError, Standard_Failure) as error:
+        except (
+            KeyError,
+            ValueError,
+            RuntimeError,
+            Standard_DomainError,
+            Standard_Failure,
+        ) as error:
             reason = str(error).strip() or "The exact kernel rejected its dimensions or topology."
             raise EngineError(
                 "cad-feature-failed", f"Feature {feature['name']} could not be recomputed: {reason}"

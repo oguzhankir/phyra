@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from OCP.Standard import Standard_DomainError
 
 from phyra_engine.errors import EngineError
 from phyra_engine.execution.application import RunPlan
@@ -350,8 +351,119 @@ def test_rollback_uses_only_output_closure_and_headless_cad_validity(tmp_path):
 
     source["geometry"] = geometry([{**box, "length": 1e-50, "width": 1e-50, "height": 1e-50}])
     assert validate_project(source) == source
-    with pytest.raises(EngineError):
+    original = deepcopy(source)
+    with pytest.raises(EngineError) as error:
         study_request(source)
+    assert error.value.code == "invalid-cad-dimensions"
+    assert "1e-10 m" in str(error.value)
+    assert source == original
+
+
+@pytest.mark.parametrize(
+    "kind,field",
+    [
+        ("box", "length"),
+        ("box", "width"),
+        ("box", "height"),
+        ("cylinder", "radius"),
+        ("cylinder", "length"),
+    ],
+)
+@pytest.mark.parametrize("size", [-0.01, 0, 1e-50, 1e-10, float("nan"), float("inf"), True])
+def test_primitive_unusable_sizes_fail_before_platform_kernel_invocation(
+    kind, field, size, monkeypatch
+):
+    import phyra_engine.geometry.cad.kernel as kernel
+
+    feature = (
+        {
+            "id": "primitive",
+            "name": "Authored box",
+            "kind": "box",
+            "length": 0.1,
+            "width": 0.05,
+            "height": 0.02,
+        }
+        if kind == "box"
+        else {
+            "id": "primitive",
+            "name": "Authored cylinder",
+            "kind": "cylinder",
+            "radius": 0.01,
+            "length": 0.1,
+        }
+    )
+    feature[field] = size
+    source = geometry([feature])
+
+    def unexpected_constructor(*args):
+        pytest.fail("The unusable authored size reached the native kernel.")
+
+    monkeypatch.setattr(
+        kernel,
+        "BRepPrimAPI_MakeBox" if kind == "box" else "BRepPrimAPI_MakeCylinder",
+        unexpected_constructor,
+    )
+    with pytest.raises(EngineError) as error:
+        build(source, {})
+    assert error.value.code == "invalid-cad-dimensions"
+    assert field.title() in str(error.value) and "1e-10 m" in str(error.value)
+    assert source["features"][0][field] is size
+
+
+@pytest.mark.parametrize("kind", ["box", "cylinder"])
+def test_actual_primitive_above_kernel_minimum_retains_authored_size_and_volume(kind):
+    feature = (
+        {
+            "id": "primitive",
+            "name": "Thin box",
+            "kind": "box",
+            "length": 2e-10,
+            "width": 0.05,
+            "height": 0.02,
+        }
+        if kind == "box"
+        else {
+            "id": "primitive",
+            "name": "Thin cylinder",
+            "kind": "cylinder",
+            "radius": 2e-10,
+            "length": 0.1,
+        }
+    )
+    source = geometry([feature])
+    original = deepcopy(source)
+    expected = 2e-10 * 0.05 * 0.02 if kind == "box" else math.pi * (2e-10) ** 2 * 0.1
+    assert properties(build(source, {}).shape, "body")[0] == pytest.approx(
+        expected, rel=1e-10, abs=0
+    )
+    assert source == original
+
+
+def test_known_kernel_domain_error_is_normalized_but_unknown_fault_propagates(monkeypatch):
+    import phyra_engine.geometry.cad.kernel as kernel
+
+    source = geometry(
+        [{"id": "box", "name": "Box", "kind": "box", "length": 0.1, "width": 0.05, "height": 0.02}]
+    )
+    original = deepcopy(source)
+
+    def kernel_domain_error(*args):
+        raise Standard_DomainError("Known kernel domain rejection")
+
+    monkeypatch.setattr(kernel, "BRepPrimAPI_MakeBox", kernel_domain_error)
+    with pytest.raises(EngineError) as error:
+        build(source, {})
+    assert error.value.code == "cad-feature-failed"
+    assert "Known kernel domain rejection" in str(error.value)
+
+    def unknown_fault(*args):
+        raise AssertionError("Unexpected kernel binding fault")
+
+    monkeypatch.setattr(kernel, "BRepPrimAPI_MakeBox", unknown_fault)
+    with pytest.raises(AssertionError, match="Unexpected kernel binding fault"):
+        build(source, {})
+    assert source == original
 
 
 @pytest.mark.parametrize("translation,angle", [([0, 0, 0], 0), ([0.1, 0.2, 0.3], 0.5)])
