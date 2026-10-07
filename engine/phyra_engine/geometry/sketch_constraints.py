@@ -700,6 +700,26 @@ def build_profile(value: Any) -> tuple[dict[str, Any], dict[str, Any]]:
             raise EngineError(
                 "open-profile", "The outer loop is not closed by shared point identifiers."
             )
-    validate_profile(profile)
+    try:
+        validate_profile(profile)
+    except EngineError as error:
+        if error.code != "invalid-orientation":
+            raise
+        # Drawing direction is not a physical input. The numerical profile
+        # requires counterclockwise traversal for outward boundary normals;
+        # reverse only this derived view, retaining source entity identities.
+        # Reversing arc traversal also reverses its direction, not its locus.
+        profile["outer"] = [
+            {
+                **segment,
+                "start": segment["end"],
+                "end": segment["start"],
+                **({"clockwise": not segment["clockwise"]} if segment["kind"] == "arc" else {}),
+            }
+            for segment in reversed(profile["outer"])
+        ]
+        # Run every check again: reorientation does not repair intersections,
+        # invalid holes or zero area, and does not widen numerical capabilities.
+        validate_profile(profile)
     metadata["boundaryEntities"] = boundary_entities
     return profile, metadata

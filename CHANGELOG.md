@@ -22,6 +22,8 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Fixed
 
+- CAD profiles drawn clockwise now reach the same supported numerical adapters as counterclockwise profiles. Derived traversal is normalized without changing authored geometry, boundary identities or constraints; independent tension and extruded-solid checks cover every rectangle drawing direction.
+
 - Project validation rejects a CAD study whose dimension disagrees with its geometry before opening the document, avoiding an unusable preparation state.
 - CAD rebuilds reject primitive dimensions at or below the exact kernel tolerance with a consistent diagnostic across platforms.
 - Redundant sketch constraints receive bounded repair hints without changing the native solve, including equivalent authored constraints when native diagnostics time out. Help and assistant guidance identify these hints as potentially incomplete.
