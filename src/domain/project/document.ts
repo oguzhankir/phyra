@@ -27,7 +27,7 @@ export function blankProject(
   dimension: '2d' | '3d' = '3d',
 ): ProjectDefinition {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: crypto.randomUUID(),
     name: name.trim() || 'Untitled project',
     revision: 0,
@@ -45,6 +45,12 @@ export function featureDependencies(feature: CadFeature): string[] {
       return [feature.sketchId];
     case 'boolean':
       return [feature.leftId, feature.rightId];
+    case 'loft':
+      return feature.sectionIds;
+    case 'sweep':
+      return [feature.profileId, feature.spineId];
+    case 'assembly':
+      return feature.components.map((component) => component.featureId);
     case 'fillet':
     case 'chamfer':
     case 'transform':
@@ -82,6 +88,22 @@ export function cadDefinitionError(geometry: CadGeometry): string | null {
       return `${feature.name} references a missing or later feature.`;
     if (feature.kind === 'import-step' && !assets.has(feature.assetId))
       return `${feature.name} references a missing imported asset.`;
+    if (
+      feature.kind === 'loft' &&
+      (feature.sectionIds.length < 2 ||
+        feature.sectionIds.length > 16 ||
+        new Set(feature.sectionIds).size !== feature.sectionIds.length)
+    )
+      return `${feature.name} needs 2–16 distinct ordered sections.`;
+    if (
+      feature.kind === 'assembly' &&
+      (feature.components.length < 1 ||
+        feature.components.length > 32 ||
+        new Set(feature.components.map((component) => component.id)).size !==
+          feature.components.length ||
+        feature.components.some((component) => !component.id || !component.name.trim()))
+    )
+      return `${feature.name} needs 1–32 named components with unique identities.`;
     const numbers =
       feature.kind === 'box'
         ? [feature.length, feature.width, feature.height]

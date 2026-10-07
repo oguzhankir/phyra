@@ -8,6 +8,10 @@ export interface CadEntity {
   id: string;
   name: string;
   identity: 'content-reference' | 'ambiguous';
+  bodyId?: string;
+  componentId?: string;
+  componentPath?: string[];
+  sourceFeatureId?: string;
 }
 export interface CadPreview {
   positions: Float64Array;
@@ -89,11 +93,34 @@ export function cadPreview(
           !entity.id ||
           entity.id.length > 200 ||
           !entity.name ||
-          entity.name.length > 200 ||
+          Array.from(entity.name).length > 200 ||
           !['content-reference', 'ambiguous'].includes(entity.identity),
       )
     )
       throw new Error('CAD preview entity metadata is invalid.');
+  }
+  const ids = new Set(receipt.bodies.map((body) => body.id));
+  const identifier = (value: unknown): value is string =>
+    typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value);
+  for (const entity of [...receipt.faces, ...receipt.edges, ...receipt.bodies]) {
+    if (
+      entity.bodyId !== undefined &&
+      (typeof entity.bodyId !== 'string' || !ids.has(entity.bodyId))
+    )
+      throw new Error('CAD entity refers to an unavailable body.');
+    if (entity.sourceFeatureId !== undefined && !identifier(entity.sourceFeatureId))
+      throw new Error('CAD source feature identity is invalid.');
+    if (entity.componentId !== undefined || entity.componentPath !== undefined) {
+      if (
+        !identifier(entity.componentId) ||
+        !Array.isArray(entity.componentPath) ||
+        !entity.componentPath.length ||
+        entity.componentPath.length > 128 ||
+        !entity.componentPath.every(identifier) ||
+        entity.componentPath[0] !== entity.componentId
+      )
+        throw new Error('CAD component identity is invalid.');
+    }
   }
   return {
     positions,

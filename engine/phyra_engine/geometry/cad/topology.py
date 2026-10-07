@@ -40,6 +40,16 @@ class Entity:
         return json.loads(self.metadata_json)
 
 
+@dataclass(frozen=True)
+class BodyInstance:
+    """Exact solid ownership; assembly identity is independent of geometric coincidence."""
+
+    shape: Any
+    name: str
+    source_feature_id: str
+    component_path: tuple[str, ...] = ()
+
+
 def subshapes(shape: Any, kind: Any) -> tuple[Any, ...]:
     explorer = TopExp_Explorer(shape, kind)
     values: list[Any] = []
@@ -126,17 +136,79 @@ def _signature(shape: Any, kind: str) -> tuple[str, dict[str, Any]]:
     return hashlib.sha256(exact).hexdigest()[:24], metadata
 
 
-def entities(shape: Any, owner_id: str, kind: str) -> tuple[Entity, ...]:
+def _owner_token(owner_id: str) -> str:
+    # Canonical IDs may contain Unicode. Transport references remain <=200
+    # UTF-8 bytes; the original authored IDs live in explicit metadata.
+    return (
+        owner_id
+        if len(owner_id.encode("utf-8")) <= 100
+        else "feature-" + hashlib.sha256(owner_id.encode("utf-8")).hexdigest()[:24]
+    )
+
+
+def entities(
+    shape: Any, owner_id: str, kind: str, body_instances: tuple[BodyInstance, ...] = ()
+) -> tuple[Entity, ...]:
     enum = {"edge": TopAbs_EDGE, "face": TopAbs_FACE, "body": TopAbs_SOLID}[kind]
-    raw = [(child, *_signature(child, kind)) for child in subshapes(shape, enum)]
-    counts: dict[str, int] = {}
-    for _, signature, _ in raw:
-        counts[signature] = counts.get(signature, 0) + 1
+    owner = _owner_token(owner_id)
+    solids = subshapes(shape, TopAbs_SOLID)
+    if body_instances and (
+        len(body_instances) != len(solids)
+        or any(
+            sum(instance.shape.IsSame(solid) for instance in body_instances) != 1
+            for solid in solids
+        )
+    ):
+        raise EngineError(
+            "invalid-cad-ownership", "CAD solid ownership does not match its topology."
+        )
+    bodies = entities(shape, owner_id, "body", body_instances) if kind != "body" else ()
+    memberships = [subshapes(solid, enum) for solid in solids] if kind != "body" else []
+    raw = []
+    for index, child in enumerate(subshapes(shape, enum)):
+        signature, metadata = _signature(child, kind)
+        context = owner
+        inherited_ambiguity = False
+        if kind == "body":
+            instance = next(
+                (instance for instance in body_instances if instance.shape.IsSame(child)), None
+            )
+            metadata["name"] = instance.name if instance else f"Body {index + 1}"
+            if instance:
+                metadata["sourceFeatureId"] = instance.source_feature_id
+                if instance.component_path:
+                    path_hash = hashlib.sha256(
+                        json.dumps(instance.component_path, ensure_ascii=False).encode("utf-8")
+                    ).hexdigest()[:24]
+                    context += "/instance/" + path_hash
+                    metadata["componentId"] = instance.component_path[0]
+                    metadata["componentPath"] = list(instance.component_path)
+        else:
+            metadata["name"] = f"{kind.title()} {index + 1}"
+            owners = [
+                body
+                for body, children in zip(bodies, memberships, strict=True)
+                if any(child.IsSame(member) for member in children)
+            ]
+            if len(owners) == 1:
+                body = owners[0]
+                metadata["bodyId"] = body.reference
+                inherited_ambiguity = body.ambiguous
+                if body.metadata().get("componentPath"):
+                    context += (
+                        "/member/" + hashlib.sha256(body.reference.encode("utf-8")).hexdigest()[:24]
+                    )
+            elif len(owners) > 1:
+                inherited_ambiguity = True
+        raw.append((child, context, signature, metadata, inherited_ambiguity))
+    counts: dict[tuple[str, str], int] = {}
+    for _, context, signature, _, _ in raw:
+        key = (context, signature)
+        counts[key] = counts.get(key, 0) + 1
     result = []
-    for index, (child, signature, metadata) in enumerate(raw):
-        metadata["name"] = f"{kind.title()} {index + 1}"
-        reference = f"{owner_id}/{kind}/{signature}"
-        ambiguous = counts[signature] > 1
+    for index, (child, context, signature, metadata, inherited_ambiguity) in enumerate(raw):
+        reference = f"{context}/{kind}/{signature}"
+        ambiguous = counts[(context, signature)] > 1 or inherited_ambiguity
         if ambiguous:
             # A display token may distinguish coincident rows. It never becomes
             # a semantic reference: selected_edges rejects every ambiguous row.
@@ -148,10 +220,15 @@ def entities(shape: Any, owner_id: str, kind: str) -> tuple[Entity, ...]:
     return tuple(result)
 
 
-def selected_edges(shape: Any, owner_id: str, references: list[str]) -> tuple[Any, ...]:
+def selected_edges(
+    shape: Any,
+    owner_id: str,
+    references: list[str],
+    body_instances: tuple[BodyInstance, ...] = (),
+) -> tuple[Any, ...]:
     if not references or len(set(references)) != len(references):
         raise EngineError("invalid-cad-selection", "Select existing edges without duplicates.")
-    available = entities(shape, owner_id, "edge")
+    available = entities(shape, owner_id, "edge", body_instances)
     result = []
     for reference in references:
         matches = [entity for entity in available if entity.reference == reference]

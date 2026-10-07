@@ -66,7 +66,7 @@ def test_version_three_upgrade_preserves_sets_and_physical_digest():
     prior["namedSelections"] = [selection()]
     expected_fingerprint = fingerprint(prior)
     upgraded = migrate_project(prior)
-    assert upgraded["schemaVersion"] == 6
+    assert upgraded["schemaVersion"] == 7
     assert upgraded["namedSelections"] == prior["namedSelections"]
     assert fingerprint(upgraded) == expected_fingerprint
 
@@ -156,7 +156,7 @@ def test_version_two_migration_preserves_exact_independent_canonical_digest():
     ).hexdigest()
     upgraded = migrate_project(prior)
     assert prior == prior_copy
-    assert upgraded["schemaVersion"] == 6
+    assert upgraded["schemaVersion"] == 7
     assert upgraded["namedSelections"] == []
     expected_study = deepcopy(prior["study"])
     expected_study["solver"]["pinn"]["formulation"] = "strong-form"
@@ -179,19 +179,21 @@ def test_version_two_is_validated_before_any_upgrade(defect):
     elif defect == "invalid-pinn":
         project["study"]["solver"]["pinn"]["steps"] = 0
     else:
-        project["schemaVersion"] = 6
+        project["schemaVersion"] = 8
     with pytest.raises(EngineError):
         migrate_project(project)
 
 
 @pytest.mark.parametrize("name", ["cantilever", "plane-stress-tension"])
-def test_real_version_two_fields_survive_metadata_upgrade_and_corruption_still_fails(
-    name, tmp_path
+@pytest.mark.parametrize("version", [2, 6])
+def test_real_legacy_fields_survive_metadata_upgrade_and_corruption_still_fails(
+    name, version, tmp_path
 ):
     prior = example(name)
-    prior["schemaVersion"] = 2
-    prior["study"]["solver"]["pinn"].pop("formulation")
-    del prior["namedSelections"]
+    prior["schemaVersion"] = version
+    if version == 2:
+        prior["study"]["solver"]["pinn"].pop("formulation")
+        del prior["namedSelections"]
     geometry, study = prior["geometry"], prior["study"]
     if study["dimension"] == "3d":
         mesh = generate_solid(prior["geometry"], study["mesh"]["size"])

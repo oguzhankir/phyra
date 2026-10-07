@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 7
+      "const": 6
     },
     "id": {
       "type": "string",
@@ -672,9 +672,6 @@
         },
         "sketch": {
           "$ref": "#/definitions/CadSketchDefinition"
-        },
-        "purpose": {
-          "enum": ["profile", "path"]
         }
       }
     },
@@ -1061,15 +1058,6 @@
         },
         {
           "$ref": "#/definitions/CadChamferFeature"
-        },
-        {
-          "$ref": "#/definitions/CadLoftFeature"
-        },
-        {
-          "$ref": "#/definitions/CadSweepFeature"
-        },
-        {
-          "$ref": "#/definitions/CadAssemblyFeature"
         }
       ]
     },
@@ -1602,134 +1590,6 @@
           "maxItems": 64,
           "items": {
             "$ref": "#/definitions/CadSketchLoop"
-          }
-        }
-      }
-    },
-    "CadLoftFeature": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind", "sectionIds", "solid", "ruled"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "kind": {
-          "const": "loft"
-        },
-        "sectionIds": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 16,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "pattern": "^[A-Za-z0-9_-]+$"
-          }
-        },
-        "solid": {
-          "type": "boolean"
-        },
-        "ruled": {
-          "type": "boolean"
-        }
-      }
-    },
-    "CadSweepFeature": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind", "profileId", "spineId", "solid"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "kind": {
-          "const": "sweep"
-        },
-        "profileId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "spineId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "solid": {
-          "type": "boolean"
-        }
-      }
-    },
-    "CadAssemblyComponent": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "featureId"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "featureId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        }
-      }
-    },
-    "CadAssemblyFeature": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind", "components"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "kind": {
-          "const": "assembly"
-        },
-        "components": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 32,
-          "items": {
-            "$ref": "#/definitions/CadAssemblyComponent"
           }
         }
       }

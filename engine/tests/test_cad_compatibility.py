@@ -19,7 +19,12 @@ from phyra_engine.geometry.cad.topology import properties
 from phyra_engine.protocol.cad import CadRequest
 from phyra_engine.protocol.request import StudyRequest
 from phyra_engine.results import validate_cached
-from phyra_engine.studies.project import fingerprint, numerical_view, validate_project
+from phyra_engine.studies.project import (
+    fingerprint,
+    migrate_project,
+    numerical_view,
+    validate_project,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -179,6 +184,14 @@ def test_real_solid_cad_fem_and_cache_preserve_authored_fingerprint(tmp_path, ki
     assert manifest["summary"]["totalReaction"] == pytest.approx([0, 0, 100], abs=1e-7)
     blob = (tmp_path / "buffer.bin").read_bytes()
     assert validate_cached(source, manifest, blob) == manifest
+    # Unchanged v6 authored CAD retains its physical identity and exact cached
+    # fields after upgrading, independently of the current preview/mesh adapter.
+    previous = deepcopy(source)
+    previous["schemaVersion"] = 6
+    upgraded = migrate_project(previous)
+    assert fingerprint(previous) == fingerprint(upgraded) == manifest["fingerprint"]
+    assert upgraded["geometry"] == previous["geometry"]
+    assert validate_cached(upgraded, manifest, blob) == manifest
     assert execute_study(RunPlan.prepare(study_request(source, "validate")), tmp_path) == manifest
     source["geometry"]["features"][-1]["name"] = "Revised source identity"
     with pytest.raises(EngineError) as error:

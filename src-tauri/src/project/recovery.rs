@@ -917,7 +917,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        assert_eq!(restored.project["schemaVersion"], 6);
+        assert_eq!(restored.project["schemaVersion"], 7);
         assert_eq!(restored.project["namedSelections"], json!([]));
         assert_eq!(restored.project["revision"], previous["revision"]);
         assert_eq!(restored.project["geometry"], previous["geometry"]);
@@ -964,7 +964,7 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
         let mut expected = previous;
-        expected["schemaVersion"] = json!(6);
+        expected["schemaVersion"] = json!(7);
         expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
         assert_eq!(restored.project, expected);
         assert_eq!(restored.saved_at, 100);
@@ -973,14 +973,37 @@ mod tests {
     }
 
     #[test]
+    fn version_six_cad_journal_migrates_only_in_memory() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("version-six-cad.json");
+        let mut previous = project(4);
+        previous["schemaVersion"] = json!(6);
+        previous["study"] = Value::Null;
+        previous["geometry"] = json!({"kind":"cad","dimension":"3d","assets":[],"outputFeatureId":"box",
+            "features":[{"id":"box","name":"Box","kind":"box","length":0.1,"width":0.05,"height":0.02}]});
+        let bytes = serde_json::to_vec_pretty(&Record {
+            format_version: 2,
+            saved_at: 100,
+            app_version: "0.4.0".into(),
+            project: previous.clone(),
+        })
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let restored = read_record(&path).unwrap();
+        previous["schemaVersion"] = json!(7);
+        assert_eq!(restored.project, previous);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
     fn incompatible_journal_versions_are_rejected_without_rewriting_source() {
         let temp = tempfile::tempdir().unwrap();
-        for defect in ["v4-future-field", "v7"] {
+        for defect in ["v4-future-field", "v8"] {
             let path = temp.path().join(format!("{defect}.json"));
             let mut previous: Value =
                 serde_json::from_str(include_str!("../tests/fixtures/project-v4.json")).unwrap();
-            if defect == "v7" {
-                previous["schemaVersion"] = json!(7);
+            if defect == "v8" {
+                previous["schemaVersion"] = json!(8);
             } else {
                 previous["study"]["solver"]["pinn"]["formulation"] = json!("deep-energy");
             }

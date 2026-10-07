@@ -15,6 +15,10 @@ export type CadEntity = {
   volume?: number;
   surfaceType?: string;
   curveType?: string;
+  bodyId?: string;
+  componentId?: string;
+  componentPath?: string[];
+  sourceFeatureId?: string;
 };
 export type CadArray = {
   offset: number;

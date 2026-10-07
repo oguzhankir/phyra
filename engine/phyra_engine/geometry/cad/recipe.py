@@ -5,6 +5,20 @@ from typing import Any
 from phyra_engine.errors import EngineError
 
 
+def dependencies(feature: dict[str, Any]) -> tuple[str, ...]:
+    """The exact authored sources for one implemented feature."""
+    references = [
+        feature[key]
+        for key in ("sketchId", "inputId", "leftId", "rightId", "profileId", "spineId")
+        if key in feature
+    ]
+    if feature["kind"] == "loft":
+        references.extend(feature["sectionIds"])
+    if feature["kind"] == "assembly":
+        references.extend(component["featureId"] for component in feature["components"])
+    return tuple(dict.fromkeys(references))
+
+
 def output_features(geometry: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """Keep inactive authored history intact without executing its kernel operations."""
     features = geometry["features"]
@@ -21,7 +35,31 @@ def output_features(geometry: dict[str, Any]) -> tuple[dict[str, Any], ...]:
         if feature is None:
             raise EngineError("invalid-geometry", "CAD output dependency is unavailable.")
         required.add(identifier)
-        pending.extend(
-            feature[key] for key in ("sketchId", "inputId", "leftId", "rightId") if key in feature
-        )
+        pending.extend(dependencies(feature))
     return tuple(feature for feature in features if feature["id"] in required)
+
+
+def spine_features(features: tuple[dict[str, Any], ...]) -> frozenset[str]:
+    """Open wires are an actual sweep input role, never a second authored graph."""
+    indexed = {feature["id"]: feature for feature in features}
+    required: set[str] = set()
+    for feature in features:
+        if feature["kind"] != "sweep":
+            continue
+        identifier = feature["spineId"]
+        visited: set[str] = set()
+        while identifier not in visited:
+            visited.add(identifier)
+            source = indexed[identifier]
+            required.add(identifier)
+            if source["kind"] == "sketch":
+                break
+            if source["kind"] != "transform":
+                raise EngineError(
+                    "unsupported-sweep-spine",
+                    "Sweep paths require an open sketch or its rigid transforms.",
+                )
+            identifier = source["inputId"]
+        else:
+            raise EngineError("invalid-geometry", "CAD dependencies cannot contain a cycle.")
+    return frozenset(required)
