@@ -1,10 +1,10 @@
 # Contributing to Phyra
 
-## Sign-off and licensing
+## Licensing and sign-off
 
-Use Developer Certificate of Origin (DCO) sign-off on every commit (`git commit -s`). The sign-off certifies that you have the right to submit the change under the project’s terms. It does not transfer your copyright. Phyra does not require a Contributor License Agreement (CLA) or request additional relicensing rights.
+Phyra uses the Developer Certificate of Origin (DCO) to confirm that contributors have the right to submit their work. A DCO `Signed-off-by` trailer is required only on the final squash commit; intermediate commits in a pull request do not need individual sign-offs. For co-authored changes, include a trailer from each contributor. Phyra does not require a separate Contributor License Agreement (CLA) or request additional relicensing rights.
 
-Phyra's original source code is licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Contributions intentionally submitted for inclusion in Phyra are licensed under Apache-2.0, consistent with Section 5 of the license. Separately identified third-party code, assets and legal texts retain their own terms. Bundled Gmsh and SolveSpace remain GPL-covered: distributing the combined application requires compliance with GPLv3, the applicable upstream licenses and the complete Corresponding Source requirements in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt). Changing the first-party source license does not make the installer Apache-only or satisfy the public-distribution gate.
+Contributors retain copyright. Phyra's original source code is licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Contributions intentionally submitted for inclusion in Phyra are licensed under Apache-2.0, consistent with Section 5 of the license. Separately identified third-party code, assets and legal texts retain their own terms. Bundled Gmsh and SolveSpace remain GPL-covered: distributing the combined application requires compliance with GPLv3, the applicable upstream licenses and the complete Corresponding Source requirements in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt). Changing the first-party source license does not make the installer Apache-only or satisfy the public-distribution gate.
 
 ## Setup and verification
 
@@ -53,7 +53,7 @@ Plan product outcomes in the [roadmap](ROADMAP.md); assign a version only when t
 npm run release:version -- 0.3.0
 ```
 
-This edits version metadata only. Move the completed scope from Unreleased in CHANGELOG.md into a section for the selected version; assign a date only when the release actually exists. Review the resulting diff, complete the release checks above, and commit the reviewed changes with DCO sign-off. A version tag uses the `v` prefix and must match all metadata; for example, `v0.3.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
+This edits version metadata only. Move the completed scope from Unreleased in CHANGELOG.md into a section for the selected version; assign a date only when the release actually exists. Review the resulting diff, complete the release checks above, and commit the reviewed changes. A version tag uses the `v` prefix and must match all metadata; for example, `v0.3.0`. After the release commit is on the default branch, create and push its tag to start the hosted workflow:
 
 ```sh
 git tag -a v0.3.0 -m "Phyra v0.3.0"
@@ -123,6 +123,6 @@ The small `public/reference/` fixtures are actual CPU worker results for browser
 
 The README launch video and images under `public/help/` show the v0.3.0 interface inspecting actual saved CPU references. The 48-second English launch edit uses stationary captures, method equations, narration and captions; planned direction is explicitly labeled. Keep the video and its poster together under `assets/media/`, with a README link to the repository MP4. `node scripts/render-promo.mjs` retains the earlier scene-manifest compositor; it does not reproduce this launch edit. Media tooling needs FFmpeg and a system font, neither of which is an application dependency. Keep raw captures, audio stems and generated segments under ignored `artifacts/`; do not substitute synthetic numerical fields or screenshots.
 
-Keep changes focused and sign off commits using your configured identity (`git commit -s`); DCO is separate from cryptographic signing. Preserve unknown local work. Publishing, pushing, uploading binaries and paid compute require owner authorization. Follow [SECURITY.md](SECURITY.md) for reporting limitations; do not put secrets in public issues. Update application/package/native/engine versions together for a release, and add citation version/date/DOI only when that release exists.
+Keep changes focused and use your configured Git identity for commits. Preserve unknown local work. Publishing, pushing, uploading binaries and paid compute require owner authorization. Follow [SECURITY.md](SECURITY.md) for reporting limitations; do not put secrets in public issues. Update application/package/native/engine versions together for a release, and add citation version/date/DOI only when that release exists.
 
 The [tag workflow](.github/workflows/release.yml) checks matching version metadata and reuses full scientific/package/desktop CI only after the owner's `PHYRA_PUBLIC_DISTRIBUTION_READY=true` repository gate. Verified installers, license/notice files and SHA-256 sums are staged under ignored `artifacts/release/` and attached to an owner-reviewed draft. The gate defaults closed; no tag or publication is authorized by these instructions. Updater artifacts are absent, and configured automation does not establish signing, consumer installation or complete Corresponding Source availability.
