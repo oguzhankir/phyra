@@ -2,11 +2,9 @@
 
 ## Sign-off and licensing
 
-Use DCO sign-off on every commit (`git commit -s`). The sign-off certifies that you have the right to submit the change under the project’s terms; it does not grant relicensing rights to Phyra. External contributors must also accept the [Phyra CLA](CLA.md) before their contribution is merged. The CLA grants the Maintainer additional copyright and patent licenses while contributors retain copyright. For external pull requests, comment **“I have read the Phyra CLA and agree to its terms.”** and a maintainer will record and check acceptance before merging. This is a manual repository check; no third-party CLA service is required.
+Use Developer Certificate of Origin (DCO) sign-off on every commit (`git commit -s`). The sign-off certifies that you have the right to submit the change under the project’s terms. It does not transfer your copyright. Phyra does not require a Contributor License Agreement (CLA) or request additional relicensing rights.
 
-Phyra's original source code is licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Separately identified third-party code, assets and legal texts retain their own terms. Bundled Gmsh and SolveSpace remain GPL-covered: distributing the combined application requires compliance with GPLv3, the applicable upstream licenses and the complete Corresponding Source requirements in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt). Changing the first-party source license does not make the installer Apache-only or satisfy the public-distribution gate.
-
-The CLA preserves the option to offer contributions under additional licenses in the future while keeping them available under the project license in effect when submitted. The Apache-2.0 transition does not change existing GPL releases or revoke rights already granted to their recipients; it does not make an existing open-source release retroactively proprietary. Contributors retain copyright in their work unless a separate written agreement explicitly states otherwise.
+Phyra's original source code is licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Contributions intentionally submitted for inclusion in Phyra are licensed under Apache-2.0, consistent with Section 5 of the license. Separately identified third-party code, assets and legal texts retain their own terms. Bundled Gmsh and SolveSpace remain GPL-covered: distributing the combined application requires compliance with GPLv3, the applicable upstream licenses and the complete Corresponding Source requirements in [notices/THIRD_PARTY.txt](notices/THIRD_PARTY.txt). Changing the first-party source license does not make the installer Apache-only or satisfy the public-distribution gate.
 
 ## Setup and verification
 
