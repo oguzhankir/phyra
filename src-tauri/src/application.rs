@@ -43,9 +43,10 @@ pub(crate) fn run() {
                         if verification_uses_training() {
                             240
                         } else if verification::verification_configuration() == Some("cad") {
-                            // Open-sketch solving and three exact rebuilds precede
-                            // the normal solve/persistence/cancellation checks.
-                            180
+                            // The authored CAD route performs repeated exact rebuilds before
+                            // mesh, solve, archive/reopen and cancellation checks. Allow slower
+                            // Windows runners to finish the complete source-bound workflow.
+                            360
                         } else {
                             75
                         },
@@ -70,6 +71,7 @@ pub(crate) fn run() {
         .manage(project::recovery::RecoveryState::default())
         .invoke_handler(tauri::generate_handler![
             cad::commands::evaluate_cad,
+            cad::commands::mesh_cad,
             cad::commands::solve_cad_sketch,
             cad::commands::cancel_cad,
             cad::commands::finish_cad,
@@ -122,6 +124,14 @@ pub(crate) fn run() {
     application.run(|app, event| {
         if matches!(event, tauri::RunEvent::Ready) {
             trace_verification("native-ready");
+            if let Some(mode) = verification::verification_configuration() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let title = format!("Phyra — {} verification", mode.to_uppercase());
+                    if let Err(error) = window.set_title(&title).and_then(|_| window.set_focus()) {
+                        trace_verification(&format!("verification-window-focus: {error}"));
+                    }
+                }
+            }
         }
         if matches!(event, tauri::RunEvent::Exit) {
             stop_owned(&app.state::<EngineState>());

@@ -1,4 +1,5 @@
-import type { Project } from '../../domain/contracts/types';
+import { isNumericalProject } from '../../domain/project/document';
+import type { NumericalGeometry } from '../../domain/contracts/types';
 import { Group, NumberInput } from '../../shared/forms/PropertyControls';
 import Select from '../../shared/ui/Select';
 
@@ -21,6 +22,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
     selectRegion,
     setNotice,
   } = workbench;
+  if (!isNumericalProject(project)) return null;
   return (
     <>
       <Group title={is2D ? 'Plane domain' : 'Solid definition'}>
@@ -43,11 +45,11 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
                 setError('Complete or revert the numeric input before changing primitive.');
                 return;
               }
-              const kind = value as Project['geometry']['kind'];
+              const kind = value as NumericalGeometry['kind'];
               if (kind === project.geometry.kind) return;
               const count = project.study.constraints.length + project.study.loads.length;
               edit((next) => {
-                changeGeometryKind(next, kind);
+                if (isNumericalProject(next)) changeGeometryKind(next, kind);
               });
               setSelected([]);
               setConstraintId(null);
@@ -80,7 +82,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
               unit={project.displayUnits}
               onChange={(value) =>
                 edit((next) => {
-                  next.geometry[dimension] = value / factor;
+                  if (isNumericalProject(next)) next.geometry[dimension] = value / factor;
                 })
               }
             />
@@ -95,6 +97,7 @@ export default function GeometryEditor({ workbench }: { workbench: ProjectInspec
                 return;
               }
               edit((next) => {
+                if (!isNumericalProject(next)) return;
                 changeGeometryKind(next, 'profile');
                 next.geometry.profile!.holes = [];
               });

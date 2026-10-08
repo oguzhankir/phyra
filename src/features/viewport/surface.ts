@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Project } from '../../domain/contracts/types';
+import type { Project, NumericalProject, CadSolidProject } from '../../domain/contracts/types';
 import {
   numericArray,
   solutionArray,
@@ -7,6 +7,8 @@ import {
   type FieldSource,
 } from '../../domain/results/fields';
 import { regionNames, type RegionId } from '../../domain/project/regions';
+import type { CadPreview } from '../../domain/geometry/cadPreview';
+import { isCadSolidProject } from '../../domain/project/cadSolid';
 import { profileError, sampleSegment } from '../../domain/project/profile';
 
 export type SurfaceData = {
@@ -21,7 +23,7 @@ export type SurfaceData = {
   boundaryEdges?: Uint32Array;
   edgeRegions?: Uint32Array;
 };
-function primitiveSurface(project: Project): SurfaceData {
+function primitiveSurface(project: NumericalProject): SurfaceData {
   const { kind, length: l, width: w, height: h, radius: r, thickness: t } = project.geometry;
   const regionIds = regionNames(kind, project.study.dimension, project.geometry.profile).map(
     (region) => region.id,
@@ -151,12 +153,45 @@ function primitiveSurface(project: Project): SurfaceData {
     regionIds,
   };
 }
+/** Display-only exact tessellation. It never becomes a numerical mesh or result. */
+export function cadPreparationSurface(
+  project: CadSolidProject,
+  preview: CadPreview | null,
+): SurfaceData {
+  const boundaries = project.study.domain.boundaries;
+  const regionIds = boundaries.map((boundary) => boundary.id);
+  if (!preview)
+    return {
+      positions: new Float64Array(),
+      triangles: new Uint32Array(),
+      regions: new Uint32Array(),
+      regionIds,
+    };
+  const catalog = new Map(boundaries.map((boundary, index) => [boundary.faceId, index]));
+  if (
+    preview.faces.length !== catalog.size ||
+    new Set(preview.faces.map((face) => face.id)).size !== catalog.size ||
+    preview.faces.some((face) => face.identity !== 'content-reference' || !catalog.has(face.id))
+  )
+    throw new Error('Rebuild the exact CAD source before selecting analysis boundaries.');
+  const faceRegions = preview.faces.map((face) => catalog.get(face.id)!);
+  const regions = new Uint32Array(preview.triangleFaces.length);
+  preview.triangleFaces.forEach((face, index) => {
+    if (face >= faceRegions.length) throw new Error('CAD display face mapping is invalid.');
+    regions[index] = faceRegions[face];
+  });
+  return { positions: preview.positions, triangles: preview.triangles, regions, regionIds };
+}
 export function surfaceData(
   project: Project,
   data: ResultData | null,
   source: FieldSource = 'primary',
+  cadPreview: CadPreview | null = null,
 ): SurfaceData {
-  if (!data) return primitiveSurface(project);
+  if (!data)
+    return isCadSolidProject(project)
+      ? cadPreparationSurface(project, cadPreview)
+      : primitiveSurface(project);
   return {
     positions: numericArray(data, 'positions') as Float64Array,
     triangles: numericArray(data, 'surface') as Uint32Array,

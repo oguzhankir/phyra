@@ -917,7 +917,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        assert_eq!(restored.project["schemaVersion"], 7);
+        assert_eq!(restored.project["schemaVersion"], 8);
         assert_eq!(restored.project["namedSelections"], json!([]));
         assert_eq!(restored.project["revision"], previous["revision"]);
         assert_eq!(restored.project["geometry"], previous["geometry"]);
@@ -964,7 +964,7 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
         let mut expected = previous;
-        expected["schemaVersion"] = json!(7);
+        expected["schemaVersion"] = json!(8);
         expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
         assert_eq!(restored.project, expected);
         assert_eq!(restored.saved_at, 100);
@@ -990,7 +990,7 @@ mod tests {
         .unwrap();
         fs::write(&path, &bytes).unwrap();
         let restored = read_record(&path).unwrap();
-        previous["schemaVersion"] = json!(7);
+        previous["schemaVersion"] = json!(8);
         assert_eq!(restored.project, previous);
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
@@ -998,12 +998,12 @@ mod tests {
     #[test]
     fn incompatible_journal_versions_are_rejected_without_rewriting_source() {
         let temp = tempfile::tempdir().unwrap();
-        for defect in ["v4-future-field", "v8"] {
+        for defect in ["v4-future-field", "v9"] {
             let path = temp.path().join(format!("{defect}.json"));
             let mut previous: Value =
                 serde_json::from_str(include_str!("../tests/fixtures/project-v4.json")).unwrap();
-            if defect == "v8" {
-                previous["schemaVersion"] = json!(8);
+            if defect == "v9" {
+                previous["schemaVersion"] = json!(9);
             } else {
                 previous["study"]["solver"]["pinn"]["formulation"] = json!("deep-energy");
             }

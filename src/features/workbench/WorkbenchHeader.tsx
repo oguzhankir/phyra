@@ -1,4 +1,5 @@
 import { version } from '../../../package.json';
+import type { ReactNode } from 'react';
 import {
   Check,
   FilePlus2,
@@ -38,6 +39,7 @@ type Props = {
   onRedo: () => void;
   onCommands?: () => void;
   onAssistantOpen?: () => void;
+  children?: ReactNode;
 };
 
 export default function WorkbenchHeader(props: Props) {
@@ -123,6 +125,7 @@ export default function WorkbenchHeader(props: Props) {
           Help
         </button>
       </div>
+      {props.children && <div className="app-document-switcher">{props.children}</div>}
       <div className="header-end">
         {props.onCommands && (
           <button
@@ -145,7 +148,7 @@ export default function WorkbenchHeader(props: Props) {
             onClick={() => props.onAssistantOpen?.()}
           >
             <Sparkles size={18} aria-hidden="true" />
-            <span>AI assistant</span>
+            <span>AI</span>
           </button>
         )}
       </div>

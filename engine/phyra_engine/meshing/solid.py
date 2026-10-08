@@ -117,6 +117,74 @@ def validate_mesh(mesh: Mesh) -> None:
         raise EngineError("invalid-mesh", "Boundary orientation must point out of the solid.")
 
 
+def collect_solid_mesh(
+    tags: dict[int, int],
+    regions: tuple[str, ...],
+    scale: float,
+    origin: np.ndarray | None = None,
+) -> Mesh:
+    """Read one meshed Gmsh model into bounded, oriented SI tetrahedral topology."""
+    node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
+    if len(node_tags) > MAX_NODES:
+        raise EngineError(
+            "resource-limit", "Generated mesh has too many nodes; increase mesh size."
+        )
+    positions = np.asarray(coordinates, dtype=np.float64).reshape(-1, 3) * scale
+    if origin is not None:
+        positions += origin
+    lookup = {int(tag): i for i, tag in enumerate(node_tags)}
+    types, _, element_nodes = gmsh.model.mesh.getElements(3)
+    if len(types) != 1 or int(types[0]) != 4:
+        raise EngineError("unsupported-mesh", "Expected first-order tetrahedral volume elements.")
+    if len(element_nodes[0]) // 4 > MAX_CELLS:
+        raise EngineError("resource-limit", "Generated mesh has too many tetrahedra.")
+    cells = np.asarray([lookup[int(tag)] for tag in element_nodes[0]], dtype=np.uint32).reshape(
+        -1, 4
+    )
+    negative = tetra_volumes(positions, cells) < 0
+    cells[negative, 1], cells[negative, 2] = (
+        cells[negative, 2].copy(),
+        cells[negative, 1].copy(),
+    )
+    owners = boundary_faces(cells)
+    surface: list[np.ndarray] = []
+    surface_regions: list[int] = []
+    surface_cells: list[int] = []
+    for tag, region_index in tags.items():
+        types, _, face_nodes = gmsh.model.mesh.getElements(2, tag)
+        if len(types) != 1 or int(types[0]) != 2:
+            raise EngineError("unsupported-mesh", "Expected first-order boundary triangles.")
+        if len(surface) + len(face_nodes[0]) // 3 > MAX_TRIANGLES:
+            raise EngineError("resource-limit", "Generated mesh has too many boundary triangles.")
+        faces = np.asarray([lookup[int(node)] for node in face_nodes[0]], dtype=np.uint32).reshape(
+            -1, 3
+        )
+        for face in faces:
+            owner = owners.get(tuple(sorted(face.tolist())))
+            if owner is None:
+                raise EngineError(
+                    "invalid-mesh", "A geometry triangle is missing from volume boundary."
+                )
+            triangle = positions[face]
+            normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
+            direction = positions[cells[owner]].mean(axis=0) - triangle.mean(axis=0)
+            if np.dot(normal, direction) > 0:
+                face[[1, 2]] = face[[2, 1]]
+            surface.append(face)
+            surface_regions.append(region_index)
+            surface_cells.append(owner)
+    mesh = Mesh(
+        positions,
+        cells,
+        np.asarray(surface, dtype=np.uint32),
+        np.asarray(surface_regions, dtype=np.uint32),
+        np.asarray(surface_cells, dtype=np.uint32),
+        tuple(regions),
+    )
+    validate_mesh(mesh)
+    return mesh
+
+
 def generate_solid(
     source: dict[str, Any], target_size: float, progress: Progress | None = None
 ) -> Mesh:
@@ -167,58 +235,7 @@ def generate_solid(
             progress("meshing", None)
         gmsh.model.mesh.generate(3)
         gmsh.model.mesh.optimize("Netgen")
-        node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
-        if len(node_tags) > MAX_NODES:
-            raise EngineError(
-                "resource-limit", "Generated mesh has too many nodes; increase mesh size."
-            )
-        positions = np.asarray(coordinates, dtype=np.float64).reshape(-1, 3) * scale
-        lookup = {int(tag): i for i, tag in enumerate(node_tags)}
-        types, _, element_nodes = gmsh.model.mesh.getElements(3)
-        if len(types) != 1 or int(types[0]) != 4:
-            raise EngineError(
-                "unsupported-mesh", "Expected first-order tetrahedral volume elements."
-            )
-        cells = np.asarray([lookup[int(tag)] for tag in element_nodes[0]], dtype=np.uint32).reshape(
-            -1, 4
-        )
-        negative = tetra_volumes(positions, cells) < 0
-        cells[negative, 1], cells[negative, 2] = (
-            cells[negative, 2].copy(),
-            cells[negative, 1].copy(),
-        )
-        owners = boundary_faces(cells)
-        surface, surface_regions, surface_cells = [], [], []
-        for tag, region_index in tags.items():
-            types, _, face_nodes = gmsh.model.mesh.getElements(2, tag)
-            if len(types) != 1 or int(types[0]) != 2:
-                raise EngineError("unsupported-mesh", "Expected first-order boundary triangles.")
-            faces = np.asarray(
-                [lookup[int(node)] for node in face_nodes[0]], dtype=np.uint32
-            ).reshape(-1, 3)
-            for face in faces:
-                owner = owners.get(tuple(sorted(face.tolist())))
-                if owner is None:
-                    raise EngineError(
-                        "invalid-mesh", "A geometry triangle is missing from volume boundary."
-                    )
-                triangle = positions[face]
-                normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
-                direction = positions[cells[owner]].mean(axis=0) - triangle.mean(axis=0)
-                if np.dot(normal, direction) > 0:
-                    face[[1, 2]] = face[[2, 1]]
-                surface.append(face)
-                surface_regions.append(region_index)
-                surface_cells.append(owner)
-        mesh = Mesh(
-            positions,
-            cells,
-            np.asarray(surface, dtype=np.uint32),
-            np.asarray(surface_regions, dtype=np.uint32),
-            np.asarray(surface_cells, dtype=np.uint32),
-            tuple(regions),
-        )
-        validate_mesh(mesh)
+        mesh = collect_solid_mesh(tags, tuple(regions), scale)
         if progress:
             progress("mesh-ready", 1)
         return mesh

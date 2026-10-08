@@ -706,7 +706,7 @@ mod tests {
             project_id: Some("cad-fixture-project".into()),
             revision: Some(3),
             project: Some(json!({
-                "schemaVersion":7,"id":"cad-fixture-project","name":"CAD fixture","revision":3,
+                "schemaVersion":8,"id":"cad-fixture-project","name":"CAD fixture","revision":3,
                 "displayUnits":"mm","study":null,"namedSelections":[],
                 "geometry":{"kind":"cad","dimension":"3d","features":[
                     {"id":"block","name":"Block","kind":"box","length":0.1,"width":0.02,"height":0.01}

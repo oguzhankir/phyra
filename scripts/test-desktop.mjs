@@ -40,12 +40,14 @@ environment.PATH =
     ? `${process.env.WINDIR}\\System32;${process.env.WINDIR}`
     : '/usr/bin:/bin:/usr/sbin:/sbin';
 
-function assertRenderer(renderer, manifest, association) {
+function assertRenderer(renderer, manifest, association, expectedRegion = 'x1') {
   if (
     !renderer ||
     renderer.renderedTriangles !== manifest.statistics.surfaceTriangles ||
     renderer.association !== association ||
-    renderer.pickedRegion !== 'x1' ||
+    !expectedRegion ||
+    renderer.pickedRegion !== expectedRegion ||
+    !manifest.regions.some((region) => region.id === expectedRegion) ||
     !Number.isFinite(renderer.probedValue) ||
     !Number.isInteger(renderer.probedIndex) ||
     renderer.probedIndex < 0 ||
@@ -205,7 +207,7 @@ async function verify(mode) {
   const energy = mode === '2d-energy';
   const physicsMl = mode === '2d-compare' || energy;
   const profile = mode === '2d-profile';
-  const timeoutMs = physicsMl ? 270000 : cad ? 210000 : 90000;
+  const timeoutMs = physicsMl ? 270000 : cad ? 420000 : 90000;
   const child = spawn(
     executable,
     [
@@ -287,11 +289,21 @@ async function verify(mode) {
     !report.recovery?.supersededRequestsRejected ||
     !report.recovery?.newClientSequenceAccepted ||
     report.recovery?.resultsIncluded !== false ||
-    report.engineCapabilities?.schemaVersion !== 1
+    report.engineCapabilities?.schemaVersion !== 2
   )
     throw new Error('Native recovery or implemented-method capability verification failed');
-  assertRenderer(report.renderer, report.manifest, 'node');
-  assertRenderer(report.stressRenderer, report.manifest, 'cell');
+  assertRenderer(
+    report.renderer,
+    report.manifest,
+    'node',
+    cad ? report.cad?.expectedPickedRegion : 'x1',
+  );
+  assertRenderer(
+    report.stressRenderer,
+    report.manifest,
+    'cell',
+    cad ? report.cad?.expectedPickedRegion : 'x1',
+  );
   assertMaximum(
     report.renderer.fieldMaximum,
     report.manifest.summary.maxDisplacement,
@@ -316,13 +328,30 @@ async function verify(mode) {
     cad &&
     (report.project.geometry.kind !== 'cad' ||
       !report.cad?.emptyStart ||
+      !report.cad?.commandInputsBlocked ||
+      !report.cad?.commandPreviewIsolated ||
+      !report.cad?.commandCancelPreserved ||
+      !report.cad?.commandApplyOnce ||
       !report.cad?.openSketchSolved ||
       !report.cad?.evaluated ||
       !report.cad?.sourcePreserved ||
       !report.cad?.unsupportedBlocked ||
       !report.cad?.undoPreserved ||
       !report.cad?.meshGenerated ||
+      !report.cad?.inspectionGenerated ||
+      !report.cad?.inspectionPreservedCad ||
+      !report.cad?.inspectionInvalidated ||
+      !report.cad?.inspectionCorrespondence ||
+      !report.cad?.inspectionUi ||
+      !report.cad?.inspectionSelectionIsolated ||
+      !report.cad?.generalPreparation ||
+      !report.cad?.generalStaleSourceGate ||
+      !report.cad?.generalAssignments ||
+      !report.cad?.generalMesh ||
+      !report.cad?.generalSolve ||
+      report.project.study?.domain?.kind !== 'cad-solid' ||
       !report.cad?.previewRendered ||
+      !report.cad?.rendererReused ||
       !report.cad?.exportIntegrity ||
       !report.cad?.advancedPersistence ||
       !Array.isArray(report.cad?.advanced) ||

@@ -6,7 +6,16 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Added
 
-- Exact no-hole loft/sweep solids or surface shells with ordered section/path selectors, placed section duplication and editable named assembly instances. Multi-body picking and isolation preserve component identity; these new operations remain definition-only for analysis. Offline tutorials and AI guidance describe their implemented scope.
+- Prepare analysis creates a linear-static FEM study from one closed exact CAD solid after complete unique face correspondence. Persistent source-bound face assignments support restraints, prescribed displacement, total force and pressure through remeshing, solve and save/reopen. Changed geometry requires explicit study recreation instead of silent reassignment.
+
+- CAD mesh inspection links boundaries to exact source faces only after a complete unique BRep round-trip comparison. A searchable boundary list, viewport picking and Mesh/CAD faces switch highlight the same source through remeshing unchanged geometry. Unavailable correspondence is explicit; inspection selection stays separate from modeling and physical assignments.
+
+- Single-solid CAD mesh inspection generates independent Gmsh tetra4 meshes from exact BRep geometry. The workspace shows boundary triangles, element counts and quality distribution, and exact-versus-mesh volume. Inspection remains transient; it neither assigns physical boundaries nor by itself creates a general-solid study or replaces exact CAD exports.
+
+- New desktop CAD solid operations use editable command drafts with exact Preview, one-transaction Apply and Cancel. Provisional shapes cannot enable analysis/export or replace the last accepted shape; incomplete numeric drafts and late/cancelled previews remain blocked.
+- CAD navigation adds overlapping-entity selection with Alt-click, visible-model and selected-entity fitting that preserves viewing direction, and numbered standard-view shortcuts.
+
+- Exact no-hole loft/sweep solids or surface shells with ordered section/path selectors, placed section duplication and editable named assembly instances. Multi-body picking and isolation preserve component identity; surface shells and assembly instances remain definition-only for analysis; eligible closed loft/sweep solids use the source-bound FEM route. Offline tutorials and AI guidance describe their implemented scope.
 - Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
 - Direct blank-plane sketch editing with endpoint/grid/axis snapping, on-canvas dimensions, selection-driven constraints, local open-sketch solving and conflict/degree-of-freedom feedback. Modeling adds rigid placement, guided edge operations, standard orthographic views, retained stale previews and optional automatic rebuild.
 - AI assistance accepts CAD-only project context, bounded current exact-geometry and sketch-solve evidence, and read-only CAD inspection without attaching source files or field buffers.
@@ -14,11 +23,24 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ### Changed
 
+- Project schema v8 adds source-bound CAD solid domains and stamped CAD boundary sets, with frozen v7 validation before migration. Numerical workers use private immutable source snapshots. General CAD caches must match a rebuilt exact source and mesh; a rejected derived cache leaves the editable definition and imported sources available with an explicit notice. Capability schema v2 advertises the bounded CAD tetra4 mesher.
+
+- CAD now shares application menus and document tabs in one header, with modeling tools, file status, Save and Rebuild in one command strip. Compact view selectors replace the wide view-button row; Auto-save and Auto rebuild move into their relevant menus. English help and assistant guidance describe the new locations and mesh-inspection limits.
+
+- The CAD workspace uses a compact grouped toolbar, a resizable/collapsible Model and Operations navigator, and on-demand properties, measurement, analysis and export details. Project saving stays in the shared command strip; narrow workspaces collapse the navigator to retain drawing space.
+- Sketch dimension activation focuses its editable constraint value; plane axes and point-coordinate labels match the active plane. Constraint names, linked geometry selection, conflict highlighting and hover feedback make edits easier to inspect. Product-assistant responses and visible help metadata use English.
+
+- Phyra-owned source code is now Apache-2.0. Bundled GPL-covered dependencies retain their licenses; combined application metadata, notices and Corresponding Source gates explicitly preserve the applicable GPLv3 distribution obligations. Earlier GPL grants remain valid.
+
 - Application menu actions activate before the menu closes, preserving theme and other command selections during focus changes.
 - Native sketch builds discover a compatible installed MSVC toolchain on Windows; CAD worker output flushing uses the platform's native C runtime to preserve JSON framing.
 - Project schema v7 extends geometry documents and optional studies with loft, sweep and named assembly instances. Validated v1–v6 inputs migrate explicitly; unchanged numerical and v6 CAD inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
 
 ### Fixed
+
+- CAD rebuilds and CAD/mesh inspection switches reuse the viewport's graphics context and compiled materials. Shaders compile asynchronously where supported, with explicit graphics-loss feedback; repeated shape updates no longer recreate the graphics context.
+
+- CAD profiles drawn clockwise now reach the same supported numerical adapters as counterclockwise profiles. Derived traversal is normalized without changing authored geometry, boundary identities or constraints; independent tension and extruded-solid checks cover every rectangle drawing direction.
 
 - Project validation rejects a CAD study whose dimension disagrees with its geometry before opening the document, avoiding an unusable preparation state.
 - CAD rebuilds reject primitive dimensions at or below the exact kernel tolerance with a consistent diagnostic across platforms.

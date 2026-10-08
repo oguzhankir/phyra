@@ -1,0 +1,196 @@
+.cad-properties.cad-mesh-panel {
+  position: relative;
+  inset: auto;
+  width: 304px;
+  min-width: 260px;
+  max-width: 42%;
+  flex: 0 0 304px;
+  box-shadow: none;
+}
+.cad-mesh-content {
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+}
+.cad-mesh-content > :first-child {
+  margin-top: 0;
+}
+.cad-mesh-content form {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+.cad-mesh-generate {
+  justify-content: center;
+}
+.cad-mesh-method {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.cad-mesh-method > span {
+  color: var(--muted);
+}
+.cad-mesh-metrics {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px 12px;
+  font-size: 12px;
+  margin: 18px 0;
+}
+.cad-mesh-metrics dt {
+  color: var(--muted);
+}
+.cad-mesh-metrics dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cad-mesh-quality {
+  margin: 22px 0;
+}
+.cad-mesh-quality figcaption {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.cad-mesh-histogram {
+  height: 72px;
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+.cad-mesh-histogram > span {
+  flex: 1;
+  min-height: 1px;
+  background: var(--accent);
+  opacity: 0.8;
+  border-radius: 2px 2px 0 0;
+}
+.cad-mesh-quality-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 6px;
+}
+.cad-mesh-note {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.cad-mesh-note strong {
+  display: block;
+  margin-bottom: 5px;
+}
+.cad-mesh-boundaries {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0 8px;
+  margin-bottom: 18px;
+}
+.cad-mesh-boundaries h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.cad-mesh-matched {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--success);
+}
+.cad-mesh-view {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+.cad-mesh-view button {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+}
+.cad-mesh-view button[aria-pressed='true'] {
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+}
+.cad-mesh-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--muted);
+}
+.cad-mesh-search input {
+  width: 100%;
+  min-width: 0;
+}
+.cad-mesh-boundary-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.cad-mesh-boundary-list button {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  gap: 8px;
+  padding: 9px;
+  background: transparent;
+  text-align: left;
+}
+.cad-mesh-boundary-list button:hover {
+  background: var(--hover);
+}
+.cad-mesh-boundary-list button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.cad-mesh-boundary-list button > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cad-mesh-boundary-list small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cad-mesh-boundary-detail {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  font-size: 12px;
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+.cad-mesh-boundary-detail > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cad-mesh-boundary-detail > span {
+  color: var(--muted);
+}
+@media (max-width: 800px) {
+  .cad-properties.cad-mesh-panel {
+    flex-basis: 270px;
+    min-width: 240px;
+  }
+}

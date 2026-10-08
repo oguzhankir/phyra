@@ -1,4 +1,4 @@
-"""Frozen v6 intent, explicit v7 upgrades and bounded ordered CAD dependencies."""
+"""Frozen v6/v7 intent, explicit v8 upgrades and bounded ordered CAD dependencies."""
 
 import hashlib
 import json
@@ -67,7 +67,7 @@ def test_version_six_upgrade_changes_only_version_and_preserves_original(kind):
     original = deepcopy(prior)
     upgraded = migrate_project(prior)
     assert prior == original
-    original["schemaVersion"] = 7
+    original["schemaVersion"] = 8
     assert upgraded == original
     assert validate_project(upgraded) == upgraded
     if kind != "empty":
@@ -96,7 +96,9 @@ def test_new_operations_require_v7_and_preserve_distinct_physical_digest(kind):
     current = construction(kind)
     assert validate_project(current) == current
     original = deepcopy(current)
-    assert migrate_project(current) == current and current == original
+    upgraded = migrate_project(current)
+    assert upgraded["schemaVersion"] == 8 and current == original
+    assert fingerprint(upgraded) == fingerprint(current)
     canonical = {
         key: value
         for key, value in current.items()
@@ -165,7 +167,7 @@ def test_loft_sections_and_options_are_bounded(defect):
 
 
 def test_unknown_version_and_invalid_v6_input_are_not_repaired_by_migration():
-    for version in [6, 8]:
+    for version in [6, 9]:
         value = document()
         value["schemaVersion"] = version
         value["geometry"]["features"][0]["length"] = -1
@@ -183,7 +185,8 @@ def test_explicit_sketch_purpose_is_preserved_as_distinct_version_seven_intent()
     value["geometry"]["features"][0]["purpose"] = "path"
     assert validate_project(value) == value
     assert fingerprint(value) != original_digest
-    assert migrate_project(value) == value
+    assert migrate_project(value)["schemaVersion"] == 8
+    assert fingerprint(migrate_project(value)) == fingerprint(value)
     previous = deepcopy(value)
     previous["schemaVersion"] = 6
     original = deepcopy(previous)

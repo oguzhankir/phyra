@@ -17,6 +17,25 @@ export default function MeshEditor({ workbench }: { workbench: ProjectInspectorM
             })
           }
         />
+        {project.geometry.kind === 'cad' && project.study.mesh.boundarySize !== undefined && (
+          <div className="selection-repair" role="status">
+            <strong>Boundary refinement needs removal</strong>
+            <p>
+              Exact CAD solid meshing currently uses one target element size. Remove the saved
+              boundary refinement before meshing.
+            </p>
+            <button
+              className="secondary full"
+              onClick={() =>
+                edit((next) => {
+                  delete next.study.mesh.boundarySize;
+                })
+              }
+            >
+              Remove boundary refinement
+            </button>
+          </div>
+        )}
         {is2D && project.geometry.kind === 'profile' && (
           <>
             <label className="field-label">

@@ -51,6 +51,8 @@ for (const [folder, extension, suffix] of target === 'macos-aarch64'
 }
 for (const [source, suffix] of [
   ['LICENSE', '-LICENSE.txt'],
+  ['NOTICE', '-NOTICE.txt'],
+  ['notices/GPL-3.0.txt', '-COMBINED-GPL-3.0.txt'],
   ['notices/THIRD_PARTY.txt', '-THIRD_PARTY.txt'],
 ]) {
   const name = `${prefix}${suffix}`;

@@ -46,11 +46,11 @@ describe('offline workbench help', () => {
     expect(searchHelp('FLOAT32')[0].id).toBe('devices');
   });
 
-  it('finds practical advanced CAD guides in English and Turkish', () => {
+  it('finds English advanced CAD guides from direct search and multilingual assistant questions', () => {
     expect(searchHelp('loft')[0].id).toBe('cad-loft');
     expect(searchHelp('sweep path')[0].id).toBe('cad-sweep');
-    expect(searchHelp('montaj')[0].id).toBe('cad-assembly');
-    expect(searchHelp('yüzey kesit').map((article) => article.id)).toContain('cad-loft');
+    expect(searchHelp('assembly')[0].id).toBe('cad-assembly');
+    expect(searchHelp('surface section').map((article) => article.id)).toContain('cad-loft');
     expect(retrieveHelp('Loft kesitlerini nasıl yerleştiririm?', 'cad')[0].id).toBe('cad-loft');
     expect(retrieveHelp('Bir profili yol boyunca süpürmek istiyorum.', 'cad')[0].id).toBe(
       'cad-sweep',
@@ -73,6 +73,30 @@ describe('offline workbench help', () => {
     expect(assembly).toContain('including overlaps');
     expect(assembly).toContain('do not create bonds');
     expect(assembly).toContain('current studies cannot analyze it');
+  });
+
+  it('retrieves the current CAD interface from command-location and pick-through questions', () => {
+    for (const question of [
+      'Where is Model navigator?',
+      'How do I use the Operations tab?',
+      'How do I change Current output?',
+      'What does Alt-click do?',
+      'Where is Inspect & export?',
+      'How do I fit the selected CAD faces?',
+    ]) {
+      const article = retrieveHelp(question, 'overview')[0];
+      expect(article.id).toBe('cad');
+      const instructions = helpDocument(article);
+      expect(instructions).toContain('Current output stays visible');
+      expect(instructions).toContain('Shift+F');
+      expect(instructions).toContain('global Save project');
+    }
+    expect(searchHelp('model navigator')[0].id).toBe('cad');
+    const markup = renderToStaticMarkup(<HelpPanel open onClose={() => {}} articleId="cad" />);
+    expect(markup).toContain('Find the model, commands and view controls');
+    expect(markup).not.toContain('Surface &amp; assembly');
+    expect(markup).not.toContain('yüzey');
+    expect(markup).not.toContain('kesit');
   });
 
   it('normalizes punctuation and repeated terms without treating user input as code', () => {

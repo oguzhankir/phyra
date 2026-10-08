@@ -16,6 +16,7 @@ import {
 } from '../domain/execution/presentation';
 import { supportsPinn } from '../domain/project/study';
 import { isNumericalProject } from '../domain/project/document';
+import type { CadSolidSource } from '../domain/project/cadSolid';
 import { prepareStudy } from '../domain/project/readiness';
 import type { ResultData } from '../domain/results/fields';
 import type { RunTab } from '../features/runs/RunWorkspace';
@@ -40,6 +41,7 @@ interface Props {
   activity: WorkbenchActivity;
   project: ProjectDefinition;
   analysisProject?: Project | null;
+  cadSource?: CadSolidSource | null;
   projectRef: RefObject<ProjectDefinition>;
   invalidDraftsRef: RefObject<Map<string, string>>;
   initialData?: ResultData | null;
@@ -118,7 +120,11 @@ export function useExecutionSession(props: Props) {
       );
       return;
     }
-    const preparation = prepareStudy(numerical, invalidDraftsRef.current.size);
+    const preparation = prepareStudy(
+      numerical,
+      invalidDraftsRef.current.size,
+      callbacks.current.cadSource,
+    );
     if (operation === 'mesh' ? !preparation.canMesh : !preparation.canRun) {
       callbacks.current.onError(
         preparation.checks.find((check) => check.section === preparation.firstMissing)?.detail ??

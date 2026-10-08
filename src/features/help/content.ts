@@ -97,11 +97,18 @@ export const helpArticles: readonly HelpArticle[] = [
       'chamfer',
       'degrees of freedom',
       'surface',
-      'yüzey',
       'loft',
       'sweep',
       'assembly',
-      'kesit',
+      'model navigator',
+      'operations',
+      'fit selection',
+      'pick through',
+      'mesh inspection',
+      'tetrahedral',
+      'mesh quality',
+      'boundary correspondence',
+      'CAD faces',
     ],
     sections: [
       {
@@ -110,21 +117,83 @@ export const helpArticles: readonly HelpArticle[] = [
           'Create an empty 2D or 3D project, then open Geometry from the project overview.',
           'Create a box/cylinder, or choose New sketch, its plane and its purpose: Closed profile for a section, or Sweep path for an open chain. Draw line/arc/circle geometry as appropriate and define loops for profiles. Sketch constraints belong to the authored graph.',
           'Use Solve constraints to inspect native DOF or conflict IDs while a sketch is still open. Successful solving updates authored coordinates in one undoable edit. Finish sketch, then select the sketch for Extrude or Revolve.',
-          'Add extrusion, revolution, Boolean, fillet, chamfer or Move / rotate operations. In 3D, Surface & assembly opens Loft, Sweep and Assembly dialogs. Select evaluated, unambiguous edges before adding an edge treatment.',
-          'Evaluate geometry in the local isolated worker. Inspect exact shape measurements, faces/edges/bodies and sketch degrees of freedom. Fix conflicting constraints or failed operations before proceeding.',
+          'New sketch and Extrude are on the main toolbar. Create contains Box, Cylinder, Revolve, Loft, Sweep and Assembly; Modify contains Boolean, Fillet, Chamfer and Move / rotate. The available commands depend on the project dimension and existing inputs. Select evaluated, unambiguous edges before adding an edge treatment.',
+          'For a new desktop modeling operation, set its parameters, choose Preview and inspect the provisional exact shape. Apply adds the operation as one undoable change. Auto rebuild, or Rebuild geometry with Auto rebuild off, then evaluates the committed output for measurements, topology, export and analysis checks. Fix conflicting constraints or failed operations before proceeding.',
         ],
         paragraphs: [
           'OpenCASCADE evaluates the exact shape; SolveSpace libslvs solves bounded sketch constraints. Display triangles are a rendering approximation and never become the FEM mesh. Underconstrained sketches may evaluate with their current coordinates; zero degrees of freedom means fully constrained, not that the design is physically valid.',
           'Redundant constraints repeat an already imposed condition; conflicting constraints disagree. Reported constraint IDs are repair hints and may be incomplete. Review the intended geometry before removing a constraint, then solve again to check its status and degrees of freedom.',
           'A recipe supports up to 128 features. Each sketch supports 256 points/curves, 512 constraints and 64 loops; the complete project definition has a cumulative 1 MiB limit. Imported source bytes are stored separately. Oversized edits are rejected while preserving the previous definition.',
-          'The sketch canvas provides Select, Line, connected Polyline, Rectangle, Circle and 3-point arc. Endpoint/origin/grid snapping and horizontal/vertical guides help create explicit graph connections and constraints. Shift-click extends selection; drag points in Select to edit coordinates. Wheel zooms, middle-button or Space-drag pans, and Fit restores the sketch view. These are drawing aids; native constraint solving remains an explicit action.',
+          'The sketch canvas provides Select, Line, connected Polyline, Rectangle, Circle and 3-point arc. Endpoint/origin/grid snapping and horizontal/vertical guides help create explicit graph connections and constraints. Shift-click extends selection; drag points in Select to edit coordinates. Wheel zooms, middle-button or Space-drag pans, and Fit restores the sketch view. Escape or Cancel drawing discards the unfinished gesture; previously completed Polyline segments remain authored geometry. These are drawing aids; native constraint solving remains an explicit action.',
+          'Point position and visible axes follow the sketch plane: X/Y for XY, X/Z for XZ and Y/Z for YZ. In Select, double-click a displayed line length or circle diameter to focus its driving value; a keyboard-focused dimension also opens with Enter or Space. Enter a value in the displayed length unit, then press Enter to solve constraints and update geometry. Hover highlights a curve or point before selection. Selecting a constraint label highlights its referenced geometry; failed-constraint hints mark related entities, but may not identify every cause of a conflict.',
           'Auto rebuild updates closed modeling edits after a short pause and pauses during sketch editing. Rebuild geometry remains available for deliberate evaluation. Standard model views and Fit change the camera; Move / rotate creates an authored rigid-transform feature. Translation uses the displayed length unit, angles are displayed in degrees and stored in radians.',
-          'The feature tree on the left selects the definition edited in the right-hand inspector. The output marker identifies the recipe result displayed after rebuilding; selecting an earlier feature does not change that output. Exact geometry selection is separate: choose Faces, Edges or Bodies below the tree, then select in the viewport or entity list. The inspector shows measurements and Analysis support for the evaluated output.',
+        ],
+      },
+      {
+        title: 'Inspect a mesh of an exact solid',
+        steps: [
+          'In the desktop CAD workspace, finish the active command and rebuild one closed solid. Open Inspect > Mesh inspection.',
+          'Enter Target element size in the displayed length unit, then choose Generate mesh. Gmsh rebuilds a first-order tetrahedral mesh from the exact BRep; it never reuses display triangles as finite elements.',
+          'Review boundary triangles in the main viewport, node and tetrahedron counts, minimum/mean/maximum element quality and the quality distribution. Orbit, pan, zoom and change standard views as usual. Close Mesh inspection to return to the exact CAD view.',
+          'Boundary correspondence reports whether every imported face matches the exact CAD source. Select a boundary in the list or click the viewport, then switch between Mesh and CAD faces to inspect the same face. Shift+F fits it; Escape in the viewport clears only the inspected selection. Use Find a boundary for larger models.',
+          'Reduce the target size and choose Regenerate mesh to compare discretizations. Compare the mesh volume against the exact solid volume, especially for curved features. A changed size does not change the displayed mesh until regeneration succeeds.',
+        ],
+        paragraphs: [
+          'Mesh inspection is transient preparation evidence. It does not create a study, assign boundaries, enable an unsupported solver, replace the exact CAD export or enter the .phyra archive. Geometry edits invalidate the preview. Failed or cancelled meshing preserves the definition and the previous preview for unchanged geometry.',
+          'Only one valid closed solid is admitted. Surface shells, independent assembly instances, multiple solids and disconnected meshes are rejected. Existing numerical resource limits remain enforced. Region labels are scoped to this generated mesh and cannot carry loads or supports.',
+          'Face correspondence checks complete exact face geometry after import. A complete unique match links each mesh boundary to its source face for this unchanged geometry. Face order, centroid proximity and visual similarity are never used as identity. If the exact comparison cannot establish a unique match, the panel explains why and keeps mesh-only inspection available.',
+          'A matched face selection survives a new mesh size for the same project and exact geometry. An unmatched mesh boundary selection belongs to its original mesh job. Inspection selection is separate from modeling selection. No boundary assignments are saved; changing geometry invalidates the preview and requires another correspondence check.',
+          'Mean-ratio tetrahedral quality ranges from zero for degenerate elements to one for a regular tetrahedron. It measures element shape, not solution accuracy. Volume difference reports discretization error against the exact solid, not stress or displacement error. For a complete unique correspondence, Prepare analysis starts a separate source-bound study; mesh inspection alone does not create physical assignments.',
+          'The assistant can explain this workflow from the same offline help. Transient inspection meshes, mesh-quality measurements and their buffers are not automatically attached to assistant context; it must not claim to have inspected them.',
+        ],
+        references: [
+          {
+            title: 'Gmsh reference manual',
+            authors: 'Gmsh contributors',
+            url: 'https://gmsh.info/doc/texinfo/',
+            scope:
+              'OpenCASCADE BRep import, first-order tetrahedral meshing and mesh inspection. Persistent CAD-to-mesh boundary assignment is not implied by import.',
+          },
+        ],
+      },
+      {
+        title: 'Prepare a closed CAD solid for analysis',
+        steps: [
+          'Rebuild the exact output, then open Inspect > Mesh inspection and Generate mesh. One closed solid, at most 512 faces and complete unique Boundary correspondence are required. Shells, assemblies, multiple solids and ambiguous faces remain unavailable.',
+          'Choose Prepare analysis and create the linear-static FEM study. The study retains the CAD recipe and an explicit catalog of exact faces. The inspected mesh is not a solved result.',
+          'In Prepare, select faces in the viewport or boundary list. Add support or Add load, then review the assigned faces and component values. Choose one homogeneous isotropic material for the whole solid. Total force and pressure are supported; general CAD Physics ML is not.',
+          'Open Solve, choose the global element size and generate a numerical mesh. Local boundary refinement is not yet available for general CAD solids. The worker rebuilds the exact source and verifies the complete face mapping before assigning physical regions. Run FEM, then inspect displacements, stresses, reactions and balance. Refine the mesh and compare quantities of interest before drawing conclusions.',
+          'Save the .phyra project. Reopening preserves the face catalog and source files. Rebuild the geometry before editing face assignments or starting a new solve. Cached results are accepted only when the rebuilt exact source and numerical mesh match.',
+        ],
+        paragraphs: [
+          'A geometry edit makes the study source stale. Recreating the study explicitly clears its supports and loads so they can be assigned to the new faces. Review copied boundary sets and repair their geometry stamp before reuse. No nearest-face, face-order or visual-similarity reassignment occurs.',
+          'The geometry fingerprint and selected output belong to the physical definition; remeshing an unchanged solid preserves face assignments. A transient CAD mesh selection is separate from a physical support/load. Surface triangles used for display never become tetrahedral finite elements.',
+          'Definition checks cannot determine the complete rigid-motion restraint rank of a general CAD surface. The meshed worker performs the authoritative check and rejects underconstrained systems. A successful solve and a good element-quality score do not establish mesh convergence or structural safety.',
+          'If a saved CAD result cannot be verified against the rebuilt source and mesh, opening keeps the editable definition and source files, discards the derived cache and explains that a new solve is required. Cancellation or backend failures remain explicit errors.',
+        ],
+      },
+      {
+        title: 'Preview, apply or cancel a new operation',
+        paragraphs: [
+          'On desktop, new Box, Cylinder, Extrude, Revolve, Boolean, Fillet, Chamfer, Move / rotate, Loft, Sweep and Assembly operations use an editable command draft. Finish each parameter entry and choose Preview. Apply becomes available only after an exact preview succeeds for the current parameters; changing a parameter requires another Preview. An invalid value must be finished or reverted before previewing.',
+          'Preview is provisional display evidence. It does not change the saved project, establish analysis support, provide selectable committed topology or enable geometry export. Apply commits the operation as one history transaction, then a normal committed rebuild supplies the exact receipt. Cancel leaves the project definition unchanged. While a command draft is open, saving and project transitions wait for Apply or Cancel.',
+          'Escape in an active numeric input reverts that input first. Escape elsewhere in the command panel cancels the operation. New sketch, STEP import, Duplicate as placed section, component placement and edits to existing feature properties retain their direct editing behavior. In a sketch, Cancel drawing only removes the unfinished gesture; completed segments remain until explicitly edited or undone.',
+        ],
+      },
+      {
+        title: 'Find the model, commands and view controls',
+        paragraphs: [
+          'Project tabs share the application menu row. CAD tools, Project return, Save and Rebuild share one command strip; the Save menu contains Auto-save and the Modify menu contains Auto rebuild. File state remains next to Save, with errors shown explicitly. Viewport selection, standard view and display style use compact selectors.',
+          'Model navigator has two tabs. Model groups Sketches & paths, Source solids and assembly Component instances; Operations lists the feature history with named input links. Current output stays visible in both tabs and identifies the recipe result used for exact evaluation and analysis checks. Selecting an earlier feature opens its properties without changing the output. To change the result, select a feature and choose Use selected feature as output, then rebuild. Collapse the navigator or resize its edge to give the drawing more space.',
+          'Inspect opens Feature properties, Exact measurements, Mesh inspection, Analysis support or Export geometry on demand. The details panel provides Properties, Measure, Analysis and Export navigation; close it to recover the drawing area. The footer’s Analysis supported, Analysis unavailable or Analysis not checked link opens the compatibility explanation.',
+          'Exact geometry selection is separate from selecting an authored feature. Choose Faces, Edges or Bodies above the viewport, then click an evaluated entity or use Geometry entities in the navigator. Shift, Control or Command adds or toggles an entity. Repeated Alt-click at the same location cycles through overlapping entities of the active kind. This helps inspect coincident instances; it does not resolve an ambiguous topology reference for an edge treatment or physical assignment.',
+          'Drag to orbit, right-drag to pan and use the wheel to zoom. Fit model (F) frames the visible model while preserving the viewing direction; Fit selection (Shift+F) frames the visible selected faces, edges or bodies. Focus the viewport before using its shortcuts. Keys 1, 2, 3 and 4 select Isometric, Front · XY, Top · XZ and Right · YZ. View controls and body isolation change presentation only, not authored coordinates, materials or results.',
         ],
       },
       {
         title: 'Import, save and export',
         paragraphs: [
+          'Use the global Save project action to save the editable .phyra definition. Saving does not require a successful exact rebuild or a supported numerical study. Geometry export is separate: open Inspect > Export geometry and rebuild the current output before exporting.',
           'STEP import reads declared source units and converts to SI. Additional scale is a deliberate dimensionless transform. Each source is limited to 16 MiB; the project limit is 64 MiB across 32 sources. Native-owned immutable definition sources travel inside .phyra archives and remain available for definition recovery.',
           'Export evaluated exact geometry as STEP in metres/millimetres, or BRep in SI metres. Geometry export is available independently of analysis support. Invalid or cancelled evaluation preserves the authored definition; correct it or use definition undo before evaluating again.',
         ],
@@ -132,7 +201,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Analysis gate and topology repair',
         paragraphs: [
-          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. General STEP, revolution, Boolean, edge-treatment, Move / rotate, loft, sweep and assembly outputs remain editable CAD until a matching numerical adapter exists. A successful exact rebuild enables geometry inspection/export; it does not enable an unsupported study.',
+          'The project overview reports geometry validity separately from solver compatibility. Current exact adapters cover direct boxes, X-axis cylinders, XY profiles and positive origin-aligned rectangular XY extrusion. Eligible geometry can receive a linear-static study, material, supports/loads and mesh/method settings. A separate source-bound FEM route admits one closed general CAD solid, including eligible STEP, revolution, Boolean, edge-treatment, Move / rotate and loft/sweep outputs, after complete exact face correspondence. Use Mesh inspection > Prepare analysis. Assemblies and surface shells remain definition-only. A successful exact rebuild enables geometry inspection/export; it does not enable an unsupported study.',
           'Content references identify unchanged geometry entities. Changed or coincident ambiguous entities require explicit repair. Geometry edits invalidate incompatible assignments and old results; selecting a face does not assign a physical law or establish solver support. Thermal, multilayer materials, inverse material estimation and space-environment studies remain roadmap work.',
         ],
       },
@@ -142,7 +211,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Authored sketch constraints include fixed point, coincident points, point distance, horizontal/vertical line, curve diameter, equal line length, parallel/perpendicular lines and equal curve radius. Values remain SI metres; fixed points explicitly hold authored coordinates. Geometry constraints are separate from analysis supports and loads.',
           'Solve constraints works on an open sketch independently of exact-shape rebuilding. Drawing and dragging do not continuously run the native solver. Successful solving updates authored coordinates; a failed solve retains them and exposes its constraint diagnostics. An underconstrained sketch may move when explicit constraints are added; no hidden anchors are added.',
           'Rebuild evaluates the selected output and its dependencies. The reported DOF and constraint status describe that evaluation; later sketch edits need another solve/rebuild. Constraint solving alone does not prove that loops form a valid closed profile, that an operation makes a solid, or that a numerical adapter supports the output.',
-          'Open the assistant to plan a sketch, interpret the current evaluation or ask why the selected output cannot proceed to analysis. It can read the authored definition and bounded kernel evidence supplied with your question, including the output feature, evaluated measurements, DOF and eligibility reason. It provides guidance; you apply changes and rebuild in the CAD workspace.',
+          'Open the assistant to plan a sketch, interpret the current evaluation or ask why the selected output cannot proceed to analysis. It can read the authored definition and bounded kernel evidence supplied with your question, including the output feature, evaluated measurements, DOF and eligibility reason. Unapplied command parameters and provisional previews are not attached. It provides guidance; you apply changes and rebuild in the CAD workspace.',
         ],
       },
       {
@@ -173,16 +242,16 @@ export const helpArticles: readonly HelpArticle[] = [
     summary: 'Connect ordered closed profiles as a solid or an open surface shell.',
     category: 'Prepare',
     kind: 'Guide',
-    keywords: ['CAD', 'loft', 'section', 'kesit', 'surface', 'yüzey', 'placement', 'ruled'],
+    keywords: ['CAD', 'loft', 'section', 'surface', 'placement', 'ruled'],
     sections: [
       {
         title: 'Create a two-section loft',
         steps: [
           'Open a 3D CAD project. Create a sketch, draw one closed outer profile and Finish sketch. Loft does not accept holes.',
-          'Select the sketch in the feature tree. In the inspector choose Duplicate as placed section. This copies the editable sketch and adds a placement 50 mm along its plane normal. Select the copied sketch to change its size or shape; select its placement to change Translate X/Y/Z or Rotation.',
-          'Choose Loft in Surface & assembly. Name the feature and select the original sketch as section 1 and the placed copy as section 2. Use Add section for additional profiles and the arrow buttons to set their geometric order; the limit is 2–16 distinct section features.',
+          'Select the sketch in Model navigator. In Properties choose Duplicate as placed section. This copies the editable sketch and adds a placement 50 mm along its plane normal. Select the copied sketch to change its size or shape; select its placement in Operations to change Translate X/Y/Z or Rotation.',
+          'Choose Create > Loft. Name the feature and select the original sketch as section 1 and the placed copy as section 2. Use Add section for additional profiles and the arrow buttons to set their geometric order; the limit is 2–16 distinct section features.',
           'Choose Closed solid for end caps and enclosed volume, or Surface shell for open ends. Straight transitions between sections uses ruled side surfaces; leaving it off uses the kernel’s smooth approximation.',
-          'Choose Create loft, then inspect the current rebuild. Select Loft in the tree to revise sections, order or output type. Fit and standard views help check the result before saving or exporting.',
+          'Choose Review command to open the command draft. Choose Preview, inspect the shape, then Apply. A committed rebuild is still required for export. Select the Loft feature in Operations to revise sections, order or output type. Fit and standard views help check the result.',
         ],
         paragraphs: [
           'Section placement is explicit authored geometry. Move / rotate can reference an existing sketch instead of making a copy when the sections should reuse one profile. Changing that shared sketch changes every placement that references it; Duplicate as placed section creates a separate editable profile.',
@@ -198,7 +267,7 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
         note: {
           tone: 'info',
-          text: 'Surface shell has no enclosed volume. Loft solids and shells are available for CAD inspection and export; current elasticity studies do not support these outputs.',
+          text: 'Surface shell has no enclosed volume. Loft solids and shells are available for CAD inspection and export. One closed loft solid may enter source-bound linear-static FEM after complete face correspondence; a surface shell cannot.',
         },
         references: [
           {
@@ -218,7 +287,7 @@ export const helpArticles: readonly HelpArticle[] = [
     summary: 'Carry a placed closed cross-section along one connected open line/arc path.',
     category: 'Prepare',
     kind: 'Guide',
-    keywords: ['CAD', 'sweep', 'path', 'spine', 'profile', 'kesit', 'süpürme', 'surface', 'yüzey'],
+    keywords: ['CAD', 'sweep', 'path', 'spine', 'profile', 'section', 'surface'],
     sections: [
       {
         title: 'Prepare the profile and the open path',
@@ -226,8 +295,8 @@ export const helpArticles: readonly HelpArticle[] = [
           'In a 3D CAD project, create a closed cross-section sketch with one outer loop and no holes. Finish sketch.',
           'Choose New sketch, select the path plane and choose Sweep path. Use Line, Polyline or 3-point arc to build one open chain. Adjacent segments must share endpoint IDs; Polyline and endpoint snapping reuse those points while drawing. Coincident coordinates or a coincident constraint alone do not merge two point IDs. Do not close the path or add loops, circles or branches. Finish sketch when the path has two endpoints and no branches.',
           'Place the cross-section at the path start with Move / rotate. Its plane must contain the start point and be perpendicular to the first path tangent. The kernel does not silently move or rotate the profile.',
-          'Choose Sweep in Surface & assembly. Select Cross-section profile and Open path, then choose Closed solid or Surface shell. Create sweep and inspect the exact rebuild.',
-          'Edit the Sweep feature to change inputs or output type; edit the source sketches or placements to change the geometry. Save or export only after a current successful rebuild.',
+          'Choose Create > Sweep. Select Cross-section profile and Open path, then choose Closed solid or Surface shell. Choose Review command to open the command draft, Preview the exact shape, then Apply and rebuild the committed output.',
+          'Select the Sweep feature in Operations to change inputs or output type; edit the source sketches or placements to change the geometry. Save the editable definition with the global Save project action. Exact geometry export requires a current successful rebuild.',
         ],
         paragraphs: [
           'For a straight example, create an XY circular profile centered at the origin, then an XZ path with a first line from (0, 0) to (0, 100 mm) in sketch coordinates. The path follows global +Z and the XY section is perpendicular to it. The sketch coordinate values use your displayed length unit.',
@@ -245,7 +314,7 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
         note: {
           tone: 'info',
-          text: 'Surface shell is open at its ends and has no enclosed volume. Sweep outputs are available for CAD inspection and export, while analysis remains gated until a compatible numerical adapter exists.',
+          text: 'Surface shell is open at its ends and has no enclosed volume. Sweep outputs are available for CAD inspection and export. One closed sweep solid may enter source-bound linear-static FEM after complete face correspondence; open surface shells remain gated.',
         },
         references: [
           {
@@ -265,32 +334,23 @@ export const helpArticles: readonly HelpArticle[] = [
     summary: 'Group separate solid instances while preserving their source and component identity.',
     category: 'Prepare',
     kind: 'Guide',
-    keywords: [
-      'CAD',
-      'assembly',
-      'montaj',
-      'component',
-      'instance',
-      'placement',
-      'body',
-      'isolate',
-    ],
+    keywords: ['CAD', 'assembly', 'component', 'instance', 'placement', 'body', 'isolate'],
     sections: [
       {
         title: 'Build an assembly from existing solids',
         steps: [
           'Create or import the solid source geometry in a 3D project. Assembly components must evaluate to closed solids; open profiles and surface shells are excluded.',
-          'Choose Assembly in Surface & assembly. Name the assembly, name its first component and choose the source geometry. Add component instance repeats an earlier source or adds another solid; the limit is 1–32 components per assembly.',
-          'Choose Create assembly. Select it in the feature tree to edit component names and sources. Each component has its own identity even when several components reuse the same source.',
+          'Choose Create > Assembly. Name the assembly, name its first component and choose the source geometry. Add component instance repeats an earlier source or adds another solid; the limit is 1–32 components per assembly.',
+          'Choose Review command to open the command draft, then Preview and Apply. Select it in Current output or Operations to edit component names and sources. Each component has its own identity even when several components reuse the same source.',
           'Use Move / rotate beside a component in the assembly inspector. It selects or creates an authored placement. Edit its translations, rotation axis, angle and optional axis origin; the assembly stays the selected output. Return to the Assembly feature to inspect its component list.',
-          'Rebuild. Choose Bodies below the feature tree and select a body in the viewport or list. Isolate selected bodies hides the others; Show all bodies restores them. Visibility affects only the current view.',
+          'Rebuild. Choose Bodies above the viewport, or expand Geometry entities in Model navigator and choose Bodies. Select a body in the viewport or list. Isolate selected bodies hides the others; Show all bodies restores them. Visibility affects only the current view.',
         ],
       },
       {
         title: 'Understand instance behavior and export',
         paragraphs: [
           'A component references its source feature or a rigid placement of that feature. Editing a shared source updates its instances. Move / rotate beside a component creates a separate copy of a shared placement before editing it, so moving that component leaves the other instances in their previous poses. An unshared component placement can be edited directly.',
-          'Assembly preserves separate solids; it does not fuse them. Coincident copies remain separate instances. Their combined volume is a sum of component volumes, including overlaps, rather than the volume of a Boolean union. Viewport picking can distinguish evaluated instance bodies; overlapping bodies may be easier to choose from the Bodies list.',
+          'Assembly preserves separate solids; it does not fuse them. Coincident copies remain separate instances. Their combined volume is a sum of component volumes, including overlaps, rather than the volume of a Boolean union. Repeated Alt-click cycles through overlapping evaluated bodies; the Bodies list also identifies instances by name. Fit selection frames the visible selected bodies without changing their placement.',
           'Save stores component IDs, names, source references and authored placements in the .phyra definition. STEP/BRep export contains the evaluated geometry; .phyra preserves the editable feature recipe and component metadata.',
         ],
         note: {
@@ -331,11 +391,11 @@ export const helpArticles: readonly HelpArticle[] = [
           'Select the intended boundaries and choose Save boundary set.',
           'Give the set a unique nonempty name. The model tree and editor show its boundary IDs and geometry context.',
           'In a support or load editor, choose Copy a named selection. Review the copied boundaries before running.',
-          'If the primitive type or study dimension changes, repair incompatible sets explicitly using the current viewport selection.',
+          'If the geometry type, CAD source or study dimension changes, repair incompatible sets explicitly using the current viewport selection.',
         ],
         note: {
           tone: 'info',
-          text: 'These are reusable copied boundary groups. Changing or deleting a set does not update previously assigned supports or loads. General CAD topology mapping and associative selections are future work.',
+          text: 'These are reusable copied boundary groups. Changing or deleting a set does not update previously assigned supports or loads. CAD sets also retain their source geometry fingerprint. Geometry edits leave them available for explicit repair; automatic topology reassignment and associative selections remain future work.',
         },
         screenshots: [
           {
@@ -466,7 +526,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         title: 'Supported domains',
         bullets: [
-          '3D: a box, an X-axis cylinder, or a connected L bracket. Bracket thickness must be smaller than both in-plane dimensions.',
+          '3D: a box, an X-axis cylinder, a connected L bracket, or one closed exact CAD solid with a verified source-bound face catalog. Bracket thickness must be smaller than both in-plane dimensions. General CAD preparation starts in Inspect > Mesh inspection > Prepare analysis.',
           '2D: a rectangle or one closed counterclockwise profile of 2–64 straight edges/circular arcs and up to 16 enclosed circular holes in X–Y. Each arc is at most 180°. Physical thickness belongs to the study.',
           'A cylinder spans X = 0 to length, with its axis centered at Y = Z = 0.',
         ],
@@ -1367,7 +1427,7 @@ The reported normalized potential is strain energy minus external work. It may b
         title: 'Project files',
         paragraphs: [
           'A new project or example is an unsaved draft until its first Save. Use Save project, File → Save or Ctrl/⌘ S to choose a .phyra file location. Save as chooses a different destination. Archives contain the project definition and available compatible cached fields; reopening validates metadata and binary arrays before displaying results.',
-          'Versions 1–6 are validated against frozen schemas before migrating to version 7. Versions through 4 receive strong-form; versions 5 and 6 preserve the selected formulation. Version 6 introduced empty/CAD designs independently of optional studies; version 7 adds loft, sweep and assembly recipes. Migration retains existing definitions. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved.',
+          'Versions 1–7 are validated against frozen schemas before migrating to version 8. Versions through 4 receive strong-form; versions 5 and 6 preserve the selected formulation. Version 6 introduced empty/CAD designs independently of optional studies; version 7 adds loft, sweep and assembly recipes; version 8 adds source-bound CAD solid study catalogs and stamped CAD boundary sets. Migration retains existing definitions. Version 1 cached fields are discarded; older compatible fields pass normal ownership, input-fingerprint and scientific-field validation before reuse. Version 3 named boundary sets are preserved. CAD solid cached fields also require a rebuilt source and matching numerical mesh. An unverifiable CAD cache is discarded with a notice while the editable definition and imported source files are restored.',
           'Version 4 adds exact profiles and typed traction inputs. Their physical fingerprints are distinct from primitive studies. Older recovery journals migrate in memory without overwriting the original copy. Edit history is session-only and is not stored in an archive or recovery journal.',
         ],
       },
@@ -1583,6 +1643,7 @@ The reported normalized potential is strain energy minus external work. It may b
           'Choose a model in the composer from your connected providers. Write your question and Send. Sending authorizes that turn to use the selected provider with relevant offline help and the active project snapshot; there is no separate context attachment or repeated sharing dialog.',
         ],
         paragraphs: [
+          'The product interface, help and assistant guidance use English. You can ask a question in another language; retrieved documentation and the assistant’s response remain in English.',
           'The implemented transport supports streaming text: Gemini streamGenerateContent, OpenAI Responses, Anthropic Messages, and OpenAI-compatible Chat Completions for compatible/Ollama endpoints. This assistant does not invoke model tools, browse the web, edit a definition, start numerical work or export fields. Model limits and usage are shown only when the provider supplies them; pricing and cost estimates are unknown.',
           'Local endpoints must use an explicit loopback address. Remote endpoints require HTTPS; named providers use their fixed official endpoints. Authentication is added by the native layer. Redirects are blocked. Keys are scoped by provider and endpoint origin, and the interface receives only credential-presence status.',
         ],
@@ -1590,7 +1651,8 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'What the context contains',
         paragraphs: [
-          'Documentation context retrieves articles from this installed application’s offline help, including the loft, sweep and assembly guides. Project context works before an analysis exists. It adds the authored SI definition, current preparation and project/revision identity. CAD context includes the selected output and bounded evaluated measurements, kernel/job/fingerprint, sketch DOF/status and solver-compatibility reason when available. The recipe identifies loft section order, sweep profile/path references and assembly component IDs, names and source placements. Only the selected output dependency closure was evaluated; unsupported CAD is not a numerical solution. Large definitions become explicitly marked summaries that omit curve/constraint details rather than implying those details were read.',
+          'Documentation context retrieves articles from this installed application’s offline help, including the loft, sweep and assembly guides. Project context works before an analysis exists. It adds the authored SI definition, current preparation and project/revision identity. CAD context includes the selected output and bounded evaluated measurements, kernel/job/fingerprint, sketch DOF/status and solver-compatibility reason when available. The recipe identifies loft section order, sweep profile/path references and assembly component IDs, names and source placements. A supplied general CAD study includes its source fingerprint, output feature, exact-face catalog and physical assignments when the definition fits the context budget. A catalog is authored intent, not proof that the current source or mesh has been reverified. Only the selected output dependency closure was evaluated; unsupported CAD is not a numerical solution. Large definitions become explicitly marked summaries that omit curve/constraint details rather than implying those details were read.',
+          'Unapplied command drafts and provisional Preview shapes are not attached as project geometry or exact evaluation evidence. CAD viewport selection, camera position and which panels are open are also excluded. Describe the feature or operation you are asking about; the assistant cannot see your screen or infer which face is highlighted.',
           'Study context also adds available run/result summaries and measured diagnostics. In Inspect, it can include the selected field range and a picked node/element value with its undeformed SI position and exact job/fingerprint. Changing fields or results clears the previous pick. No local file path, imported CAD file, screenshot, vertex array, full field buffer or trained weights is automatically attached.',
           'Sending also includes a bounded set of recent completed user/assistant turns from the selected conversation. Those messages may contain an earlier study explanation. Start a new conversation when prior content should be excluded. The native context limit is 128 KiB and the whole request is bounded; it is not the selected model’s token capacity.',
           'Each stored answer retains its provider, model, endpoint, exact supplied context and completion status, with usage when reported. Follow an article citation to its offline source. Geometry explanations should cite project/revision and feature IDs; evaluated CAD values should cite their CAD job/evaluated revision/fingerprint. Study values should cite the study ID/revision; result values should cite their job/fingerprint.',
@@ -1673,6 +1735,7 @@ The reported normalized potential is strain energy minus external work. It may b
       'about',
       'GitHub',
       'source',
+      'Apache',
       'GPL',
       'license',
       'copyright',
@@ -1684,7 +1747,8 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Source and license',
         paragraphs: [
-          'Phyra is distributed under GPL-3.0-or-later. The source repository contains LICENSE, canonical README/CONTRIBUTING/ROADMAP/SECURITY and citation metadata, plus required upstream notices in notices/THIRD_PARTY.txt. Target-specific redistribution and Corresponding Source obligations remain relevant to packaged binaries.',
+          "Phyra's original source code is licensed under Apache-2.0. The source repository contains LICENSE and NOTICE, canonical README/CONTRIBUTING/ROADMAP/SECURITY and citation metadata, plus required upstream notices in notices/THIRD_PARTY.txt. Earlier GPL-3.0-or-later releases retain their granted rights.",
+          'Bundled Gmsh, SolveSpace and other third-party components retain their own licenses. The combined application must comply with GPLv3 and applicable upstream terms; it is not an Apache-only binary. Target-specific dependency audits and complete Corresponding Source remain required before public redistribution.',
           'Provider marks identify optional connections. The four bundled SVG marks are a subset of @lobehub/icons-static-svg 1.95.1, with its MIT license and provenance notice under public/providers. Names and marks belong to their respective owners; their appearance does not imply endorsement.',
         ],
         references: [
@@ -1741,7 +1805,7 @@ The reported normalized potential is strain energy minus external work. It may b
       {
         title: 'Planned; not available in this release',
         bullets: [
-          'Freeform surface editing, surface sewing/thickening, assembly mates/contact and general imported-solid, loft/sweep/assembly analysis. Multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
+          'Freeform surface editing, surface sewing/thickening, assembly mates/contact, shell and multi-solid analysis, and unrestricted imported-solid analysis. The implemented general CAD FEM route is restricted to one closed solid with complete unique face correspondence. Multiple materials, orthotropic/anisotropic properties, composites, laminates and functionally graded materials.',
           'Thermal/fluid, plane strain, dynamics, nonlinear materials, contact and coupled physics.',
           'Reusable learned operators, inverse studies, validated uncertainty and resumable model checkpoints.',
           'Optional external Physics ML framework adapters and distributed/HPC execution. Current local device capability does not establish framework or distributed support.',

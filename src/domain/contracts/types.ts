@@ -3,6 +3,7 @@ import type {
   ProjectDefinition,
   NumericalGeometry,
   LinearStaticStudy,
+  CadGeometry,
 } from './project.generated.ts';
 export type {
   ProjectDefinition,
@@ -17,7 +18,13 @@ export type NumericalProject = ProjectDefinition & {
   geometry: NumericalGeometry;
   study: LinearStaticStudy;
 };
-export type Project = NumericalProject;
+export type CadSolidDomain = NonNullable<LinearStaticStudy['domain']>;
+export type CadSolidProject = ProjectDefinition & {
+  geometry: CadGeometry;
+  study: LinearStaticStudy & { domain: CadSolidDomain };
+};
+/** Physical editors can consume either a primitive or an explicitly prepared exact CAD study. */
+export type Project = NumericalProject | CadSolidProject;
 export type Constraint = Project['study']['constraints'][number];
 export type Load = Project['study']['loads'][number];
 export type PinnConfiguration = Project['study']['solver']['pinn'];

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeProject } from '../features/examples/projects';
+import { CadCommandOwnership } from '../features/cad/commandDraft';
 import {
   closeProjectDocument,
   persistProjectSnapshot,
+  projectReplacementIssue,
   scheduleProjectAutosave,
   type SaveSnapshot,
 } from './projectPersistence';
@@ -213,6 +215,71 @@ describe('archive autosave scheduling', () => {
 });
 
 describe('closing a project document', () => {
+  it.each([false, true])(
+    'preserves an active CAD command before any close confirmation or cleanup (dirty: %s)',
+    async (dirty) => {
+      const project = snapshot().project;
+      const original = structuredClone(project);
+      const command = new CadCommandOwnership();
+      command.begin(
+        project,
+        {
+          kind: 'cad',
+          dimension: '3d',
+          features: [
+            { id: 'box', kind: 'box', name: 'Box', length: 0.1, width: 0.05, height: 0.025 },
+          ],
+          outputFeatureId: 'box',
+          assets: [],
+        },
+        'box',
+        'Box',
+      );
+      const draft = command.current()!;
+      const drafts = new Map([[draft.markerId, draft.label]]);
+      const confirmDirty = vi.fn(async () => true);
+      const clearRecovery = vi.fn(async () => {});
+      const close = vi.fn();
+      const reportIssue = vi.fn();
+      const canReplace = async () => {
+        const issue = projectReplacementIssue(drafts);
+        if (issue) {
+          reportIssue(issue);
+          return false;
+        }
+        return dirty ? confirmDirty() : true;
+      };
+      expect(await closeProjectDocument({ canReplace, clearRecovery, close })).toBe(false);
+      expect(reportIssue).toHaveBeenCalledWith(
+        'Apply or cancel the active CAD command before closing or replacing this project.',
+      );
+      expect(confirmDirty).not.toHaveBeenCalled();
+      expect(clearRecovery).not.toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+      expect(project).toEqual(original);
+      expect(command.current()).toBe(draft);
+
+      // Resolving the command restores the existing clean/dirty close policy.
+      drafts.delete(command.clear()!);
+      expect(await closeProjectDocument({ canReplace, clearRecovery, close })).toBe(true);
+      expect(confirmDirty).toHaveBeenCalledTimes(dirty ? 1 : 0);
+      expect(clearRecovery).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('leaves ordinary numerical draft replacement decisions with the existing dirty policy', () => {
+    const drafts = new Map([
+      ['numeric-radius', 'Radius'],
+      ['cad-sketch', 'Finish or cancel the current sketch gesture'],
+    ]);
+    expect(projectReplacementIssue(drafts)).toBeNull();
+    expect(drafts.size).toBe(2);
+    drafts.set('cad-command:owned:input:radius', 'Radius');
+    expect(projectReplacementIssue(drafts)).toContain('Apply or cancel');
+    expect(drafts.size).toBe(3);
+  });
+
   it('preserves unsaved definition, copy and client when native close admission fails before confirmation', async () => {
     const canReplace = vi.fn(async () => true);
     const clearRecovery = vi.fn(async () => {});

@@ -168,3 +168,33 @@
   font-size: 15px;
   color: var(--text);
 }
+
+.overview-study-dialog {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+}
+.overview-study-dialog .overview-study-form {
+  border: 0;
+  margin: 0;
+  border-radius: 0;
+}
+.cad-source-readiness {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.cad-source-readiness span {
+  flex: 1;
+  min-width: 200px;
+}
+.cad-mesh-prepare {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 18px;
+}

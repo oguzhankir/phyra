@@ -1,6 +1,7 @@
 """Native-owned CAD request decoding with an immutable canonical recipe snapshot."""
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Literal, cast
 
@@ -17,8 +18,9 @@ class CadRequest:
     revision: int
     asset_root: str
     _geometry_json: bytes
-    operation: Literal["cad", "solve-sketch"] = "cad"
+    operation: Literal["cad", "solve-sketch", "mesh-cad"] = "cad"
     feature_id: str | None = None
+    target_size: float | None = None
 
     @classmethod
     def from_payload(cls, payload: Any) -> "CadRequest":
@@ -37,6 +39,8 @@ class CadRequest:
         operation = payload.get("operation", "cad")
         if operation == "solve-sketch":
             expected_fields = base_fields | {"operation", "featureId"}
+        elif operation == "mesh-cad":
+            expected_fields = base_fields | {"operation", "targetSize"}
         elif operation == "cad":
             expected_fields = base_fields | ({"operation"} if "operation" in payload else set())
         else:
@@ -57,6 +61,21 @@ class CadRequest:
         if not isinstance(asset_root, str) or not 1 <= len(asset_root) <= 4096:
             raise EngineError("invalid-request", "The native CAD asset root is unavailable.")
         geometry = validate_cad_geometry(payload["geometry"])
+        target_size = None
+        if operation == "mesh-cad":
+            target_size = payload["targetSize"]
+            if (
+                isinstance(target_size, bool)
+                or not isinstance(target_size, (int, float))
+                or not math.isfinite(target_size)
+                or not 0 < target_size <= 1000
+                or geometry["dimension"] != "3d"
+            ):
+                raise EngineError(
+                    "invalid-cad-mesh",
+                    "Mesh inspection requires 3D CAD and a positive target size at most 1000 m.",
+                )
+            target_size = float(target_size)
         feature_id = None
         if operation == "solve-sketch":
             feature_id = payload["featureId"]
@@ -74,8 +93,9 @@ class CadRequest:
             revision,
             asset_root,
             snapshot,
-            cast(Literal["cad", "solve-sketch"], operation),
+            cast(Literal["cad", "solve-sketch", "mesh-cad"], operation),
             feature_id,
+            target_size,
         )
 
     def geometry_definition(self) -> dict[str, Any]:

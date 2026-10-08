@@ -37,6 +37,7 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
     if len(ids) != len(set(ids)):
         raise EngineError("invalid-assignment", "Support and load identifiers must be unique.")
     profile = geometry.get("profile") if geometry["kind"] == "profile" else None
+    cad_domain = study.get("domain")
     if profile is not None:
         from phyra_engine.geometry.profile import validate_profile
 
@@ -47,7 +48,9 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
                 "Exact profiles support 2D FEM or potential-energy PINN plane stress.",
             )
     allowed = (
-        set(item["id"] for item in profile["outer"] + profile["holes"])
+        set(item["id"] for item in cad_domain["boundaries"])
+        if cad_domain
+        else set(item["id"] for item in profile["outer"] + profile["holes"])
         if profile
         else set(("x0", "x1", "y0", "y1") if plane else SOLID_REGIONS[geometry["kind"]])
     )
@@ -102,6 +105,14 @@ def validate_physical_project(project: dict[str, Any], version: int) -> None:
         raise EngineError(
             "unsupported-study", "Solid studies support total force and pressure only."
         )
+    if cad_domain:
+        # Exact shape/mesh bounds and the complete face correspondence are
+        # checked during preparation, not inferred from authoring parameters.
+        if "boundarySize" in study["mesh"]:
+            raise EngineError(
+                "unsupported-study", "Exact solid meshing supports one global target size."
+            )
+        return
     # Work estimates use nondimensional geometry, avoiding under/overflow from
     # untrusted tiny sizes. Cylinder curvature refinement also consumes resources.
     kind = geometry["kind"]

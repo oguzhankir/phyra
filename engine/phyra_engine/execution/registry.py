@@ -139,7 +139,7 @@ def capabilities(devices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         "reason": "The installed SciPy sparse solver executes on the local CPU.",
     }
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "execution": {
             "backend": "local-process",
             "jobsPerWorker": 1,
@@ -164,6 +164,13 @@ def capabilities(devices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
                 "dimension": "2d",
                 "cellType": "triangle3",
                 "geometryKinds": ["profile"],
+            },
+            {
+                "id": "gmsh-occ-cad-tetra4",
+                "dimension": "3d",
+                "cellType": "tetra4",
+                "geometryKinds": ["cad"],
+                "requiredDomain": "cad-solid",
             },
         ],
         "methods": [

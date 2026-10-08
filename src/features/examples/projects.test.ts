@@ -39,7 +39,7 @@ describe('offline engineering examples', () => {
   });
   it.each(researchCases.cases)('opens the reusable research case $id with provenance', (entry) => {
     const project = makeProject(entry.id as ExampleId);
-    expect(project.schemaVersion).toBe(7);
+    expect(project.schemaVersion).toBe(8);
     expect(project.study.dimension).toBe('2d');
     expect(project.study.solver.pinn.formulation).toBe('potential-energy');
     expect(project.study.solver.pinn.device).toBe(entry.device);

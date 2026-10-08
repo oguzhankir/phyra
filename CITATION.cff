@@ -6,4 +6,4 @@ authors:
   - family-names: Kir
     given-names: Oguzhan
 repository-code: https://github.com/oguzhankir/phyra
-license: GPL-3.0-or-later
+license: Apache-2.0

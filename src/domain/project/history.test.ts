@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeProject } from '../../features/examples/projects';
-import type { Project } from '../contracts/types';
+import type { NumericalProject as Project } from '../contracts/types';
 import { resultIsCurrent } from '../execution/presentation';
 import type { ResultData } from '../results/fields';
 import { changeStudyDimension } from './study';

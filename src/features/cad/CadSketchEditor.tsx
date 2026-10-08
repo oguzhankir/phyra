@@ -45,6 +45,11 @@ import {
 } from './sketchInteractions';
 import './CadSketchEditor.css';
 import { pathIssue } from './advancedFeatures';
+import {
+  sketchConstraintLabel,
+  sketchConstraintSelection,
+  sketchPlaneAxes,
+} from './sketchPresentation';
 
 export interface CadSketchEditorProps {
   feature: CadSketchFeature;
@@ -105,13 +110,16 @@ function SketchEditorSession({
   solveReport,
 }: CadSketchEditorProps) {
   const svg = useRef<SVGSVGElement>(null),
-    container = useRef<HTMLDivElement>(null);
+    container = useRef<HTMLDivElement>(null),
+    context = useRef<HTMLElement>(null);
   const live = useRef({ feature, locked, onChange });
   live.current = { feature, locked, onChange };
   const [tool, setTool] = useState<Tool>('select');
   const [pending, setPending] = useState<SnappedPoint[]>([]);
   const [cursor, setCursor] = useState<SnappedPoint | null>(null);
   const [selection, setSelection] = useState<SketchSelection[]>([]);
+  const [hovered, setHovered] = useState<SketchSelection | null>(null);
+  const [dimensionEditId, setDimensionEditId] = useState<string | null>(null);
   const [view, setView] = useState<SketchView>(() => fitSketchView(feature.sketch));
   const [dragGraph, setDragGraph] = useState<CadSketchDefinition | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -154,6 +162,12 @@ function SketchEditorSession({
         ? [chosenLine.startId, chosenLine.endId]
         : null;
   const selectedIds = new Set(selection.map((item) => item.id));
+  const axes = sketchPlaneAxes(feature.plane);
+  const failedIds = new Set(
+    graph.constraints
+      .filter((constraint) => solveReport?.failedConstraintIds.includes(constraint.id))
+      .flatMap((constraint) => sketchConstraintSelection(graph, constraint).map((item) => item.id)),
+  );
   const fixedPointIds = new Set(
     graph.constraints
       .filter((constraint) => constraint.kind === 'fixedPoint')
@@ -180,6 +194,18 @@ function SketchEditorSession({
     return () => draftCallback.current?.(false);
   }, [pending.length, dragGraph, numericDrafts.size]);
   useEffect(() => {
+    if (!dimensionEditId) return;
+    const row = Array.from(
+      context.current?.querySelectorAll<HTMLElement>('[data-constraint-id]') ?? [],
+    ).find((element) => element.dataset.constraintId === dimensionEditId);
+    const input = row?.querySelector<HTMLInputElement>('input');
+    if (!input || input.disabled) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: 'nearest' });
+    setDimensionEditId(null);
+  }, [dimensionEditId, feature.sketch]);
+  useEffect(() => {
     svg.current?.focus();
   }, []);
   useEffect(() => {
@@ -200,6 +226,7 @@ function SketchEditorSession({
     gesture.current = null;
     setCursor(null);
     setTool('select');
+    setHovered(null);
     setMessage(null);
   };
   useEffect(() => {
@@ -234,6 +261,7 @@ function SketchEditorSession({
   const chooseTool = (next: Tool) => {
     if (locked || numericDrafts.size) return;
     setTool(next);
+    setHovered(null);
     setPending([]);
     setCursor(null);
     setDragGraph(null);
@@ -372,6 +400,7 @@ function SketchEditorSession({
       setMessage('This point is fixed. Remove the fixed constraint before moving its anchor.');
       return;
     }
+    setHovered(null);
     gesture.current = {
       kind: 'point',
       pointId: id,
@@ -424,29 +453,27 @@ function SketchEditorSession({
     if (!selection.length || locked) return;
     if (perform(() => deleteSketchSelection(feature.sketch, selection))) setSelection([]);
   };
-  const addConstraint = (constraint: ConstraintInput) => {
+  const addConstraint = (constraint: ConstraintInput): string | null => {
     if (
       'value' in constraint &&
       (!(constraint.value > 0) || !Number.isFinite(constraint.value) || constraint.value > 1000)
     ) {
       setMessage('Enter a positive distance or diameter at most 1000 m.');
-      return;
+      return null;
     }
     const next = structuredClone(feature.sketch);
     if (next.constraints.length >= 512) {
       setMessage('This sketch has reached the constraint limit.');
-      return;
+      return null;
     }
     const key = JSON.stringify(constraint);
     if (next.constraints.some(({ id: _id, ...existing }) => JSON.stringify(existing) === key)) {
       setMessage('This constraint already exists.');
-      return;
+      return null;
     }
-    next.constraints.push({
-      ...constraint,
-      id: freshSketchId('constraint'),
-    } as CadSketchConstraint);
-    commit(next);
+    const id = freshSketchId('constraint');
+    next.constraints.push({ ...constraint, id } as CadSketchConstraint);
+    return commit(next) ? id : null;
   };
   const updateConstraint = (id: string, value: number) => {
     const next = structuredClone(feature.sketch),
@@ -457,37 +484,36 @@ function SketchEditorSession({
   const editDimension = (entity: CadSketchEntity) => {
     if (locked || numericDrafts.size || pending.length) return;
     select({ kind: 'entity', id: entity.id }, false);
-    if (entity.kind === 'line') {
-      const existing = feature.sketch.constraints.some(
-        (constraint) =>
-          constraint.kind === 'distance' &&
+    const existing = feature.sketch.constraints.find((constraint) =>
+      entity.kind === 'line'
+        ? constraint.kind === 'distance' &&
           ((constraint.firstPointId === entity.startId &&
             constraint.secondPointId === entity.endId) ||
             (constraint.firstPointId === entity.endId &&
-              constraint.secondPointId === entity.startId)),
+              constraint.secondPointId === entity.startId))
+        : constraint.kind === 'diameter' && constraint.curveId === entity.id,
+    );
+    const id =
+      existing?.id ??
+      addConstraint(
+        entity.kind === 'line'
+          ? {
+              kind: 'distance',
+              firstPointId: entity.startId,
+              secondPointId: entity.endId,
+              value: pointDistance(points.get(entity.startId)!, points.get(entity.endId)!),
+            }
+          : {
+              kind: 'diameter',
+              curveId: entity.id,
+              value:
+                2 *
+                (entity.kind === 'circle'
+                  ? entity.radius
+                  : pointDistance(points.get(entity.centerId)!, points.get(entity.startId)!)),
+            },
       );
-      if (!existing)
-        addConstraint({
-          kind: 'distance',
-          firstPointId: entity.startId,
-          secondPointId: entity.endId,
-          value: pointDistance(points.get(entity.startId)!, points.get(entity.endId)!),
-        });
-    } else {
-      const existing = feature.sketch.constraints.some(
-        (constraint) => constraint.kind === 'diameter' && constraint.curveId === entity.id,
-      );
-      if (!existing)
-        addConstraint({
-          kind: 'diameter',
-          curveId: entity.id,
-          value:
-            2 *
-            (entity.kind === 'circle'
-              ? entity.radius
-              : pointDistance(points.get(entity.centerId)!, points.get(entity.startId)!)),
-        });
-    }
+    if (id) setDimensionEditId(id);
   };
   const curveRadius = chosenCurve
     ? chosenCurve.kind === 'circle'
@@ -714,6 +740,29 @@ function SketchEditorSession({
                 className="cad-sketch-axis y"
                 vectorEffect="non-scaling-stroke"
               />
+              <g className="cad-sketch-axis-labels" pointerEvents="none">
+                <text
+                  x={view.center[0] + view.width / 2 - pixel * 14}
+                  y={Math.max(
+                    -view.center[1] - view.height / 2 + pixel * 18,
+                    Math.min(-pixel * 8, -view.center[1] + view.height / 2 - pixel * 12),
+                  )}
+                  fontSize={pixel * 11}
+                  textAnchor="end"
+                >
+                  {axes[0]} · u
+                </text>
+                <text
+                  x={Math.max(
+                    view.center[0] - view.width / 2 + pixel * 10,
+                    Math.min(pixel * 8, view.center[0] + view.width / 2 - pixel * 42),
+                  )}
+                  y={-view.center[1] - view.height / 2 + pixel * 18}
+                  fontSize={pixel * 11}
+                >
+                  {axes[1]} · v
+                </text>
+              </g>
               <circle cx={0} cy={0} r={pixel * 4} className="cad-sketch-origin" />
               {graph.entities.map((entity) => {
                 const vertices = entityPoints(graph, entity),
@@ -748,7 +797,10 @@ function SketchEditorSession({
                 const lineLabel =
                   entity.kind === 'line' ? lineDimensionPosition(graph, entity, pixel * 18) : null;
                 return (
-                  <g key={entity.id} className={selected ? 'selected' : ''}>
+                  <g
+                    key={entity.id}
+                    className={`${selected ? 'selected' : ''} ${hovered?.kind === 'entity' && hovered.id === entity.id ? 'prehighlighted' : ''} ${failedIds.has(entity.id) || entityPointIds(entity).some((id) => failedIds.has(id)) ? 'constraint-hint' : ''}`}
+                  >
                     <path
                       d={path(vertices)}
                       className="cad-sketch-curve"
@@ -759,6 +811,15 @@ function SketchEditorSession({
                       className="cad-sketch-hit"
                       role="button"
                       aria-label={`Select ${entity.name}`}
+                      onPointerEnter={() => {
+                        if (tool === 'select' && !gesture.current)
+                          setHovered({ kind: 'entity', id: entity.id });
+                      }}
+                      onPointerLeave={() =>
+                        setHovered((before) =>
+                          before?.kind === 'entity' && before.id === entity.id ? null : before,
+                        )
+                      }
                       aria-pressed={selected}
                       tabIndex={tool === 'select' ? 0 : -1}
                       vectorEffect="non-scaling-stroke"
@@ -837,7 +898,10 @@ function SketchEditorSession({
                 );
               })}
               {graph.points.map((point) => (
-                <g key={point.id} className={selectedIds.has(point.id) ? 'selected' : ''}>
+                <g
+                  key={point.id}
+                  className={`${selectedIds.has(point.id) ? 'selected' : ''} ${hovered?.kind === 'point' && hovered.id === point.id ? 'prehighlighted' : ''} ${failedIds.has(point.id) ? 'constraint-hint' : ''}`}
+                >
                   <circle
                     className="cad-sketch-point-hit"
                     role="button"
@@ -847,6 +911,15 @@ function SketchEditorSession({
                     cx={point.position[0]}
                     cy={-point.position[1]}
                     r={pixel * 9}
+                    onPointerEnter={() => {
+                      if (tool === 'select' && !gesture.current)
+                        setHovered({ kind: 'point', id: point.id });
+                    }}
+                    onPointerLeave={() =>
+                      setHovered((before) =>
+                        before?.kind === 'point' && before.id === point.id ? null : before,
+                      )
+                    }
                     onPointerDown={(event) => beginPoint(event, point.id)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
@@ -929,7 +1002,11 @@ function SketchEditorSession({
               </div>
             )}
           </div>
-          <aside className="cad-sketch-context" aria-label="Sketch selection properties">
+          <aside
+            ref={context}
+            className="cad-sketch-context"
+            aria-label="Sketch selection properties"
+          >
             <h3>{selection.length ? `${selection.length} selected` : 'Sketch'}</h3>
             {graph.constraints.length > 0 && !solveReport && (
               <p className="cad-sketch-readiness">
@@ -947,14 +1024,14 @@ function SketchEditorSession({
             )}
             {chosenPoints.length === 1 && (
               <>
-                <h4>Point position</h4>
+                <h4>Point position · {feature.plane.toUpperCase()} plane</h4>
                 {fixedPointIds.has(chosenPoints[0].id) && (
                   <p>
-                    This point is fixed. Remove its fixedPoint constraint below to edit or drag it.
+                    This point is fixed. Remove its Fixed point constraint below to edit or drag it.
                   </p>
                 )}
                 {numberField(
-                  'Point X',
+                  `Point ${axes[0]}`,
                   chosenPoints[0].position[0],
                   (value) =>
                     perform(() =>
@@ -967,7 +1044,7 @@ function SketchEditorSession({
                   fixedPointIds.has(chosenPoints[0].id),
                 )}
                 {numberField(
-                  'Point Y',
+                  `Point ${axes[1]}`,
                   chosenPoints[0].position[1],
                   (value) =>
                     perform(() =>
@@ -1139,13 +1216,23 @@ function SketchEditorSession({
             {(selection.length ? selectionConstraints : graph.constraints).map((constraint) => (
               <div
                 key={constraint.id}
+                data-constraint-id={constraint.id}
                 className={`cad-sketch-constraint ${solveReport?.failedConstraintIds.includes(constraint.id) ? 'failed' : ''}`}
               >
-                <span>{constraint.kind}</span>
+                <button
+                  className="cad-sketch-constraint-reference"
+                  type="button"
+                  title="Select referenced geometry"
+                  aria-label={`Select geometry for ${sketchConstraintLabel(constraint.kind)} constraint`}
+                  disabled={locked || numericDrafts.size > 0}
+                  onClick={() => setSelection(sketchConstraintSelection(graph, constraint))}
+                >
+                  {sketchConstraintLabel(constraint.kind)}
+                </button>
                 <button
                   type="button"
                   title="Remove constraint"
-                  aria-label={`Remove ${constraint.kind} constraint`}
+                  aria-label={`Remove ${sketchConstraintLabel(constraint.kind)} constraint`}
                   disabled={locked || numericDrafts.size > 0}
                   onClick={() => {
                     const next = structuredClone(feature.sketch);
@@ -1249,7 +1336,9 @@ function SketchEditorSession({
           <span>
             Grid {formatValue(spacing * factor)} {units}
           </span>
-          <span>{feature.plane.toUpperCase()} plane</span>
+          <span>
+            {feature.plane.toUpperCase()} plane · u = {axes[0]}, v = {axes[1]}
+          </span>
           {graph.constraints.length > 0 && !solveReport && (
             <span className="cad-sketch-needs-solve">Needs solve</span>
           )}

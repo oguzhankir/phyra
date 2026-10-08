@@ -1,0 +1,42 @@
+.cad-properties.cad-command-panel {
+  position: relative;
+  flex: 0 0 min(320px, 48%);
+  width: min(320px, 48%);
+  min-width: 230px;
+  box-shadow: none;
+}
+.cad-command-intro {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+.cad-command-feedback {
+  border-top: 1px solid var(--line);
+  padding: 9px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.cad-command-feedback p {
+  margin: 0;
+}
+.cad-command-feedback p + p {
+  margin-top: 5px;
+}
+.cad-command-feedback [role='alert'] {
+  color: var(--danger);
+}
+.cad-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.cad-command-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}

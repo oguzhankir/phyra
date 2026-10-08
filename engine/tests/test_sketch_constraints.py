@@ -493,7 +493,8 @@ def test_circle_diameter_and_exact_semicircle_profile():
     assert profile_area(profile) == pytest.approx(pi * 0.05**2, rel=1e-13)
 
 
-def test_arc_intrinsic_radius_and_quarter_circle_area():
+@pytest.mark.parametrize("clockwise", [False, True])
+def test_arc_intrinsic_radius_and_quarter_circle_area(clockwise):
     sketch = {
         "points": [
             {"id": "center", "position": [0, 0]},
@@ -526,11 +527,57 @@ def test_arc_intrinsic_radius_and_quarter_circle_area():
         ],
         "loops": [{"id": "quarter", "role": "outer", "entityIds": ["bottom", "arc", "left"]}],
     }
+    if clockwise:
+        for entity in sketch["entities"]:
+            entity["startId"], entity["endId"] = entity["endId"], entity["startId"]
+        sketch["entities"][1]["clockwise"] = True
+        sketch["loops"][0]["entityIds"].reverse()
+    original = deepcopy(sketch)
     result = solve_sketch(sketch)
     assert result.status == "solved" and result.degrees_of_freedom == 0
     np.testing.assert_allclose(result.points[2].position, [0, 0.1], atol=1e-12)
-    profile, _ = build_profile(sketch)
+    profile, metadata = build_profile(sketch)
     assert profile_area(profile) == pytest.approx(pi * 0.1**2 / 4, rel=1e-12)
+    arc = next(item for item in profile["outer"] if item["kind"] == "arc")
+    assert arc["clockwise"] is False
+    np.testing.assert_allclose(arc["start"], [0.1, 0], atol=1e-12)
+    np.testing.assert_allclose(arc["end"], [0, 0.1], atol=1e-12)
+    assert set(metadata["boundaryEntities"].values()) == {"bottom", "arc", "left"}
+    assert sketch == original
+
+
+@pytest.mark.parametrize("outside", [False, True])
+def test_clockwise_profile_preserves_hole_and_rejects_invalid_containment(outside):
+    sketch = rectangle()
+    center = [0.3, 0.025] if outside else [0.05, 0.025]
+    sketch["points"].append({"id": "hole-center", "position": center})
+    sketch["constraints"].append({"id": "fix-hole", "kind": "fixedPoint", "pointId": "hole-center"})
+    sketch["entities"].append(
+        {"id": "hole", "name": "Hole", "kind": "circle", "centerId": "hole-center", "radius": 0.01}
+    )
+    sketch["loops"].append({"id": "inner", "role": "hole", "entityIds": ["hole"]})
+    for entity in sketch["entities"][:4]:
+        entity["startId"], entity["endId"] = entity["endId"], entity["startId"]
+    sketch["loops"][0]["entityIds"].reverse()
+    original = deepcopy(sketch)
+    if outside:
+        with pytest.raises(EngineError) as error:
+            build_profile(sketch)
+        assert error.value.code == "invalid-hole"
+    else:
+        profile, metadata = build_profile(sketch)
+        assert profile_area(profile) == pytest.approx(0.005 - pi * 0.01**2, rel=1e-12)
+        assert profile["holes"][0]["center"] == center
+        assert profile["holes"][0]["radius"] == 0.01
+        assert metadata["boundaryEntities"][profile["holes"][0]["id"]] == "hole"
+        assert set(metadata["boundaryEntities"].values()) == {
+            "bottom",
+            "right",
+            "top",
+            "left",
+            "hole",
+        }
+    assert sketch == original
 
 
 @pytest.mark.parametrize(

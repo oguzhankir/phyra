@@ -13,7 +13,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ScanLine, Focus, Ruler, X } from 'lucide-react';
 import ViewportTools from './ViewportTools';
 import ViewportMenu, { type ViewportMenuContext } from './ViewportMenu';
-import { invokeVerification as invoke } from '../../platform/desktop/verification';
+import { isCadSolidProject } from '../../domain/project/cadSolid';
+import {
+  invokeVerification as invoke,
+  type CadPreparationRender,
+} from '../../platform/desktop/verification';
+import type { CadPreview } from '../../domain/geometry/cadPreview';
 import type { Project } from '../../domain/contracts/types';
 import {
   deformationScale,
@@ -23,7 +28,7 @@ import {
   type FieldSource,
 } from '../../domain/results/fields';
 import { displayValue, formatValue } from '../../domain/units';
-import { regionNames, type RegionId } from '../../domain/project/regions';
+import { projectRegions, type RegionId } from '../../domain/project/regions';
 import { contourColor } from './contours';
 import { tractionGlyph } from './traction';
 import { surfaceData, type SurfaceData } from './surface';
@@ -69,6 +74,7 @@ type Props = {
   onAddNamedSelection?: (regions: RegionId[]) => void;
   project: Project;
   data: ResultData | null;
+  cadPreview?: CadPreview | null;
   field: Field | null;
   selected: RegionId[];
   onSelect: (region: RegionId) => void;
@@ -76,6 +82,7 @@ type Props = {
   selectionMode?: SelectionMode;
   onProbe: (probe: Probe | null) => void;
   onVerified?: (report: Record<string, unknown>) => void;
+  onPreparationVerified?: (report: CadPreparationRender) => void;
   edges: boolean;
   deformation: 'off' | 'actual' | 'auto' | 'custom';
   customScale: number;
@@ -677,7 +684,7 @@ export default function Viewport(props: Props) {
     }
     let data: SurfaceData;
     try {
-      data = surfaceData(props.project, props.data, props.source);
+      data = surfaceData(props.project, props.data, props.source, props.cadPreview);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Cannot render this mesh.';
       setError(message);
@@ -697,6 +704,16 @@ export default function Viewport(props: Props) {
     state.field = props.field;
     state.visibleRegions = isolated ? new Set(isolated) : null;
     state.displayedTriangles = visibleTriangles(data, state.visibleRegions);
+    if (!data.positions.length) {
+      state.surface = undefined;
+      state.bounds.makeEmpty();
+      state.viewBounds.makeEmpty();
+      annotationPositions.current = [];
+      setAnnotations([]);
+      setModelSpan(null);
+      state.invalidate();
+      return;
+    }
     const renderNodes = new Uint32Array(state.displayedTriangles.length * 3);
     state.displayedTriangles.forEach((triangle, index) =>
       renderNodes.set(data.triangles.subarray(3 * triangle, 3 * triangle + 3), 3 * index),
@@ -904,11 +921,7 @@ export default function Viewport(props: Props) {
     }
     // Glyphs and labels use the same boundary facet mapping as selection.
     const nextAnnotations: ConditionAnnotation[] = [];
-    const names = regionNames(
-      props.project.geometry.kind,
-      props.project.study.dimension,
-      props.project.geometry.profile,
-    );
+    const names = projectRegions(props.project);
     const glyphAnchors = conditionsShown ? boundaryGlyphAnchors(data) : new Map();
     for (const anchor of conditionsShown ? boundaryAnchors(data) : []) {
       const region = anchor.region;
@@ -1108,6 +1121,39 @@ export default function Viewport(props: Props) {
     }
     state.invalidate();
     let verificationDone = false;
+    if (
+      props.onPreparationVerified &&
+      !props.data &&
+      props.cadPreview &&
+      isCadSolidProject(props.project)
+    ) {
+      state.renderer.render(state.scene, state.camera);
+      surface.updateMatrixWorld(true);
+      const rect = state.renderer.domElement.getBoundingClientRect();
+      const target = bounds.getCenter(new THREE.Vector3()).project(state.camera);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(target.x, target.y), state.camera);
+      const hit = ray.intersectObject(surface)[0];
+      if (hit?.faceIndex != null) {
+        const triangle = state.displayedTriangles[hit.faceIndex];
+        const region = pickedRegion(data, triangle, hit.point, 0, {
+          camera: state.camera,
+          width: rect.width,
+          height: rect.height,
+        });
+        if (region && region !== 'Interior')
+          props.onPreparationVerified({
+            projectId: props.project.id,
+            studyId: props.project.study.id,
+            geometryFingerprint: props.project.study.domain.geometryFingerprint,
+            outputFeatureId: props.project.study.domain.outputFeatureId,
+            region,
+            clientX: rect.left + ((target.x + 1) * rect.width) / 2,
+            clientY: rect.top + ((1 - target.y) * rect.height) / 2,
+            triangles: state.displayedTriangles.length,
+          });
+      }
+    }
     if (props.onVerified && props.field && props.data && props.data.manifest.operation !== 'mesh') {
       const verify = () => {
         if (
@@ -1215,6 +1261,7 @@ export default function Viewport(props: Props) {
     props.active,
     props.project,
     props.data,
+    props.cadPreview,
     props.field,
     props.selected,
     props.edges,
@@ -1242,17 +1289,9 @@ export default function Viewport(props: Props) {
         )
       : null;
   const supportSymbol = props.project.study.dimension === '2d' ? '△' : '▣';
-  const boundaryNames = regionNames(
-    props.project.geometry.kind,
-    props.project.study.dimension,
-    props.project.geometry.profile,
-  );
+  const boundaryNames = projectRegions(props.project);
   const regionLabel = hovered
-    ? (regionNames(
-        props.project.geometry.kind,
-        props.project.study.dimension,
-        props.project.geometry.profile,
-      ).find((region) => region.id === hovered)?.name ?? hovered)
+    ? (projectRegions(props.project).find((region) => region.id === hovered)?.name ?? hovered)
     : null;
   const resetView = () => {
     const view = props.project.study.dimension === '2d' ? 'top' : 'isometric';

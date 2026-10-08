@@ -128,6 +128,7 @@ export default function LoadEditor({ workbench }: { workbench: ProjectInspectorM
                     ]}
                     onChange={(value) =>
                       editLoad((item) => {
+                        if (project.geometry.kind === 'cad') return;
                         item.traction =
                           value === 'kirsch'
                             ? {

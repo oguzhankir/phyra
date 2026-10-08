@@ -21,6 +21,7 @@ def main() -> int:
     cast(io.TextIOWrapper, sys.stderr).reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--asset-root", help="Native-owned immutable CAD source directory")
     args = parser.parse_args()
     job_id = "unknown"
     try:
@@ -37,7 +38,7 @@ def main() -> int:
 
             log_context = cad_log_to_stderr()
         with log_context:
-            request = StudyRequest.from_payload(payload)
+            request = StudyRequest.from_payload(payload, asset_root=args.asset_root)
             plan = RunPlan.prepare(request)
 
         def progress(stage: str, fraction: float | None) -> None:

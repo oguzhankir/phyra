@@ -4,9 +4,6 @@ import argparse
 import hashlib
 import io
 import json
-import os
-import re
-import stat
 import sys
 from copy import deepcopy
 from importlib.metadata import version
@@ -19,43 +16,12 @@ from phyra_engine.errors import EngineError
 from phyra_engine.execution.limits import MAX_BUFFER_BYTES, MAX_REQUEST_BYTES
 from phyra_engine.geometry.cad.native_output import cad_log_to_stderr, kernel_log_to_stderr
 from phyra_engine.protocol.cad import CadRequest, read_cad_request
+from phyra_engine.protocol.cad_assets import read_cad_assets
 from phyra_engine.protocol.stdio import emit
 
 
 def _read_assets(request: CadRequest) -> dict[str, bytes]:
-    root = Path(request.asset_root)
-    if not root.is_absolute() or root.is_symlink() or not root.is_dir():
-        raise EngineError("invalid-cad-assets", "The native CAD asset root is invalid.")
-    assets: dict[str, bytes] = {}
-    total = 0
-    for metadata in request.geometry_definition()["assets"]:
-        digest = metadata["sha256"]
-        if not re.fullmatch(r"[a-f0-9]{64}", digest):
-            raise EngineError("invalid-cad-assets", "CAD source identity is invalid.")
-        source = root / f"{digest}.step"
-        if source.is_symlink() or not source.is_file():
-            raise EngineError("invalid-cad-assets", "A native-owned STEP source is missing.")
-        # Prevent a swapped symlink or FIFO from escaping the finite file read.
-        descriptor = os.open(
-            source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-        )
-        with os.fdopen(descriptor, "rb") as stream:
-            opened_status = os.fstat(stream.fileno())
-            if not stat.S_ISREG(opened_status.st_mode):
-                raise EngineError("invalid-cad-assets", "A CAD source is not a regular file.")
-            expected = metadata["byteLength"]
-            if opened_status.st_size != expected or total + expected > MAX_BUFFER_BYTES:
-                raise EngineError(
-                    "cad-resource-limit", "STEP source sizes exceed the CAD asset budget."
-                )
-            payload = stream.read(expected + 1)
-        if len(payload) != expected or hashlib.sha256(payload).hexdigest() != digest:
-            raise EngineError(
-                "invalid-cad-assets", "A STEP source failed its size or integrity check."
-            )
-        assets[metadata["id"]] = payload
-        total += len(payload)
-    return assets
+    return read_cad_assets(request.geometry_definition(), request.asset_root)
 
 
 def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:
@@ -92,6 +58,8 @@ def _pack(arrays: dict[str, np.ndarray]) -> tuple[bytes, dict[str, Any]]:
 def execute(request: CadRequest, output: Path) -> dict[str, Any]:
     if request.operation == "solve-sketch":
         return execute_sketch(request)
+    if request.operation == "mesh-cad":
+        return execute_mesh(request, output)
     geometry = request.geometry_definition()
     assets = _read_assets(request)
     with cad_log_to_stderr():
@@ -244,6 +212,41 @@ def execute(request: CadRequest, output: Path) -> dict[str, Any]:
         temporary.write_bytes(payload)
         temporary.replace(output / name)
     return manifest
+
+
+def execute_mesh(request: CadRequest, output: Path) -> dict[str, Any]:
+    """Inspect one exact solid without creating a study, shape receipt or physical fields."""
+    assets = _read_assets(request)
+    with cad_log_to_stderr():
+        from phyra_engine.geometry.cad.kernel import build, export_step
+        from phyra_engine.meshing.cad import generate_cad_mesh
+        from phyra_engine.results.cad_mesh import write_cad_mesh
+
+        result = build(request.geometry_definition(), assets)
+        if any(instance.component_path for instance in result.body_instances):
+            raise EngineError(
+                "unsupported-cad-mesh",
+                "Assembly component meshes require explicit connectivity and are not supported.",
+            )
+        if request.target_size is None:
+            raise EngineError("invalid-cad-mesh", "A mesh inspection target size is required.")
+        # Exact CAD receipts identify topology after the bounded STEP transfer,
+        # which can clear OCCT's Checked cache flags. Preserve those existing
+        # content references by performing the same preparation here. The bytes
+        # are not published and confer no exact-export ownership on this job.
+        export_step(result.shape)
+        inspected = generate_cad_mesh(
+            result.shape, request.target_size, owner_id=result.output_feature_id
+        )
+        return write_cad_mesh(
+            output,
+            inspected,
+            project_id=request.project_id,
+            revision=request.revision,
+            job_id=request.job_id,
+            geometry_fingerprint=hashlib.sha256(request._geometry_json).hexdigest(),
+            output_feature_id=result.output_feature_id,
+        )
 
 
 def execute_sketch(request: CadRequest) -> dict[str, Any]:

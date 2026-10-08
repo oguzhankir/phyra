@@ -1,0 +1,16 @@
+Phyra
+Copyright 2026 Oğuzhan KIR
+https://github.com/oguzhankir/phyra
+
+Phyra's original source code is licensed under the Apache License, Version 2.0.
+The full license is in LICENSE. Separately identified third-party code, assets,
+legal texts and notices retain their own licenses and copyright holders.
+
+The bundled application includes GPL-covered dependencies, including Gmsh and
+SolveSpace. Distribution of the combined application must comply with GPLv3
+and the other applicable third-party terms; it is not an Apache-only binary.
+See notices/THIRD_PARTY.txt and notices/GPL-3.0.txt for the distribution scope,
+Corresponding Source obligations and target-specific audit requirements.
+
+This source licensing change does not revoke rights granted under previous
+GPL-3.0-or-later releases.

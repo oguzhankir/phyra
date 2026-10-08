@@ -6,6 +6,7 @@ import type {
 } from '../contracts/types';
 import { inputError } from './validation';
 import type { StudyPreparation } from './readiness';
+import { isCadSolidProject } from './cadSolid';
 
 /** Shared with bounded worker framing, archives and recovery journals. */
 export function documentSizeError(project: ProjectDefinition): string | null {
@@ -27,7 +28,7 @@ export function blankProject(
   dimension: '2d' | '3d' = '3d',
 ): ProjectDefinition {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     id: crypto.randomUUID(),
     name: name.trim() || 'Untitled project',
     revision: 0,
@@ -162,8 +163,28 @@ export function documentError(project: ProjectDefinition): string | null {
   if (sizeError) return sizeError;
   if (!project.name.trim()) return 'Project name cannot be empty.';
   if (isNumericalProject(project)) return inputError(project);
+  if (isCadSolidProject(project))
+    return cadDefinitionError(project.geometry) ?? inputError(project);
   if (project.geometry.kind === 'cad') return cadDefinitionError(project.geometry);
   return null;
+}
+
+/** Preserve source-bound intent until an explicit replacement repairs its faces. */
+export function reconcileStudyAfterGeometryEdit(
+  previous: ProjectDefinition,
+  next: ProjectDefinition,
+): void {
+  if (
+    JSON.stringify(previous.geometry) === JSON.stringify(next.geometry) ||
+    (next.geometry.kind !== 'cad' && next.geometry.kind !== 'empty')
+  )
+    return;
+  if (next.geometry.kind === 'empty' || next.study?.dimension !== next.geometry.dimension)
+    next.study = null;
+  else if (next.study && !isCadSolidProject(next)) {
+    next.study.constraints = [];
+    next.study.loads = [];
+  }
 }
 
 export function documentPreparation(

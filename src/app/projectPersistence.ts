@@ -24,6 +24,14 @@ interface SavePorts {
   cleanupFailed: (cause: unknown) => void;
 }
 
+/** Transient CAD commands are not dirty definitions and must be resolved explicitly. */
+export function projectReplacementIssue(drafts: ReadonlyMap<string, string>): string | null {
+  for (const id of drafts.keys())
+    if (id.startsWith('cad-command:'))
+      return 'Apply or cancel the active CAD command before closing or replacing this project.';
+  return null;
+}
+
 // A completed archive write owns only its captured definition. It cannot mark
 // newer edits saved or clear a replacement document's recovery checkpoint.
 export async function persistProjectSnapshot(

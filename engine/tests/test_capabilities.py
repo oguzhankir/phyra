@@ -44,6 +44,14 @@ def test_capability_contract_matches_actual_registered_methods(actual_capabiliti
     ]
     assert actual_capabilities["materialModels"] == ["homogeneous-isotropic-linear-elastic"]
     assert actual_capabilities["meshing"][0]["geometryKinds"] == list(SOLID_REGIONS)
+    assert actual_capabilities["schemaVersion"] == 2
+    assert actual_capabilities["meshing"][-1] == {
+        "id": "gmsh-occ-cad-tetra4",
+        "dimension": "3d",
+        "cellType": "tetra4",
+        "geometryKinds": ["cad"],
+        "requiredDomain": "cad-solid",
+    }
     for method in actual_capabilities["methods"]:
         if method["kind"] == "fem":
             assert [device["id"] for device in method["devices"]] == ["cpu"]

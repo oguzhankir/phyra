@@ -29,7 +29,8 @@ def copy_file(source: Path, relative: Path) -> None:
     shutil.copyfile(source, destination)
 
 
-copy_file(ROOT / "LICENSE", Path("Phyra-GPL-3.0.txt"))
+copy_file(ROOT / "LICENSE", Path("Phyra-Apache-2.0.txt"))
+copy_file(ROOT / "NOTICE", Path("Phyra-NOTICE.txt"))
 for source in (ROOT / "notices").rglob("*"):
     if source.is_file():
         copy_file(source, Path("phyra") / source.relative_to(ROOT / "notices"))

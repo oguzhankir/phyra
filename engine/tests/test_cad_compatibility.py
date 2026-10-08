@@ -30,17 +30,25 @@ from phyra_engine.studies.project import (
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def rectangle_sketch():
+def rectangle_sketch(start=(0, 0)):
+    # Match the editor's rectangle gesture from each possible first corner.
+    # Names identify physical sides independently of drawing direction.
+    x, y = start
+    opposite_x, opposite_y = 0.1 - x, 0.05 - y
+    positions = [[x, y], [opposite_x, y], [opposite_x, opposite_y], [x, opposite_y]]
+    names = [
+        "bottom" if y == 0 else "top",
+        "right" if opposite_x == 0.1 else "left",
+        "top" if opposite_y == 0.05 else "bottom",
+        "left" if x == 0 else "right",
+    ]
     return {
         "id": "sketch",
         "name": "Rectangle sketch",
         "kind": "sketch",
         "plane": "xy",
         "sketch": {
-            "points": [
-                {"id": f"p{i}", "position": point}
-                for i, point in enumerate([[0, 0], [0.1, 0], [0.1, 0.05], [0, 0.05]])
-            ],
+            "points": [{"id": f"p{i}", "position": point} for i, point in enumerate(positions)],
             "entities": [
                 {
                     "id": name,
@@ -49,12 +57,10 @@ def rectangle_sketch():
                     "startId": f"p{i}",
                     "endId": f"p{(i + 1) % 4}",
                 }
-                for i, name in enumerate(["bottom", "right", "top", "left"])
+                for i, name in enumerate(names)
             ],
             "constraints": [],
-            "loops": [
-                {"id": "outer", "role": "outer", "entityIds": ["bottom", "right", "top", "left"]}
-            ],
+            "loops": [{"id": "outer", "role": "outer", "entityIds": names}],
         },
     }
 
@@ -108,8 +114,9 @@ def preview(tmp_path, definition):
     )
 
 
-def test_actual_authored_sketch_and_extrusion_with_exact_source_bindings(tmp_path):
-    sketch = rectangle_sketch()
+@pytest.mark.parametrize("start", [(0, 0), (0.1, 0), (0.1, 0.05), (0, 0.05)])
+def test_actual_authored_sketch_and_extrusion_with_exact_source_bindings(tmp_path, start):
+    sketch = rectangle_sketch(start)
     definition = geometry([sketch], "2d")
     original = deepcopy(definition)
     receipt = preview(tmp_path, definition)
@@ -141,7 +148,7 @@ def test_actual_authored_sketch_and_extrusion_with_exact_source_bindings(tmp_pat
     assert all(len(row["entityIds"]) == 1 for row in bindings)
 
 
-@pytest.mark.parametrize("kind", ["box", "cylinder", "extrude"])
+@pytest.mark.parametrize("kind", ["box", "cylinder", "extrude", "extrude-clockwise"])
 def test_real_solid_cad_fem_and_cache_preserve_authored_fingerprint(tmp_path, kind):
     if kind == "box":
         features = [
@@ -166,7 +173,7 @@ def test_real_solid_cad_fem_and_cache_preserve_authored_fingerprint(tmp_path, ki
         ]
     else:
         features = [
-            rectangle_sketch(),
+            rectangle_sketch((0.1, 0) if kind == "extrude-clockwise" else (0, 0)),
             {
                 "id": "extrude",
                 "name": "Extrusion",
@@ -200,8 +207,9 @@ def test_real_solid_cad_fem_and_cache_preserve_authored_fingerprint(tmp_path, ki
     assert error.value.code == "stale-cache"
 
 
-def test_real_xy_sketch_plane_stress_matches_independent_uniform_tension(tmp_path):
-    source = project(geometry([rectangle_sketch()], "2d"))
+@pytest.mark.parametrize("start", [(0, 0), (0.1, 0), (0.1, 0.05), (0, 0.05)])
+def test_real_xy_sketch_plane_stress_matches_independent_uniform_tension(tmp_path, start):
+    source = project(geometry([rectangle_sketch(start)], "2d"))
     manifest = execute_study(RunPlan.prepare(study_request(source)), tmp_path)
     payload = (tmp_path / "buffer.bin").read_bytes()
     arrays = {

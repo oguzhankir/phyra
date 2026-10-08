@@ -2,7 +2,7 @@ import { assertTrainingMetadata } from '../../domain/contracts/metadata';
 import { numericArray, type ResultData } from '../../domain/results/fields';
 import { regionNames } from '../../domain/project/regions';
 import { selectionNameKey } from '../../domain/project/namedSelections';
-import type { ArrayDescriptor, Manifest, Project } from '../../domain/contracts/types';
+import type { ArrayDescriptor, Manifest, NumericalProject } from '../../domain/contracts/types';
 
 export type ReferenceId = '3d' | '2d-compare';
 export const referenceLabels: Record<ReferenceId, string> = {
@@ -118,14 +118,14 @@ export function validateReference(
   projectValue: unknown,
   manifestValue: unknown,
   buffer: ArrayBuffer,
-): { project: Project; data: ResultData } {
+): { project: NumericalProject; data: ResultData } {
   validateJsonTree(projectValue);
   validateJsonTree(manifestValue);
   ensure(
     record(projectValue) && record(projectValue.study) && record(projectValue.geometry),
     'missing project definition.',
   );
-  const source = projectValue as unknown as Project;
+  const source = projectValue as unknown as NumericalProject;
   // Bundled immutable v4 references keep their original byte digests. Upgrade
   // their definition in memory, preserving the default algorithm and run identity.
   const project = structuredClone(source);
@@ -136,10 +136,10 @@ export function validateReference(
     );
     project.study.solver.pinn.formulation = 'strong-form';
   }
-  if ([4, 5, 6].includes(source.schemaVersion as number)) project.schemaVersion = 7;
+  if ([4, 5, 6, 7].includes(source.schemaVersion as number)) project.schemaVersion = 8;
   const dimension = id === '3d' ? '3d' : '2d';
   ensure(
-    project.schemaVersion === 7 && project.study.dimension === dimension,
+    project.schemaVersion === 8 && project.study.dimension === dimension,
     'unsupported project version or dimension.',
   );
   ensure(
@@ -184,6 +184,10 @@ export function validateReference(
     );
     selectionIds.add(selection.id);
     selectionNames.add(name);
+    ensure(
+      selection.geometryKind !== 'cad',
+      'CAD boundary sets are unavailable in bundled primitive references.',
+    );
     const stampedRegions = regionNames(selection.geometryKind, selection.dimension).map(
       ({ id: region }) => region,
     );
@@ -195,7 +199,7 @@ export function validateReference(
   }
   ensure(
     ['length', 'width', 'height', 'radius', 'thickness'].every((key) => {
-      const value = project.geometry[key as keyof Project['geometry']];
+      const value = project.geometry[key as keyof NumericalProject['geometry']];
       return typeof value === 'number' && value > 0 && value <= 1000;
     }),
     'invalid geometry dimensions.',
@@ -363,7 +367,7 @@ export function validateReference(
 
 export async function loadReference(
   id: ReferenceId,
-): Promise<{ project: Project; data: ResultData }> {
+): Promise<{ project: NumericalProject; data: ResultData }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {

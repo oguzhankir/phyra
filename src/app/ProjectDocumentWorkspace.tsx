@@ -46,6 +46,7 @@ import Select from '../shared/ui/Select';
 
 import PropertyInspector from '../features/project/PropertyInspector';
 import CanonicalProjectWorkspace from './CanonicalProjectWorkspace';
+import { isCadSolidProject } from '../domain/project/cadSolid';
 import { isNumericalProject } from '../domain/project/document';
 import { useWorkbench } from './useWorkbench';
 import { createWorkbenchCommands } from './workbenchCommands';
@@ -367,7 +368,7 @@ export default function ProjectDocumentWorkspace({
     },
     open: onOpen,
   });
-  if (workspaceMode !== 'analysis' || !isNumericalProject(project))
+  if (workspaceMode !== 'analysis' || (!isNumericalProject(project) && !isCadSolidProject(project)))
     return (
       <NumericDraftContext.Provider value={reportDraftValidity}>
         <CanonicalProjectWorkspace
@@ -451,7 +452,9 @@ export default function ProjectDocumentWorkspace({
             {definition.geometry.kind === 'cad' && section === 'geometry' ? (
               <div className="cad-source-inspector">
                 <h2>Authored CAD geometry</h2>
-                <p>The study uses an exact supported projection of the saved CAD definition.</p>
+                <p>
+                  The study retains the authored CAD source and its checked boundary assignments.
+                </p>
                 <button
                   className="secondary"
                   disabled={locked}
@@ -668,11 +671,27 @@ export default function ProjectDocumentWorkspace({
             {section === 'study' && (
               <StudyReadiness preparation={workbench.preparation} onSection={selectSection} />
             )}
+            {workbench.cadSourceError && (
+              <div className="cad-source-readiness" role="status">
+                <span>{workbench.cadSourceError}</span>
+                <button
+                  disabled={locked || workbench.nativeLocked}
+                  onClick={() => void workbench.cad.evaluate()}
+                >
+                  Rebuild exact geometry
+                </button>
+                <button onClick={() => setWorkspaceMode('cad')}>Review CAD source</button>
+              </div>
+            )}
             <div className="viewport-wrap">
               {editingSketch && <div ref={setSketchTarget} className="central-sketch" />}
               <div className={`model-viewport${editingSketch ? ' sketch-editing' : ''}`}>
                 <Suspense fallback={<span role="status">Opening model view…</span>}>
                   <Viewport
+                    cadPreview={workbench.analysisPreview}
+                    onPreparationVerified={
+                      verification ? workbench.cadVerification.preparationRendered : undefined
+                    }
                     active={active}
                     menusBlocked={menusBlocked}
                     onCondition={(kind, id) =>
@@ -698,7 +717,13 @@ export default function ProjectDocumentWorkspace({
                         probe && resultSelection ? { probe, selection: resultSelection } : null;
                       setProbe(probe);
                     }}
-                    onVerified={verification ? verified : undefined}
+                    onVerified={
+                      verification &&
+                      (workbench.cadVerification.workspace === null ||
+                        workbench.cadVerification.phase === 'complete')
+                        ? verified
+                        : undefined
+                    }
                     edges={edges}
                     source={fieldSource}
                     animate={animate}

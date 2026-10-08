@@ -2,7 +2,8 @@
 
 The driver uses only the standard library. It independently reads typed buffers
 and checks plane-stress axial displacement/stress against F/(tW), Poisson
-contraction and FL/(2EA). No development engine or tensor runtime is imported.
+contraction and FL/(2EA), plus exact Boolean/STEP solid fields against uniform
+hydrostatic elasticity. No development engine or tensor runtime is imported.
 """
 
 import hashlib
@@ -550,6 +551,231 @@ def cad_smoke(directory: str, env: dict, completed, invoke) -> None:
     print(
         "Bundled exact CAD/native sketch/SI STEP roundtrip/FEM/cache/eligibility passed."
     )
+    cad_solid_smoke(root, preview, completed, invoke)
+
+
+def cad_solid_smoke(root: Path, preview, completed, invoke) -> None:
+    """Verify exact-bound Boolean/STEP solids against uniform hydrostatic elasticity."""
+    geometry = {
+        "kind": "cad",
+        "dimension": "3d",
+        "features": [
+            {
+                "id": "box",
+                "name": "Box",
+                "kind": "box",
+                "length": 0.1,
+                "width": 0.05,
+                "height": 0.02,
+            },
+            {
+                "id": "tool",
+                "name": "Tool",
+                "kind": "cylinder",
+                "length": 0.1,
+                "radius": 0.005,
+            },
+            {
+                "id": "placed",
+                "name": "Placed tool",
+                "kind": "transform",
+                "inputId": "tool",
+                "translation": [0, 0.025, 0.01],
+                "axisOrigin": [0, 0, 0],
+                "axisDirection": [1, 0, 0],
+                "angle": 0,
+            },
+            {
+                "id": "cut",
+                "name": "Through hole",
+                "kind": "boolean",
+                "operation": "cut",
+                "leftId": "box",
+                "rightId": "placed",
+            },
+        ],
+        "assets": [],
+        "outputFeatureId": "cut",
+    }
+    for source_kind in ("boolean", "step"):
+        # Native serde objects use sorted keys; receipt and study source stamps
+        # must represent the identical authoritative geometry snapshot.
+        geometry = json.loads(json.dumps(geometry, sort_keys=True))
+        output = root / f"cad-solid-source-{source_kind}"
+        receipt = preview(geometry, output, f"bundle-cad-solid-source-{source_kind}")
+        require(
+            math.isclose(
+                receipt["statistics"]["volume"],
+                (0.05 * 0.02 - math.pi * 0.005**2) * 0.1,
+                rel_tol=1e-12,
+            ),
+            "Bundled Boolean/STEP source changed exact volume.",
+        )
+        project = json.loads((ROOT / "examples/extension.json").read_text())
+        project.update(
+            schemaVersion=8, id="bundle-cad", geometry=geometry, namedSelections=[]
+        )
+        boundaries = [
+            {
+                "id": "cad-" + hashlib.sha256(face["id"].encode()).hexdigest(),
+                "faceId": face["id"],
+                "name": face["name"],
+            }
+            for face in receipt["faces"]
+        ]
+        require(
+            len(boundaries) == 7,
+            "Through-hole CAD did not retain its seven exact source faces.",
+        )
+        constraints = []
+        for axis in range(3):
+            matches = [
+                boundary["id"]
+                for boundary, face in zip(boundaries, receipt["faces"], strict=True)
+                if all(abs(point[axis]) < 1e-12 for point in face["bounds"])
+            ]
+            require(
+                len(matches) == 1,
+                "Hydrostatic roller lacks a unique coordinate-plane face.",
+            )
+            components = [None, None, None]
+            components[axis] = 0
+            constraints.append(
+                {
+                    "id": f"roller-{axis}",
+                    "name": "Roller",
+                    "regions": matches,
+                    "components": components,
+                }
+            )
+        pressure = 2e6
+        project["study"].update(
+            domain={
+                "kind": "cad-solid",
+                "geometryFingerprint": receipt["geometryFingerprint"],
+                "outputFeatureId": geometry["outputFeatureId"],
+                "boundaries": boundaries,
+            },
+            mesh={"size": 0.015},
+            constraints=constraints,
+            loads=[
+                {
+                    "id": "pressure",
+                    "name": "Hydrostatic pressure",
+                    "regions": [face["id"] for face in boundaries],
+                    "kind": "pressure",
+                    "vector": [0, 0, 0],
+                    "pressure": pressure,
+                }
+            ],
+        )
+        output = root / f"cad-solid-result-{source_kind}"
+        job_id = f"bundle-cad-solid-{source_kind}"
+        manifest, _ = completed("solve", project, output, job_id, asset_root=root)
+        arrays = read_arrays(manifest, output)
+        require(
+            manifest["cellType"] == "tetra4"
+            and [entry["id"] for entry in manifest["regions"]]
+            == [entry["id"] for entry in boundaries]
+            and set(arrays["surfaceRegions"]) == set(range(len(boundaries))),
+            "Bundled CAD mesh lost its complete exact-face catalog.",
+        )
+        young, poisson = (
+            project["study"]["material"][key] for key in ("young", "poisson")
+        )
+        strain = -pressure * (1 - 2 * poisson) / young
+        expected_displacement = [
+            [strain * value for value in point] for point in arrays["positions"]
+        ]
+        expected_stress = [
+            [-pressure, -pressure, -pressure, 0, 0, 0] for _ in arrays["cells"]
+        ]
+        displacement_error = relative_l2(arrays["displacement"], expected_displacement)
+        stress_error = relative_l2(arrays["stress"], expected_stress)
+        require(
+            displacement_error < 1e-8 and stress_error < 1e-8,
+            "Bundled CAD hydrostatic fields disagree with independent elasticity.",
+        )
+        volume = 0.0
+        for cell in arrays["cells"]:
+            points = [arrays["positions"][node] for node in cell]
+            a, b, c = [
+                [point[axis] - points[0][axis] for axis in range(3)]
+                for point in points[1:]
+            ]
+            volume += (
+                abs(
+                    a[0] * (b[1] * c[2] - b[2] * c[1])
+                    - a[1] * (b[0] * c[2] - b[2] * c[0])
+                    + a[2] * (b[0] * c[1] - b[1] * c[0])
+                )
+                / 6
+            )
+        energy = 3 * pressure**2 * (1 - 2 * poisson) / (2 * young) * volume
+        require(
+            math.isclose(manifest["summary"]["strainEnergy"], energy, rel_tol=1e-8)
+            and manifest["summary"]["relativeResidual"] < 1e-8,
+            "Bundled CAD field energy/equilibrium summary is incorrect.",
+        )
+        reopened, _ = completed("validate", project, output, job_id, asset_root=root)
+        require(
+            reopened == manifest,
+            "Fresh-process CAD rebuild/remesh changed the accepted cache.",
+        )
+        changed = json.loads(json.dumps(project))
+        changed["geometry"]["features"][0]["name"] = "Edited source"
+        code, messages = invoke("validate", changed, output, job_id, asset_root=root)
+        require(
+            code != 0 and messages[-1].get("code") == "stale-cad-domain",
+            "Bundled CAD cache accepts stale exact source bindings.",
+        )
+        print(
+            f"Bundled general CAD {source_kind}: {len(arrays['positions'])} nodes, "
+            f"{len(arrays['cells'])} tetrahedra, {len(boundaries)} exact faces; "
+            f"hydrostatic relative L2 displacement={displacement_error:.3e}, "
+            f"stress={stress_error:.3e}, energy={energy:.9g} J; fresh-process cache passed."
+        )
+        if source_kind == "step":
+            metadata = geometry["assets"][0]
+            source_path = root / f"{metadata['sha256']}.step"
+            data = source_path.read_bytes()
+            source_path.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
+            code, messages = invoke(
+                "validate", project, output, job_id, asset_root=root
+            )
+            require(
+                code != 0 and messages[-1].get("code") == "invalid-cad-assets",
+                "Bundled CAD cache accepts modified STEP source bytes.",
+            )
+            source_path.write_bytes(data)
+        else:
+            asset = receipt["assets"]["step"]
+            data = (root / "cad-solid-source-boolean" / asset["filename"]).read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            (root / f"{digest}.step").write_bytes(data)
+            geometry = {
+                "kind": "cad",
+                "dimension": "3d",
+                "outputFeatureId": "import",
+                "features": [
+                    {
+                        "id": "import",
+                        "name": "Imported through hole",
+                        "kind": "import-step",
+                        "assetId": "source",
+                        "scaleFactor": 1,
+                    }
+                ],
+                "assets": [
+                    {
+                        "id": "source",
+                        "kind": "step-source",
+                        "originalName": "through-hole.step",
+                        "sha256": digest,
+                        "byteLength": len(data),
+                    }
+                ],
+            }
 
 
 def check_2d_fields(
@@ -870,7 +1096,12 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="phyra-bundle-smoke-") as directory:
 
         def invoke(
-            operation: str, selected_project: dict, output: Path, job_id: str
+            operation: str,
+            selected_project: dict,
+            output: Path,
+            job_id: str,
+            *,
+            asset_root: Path | None = None,
         ) -> tuple[int, list[dict]]:
             request = {
                 "protocolVersion": 1,
@@ -878,8 +1109,11 @@ def main() -> None:
                 "jobId": job_id,
                 "project": selected_project,
             }
+            command = [str(EXECUTABLE), "--output", str(output)]
+            if asset_root is not None:
+                command.extend(["--asset-root", str(asset_root)])
             process = subprocess.run(
-                [str(EXECUTABLE), "--output", str(output)],
+                command,
                 input=json.dumps(request, allow_nan=False).encode(),
                 capture_output=True,
                 env=env,
@@ -919,9 +1153,16 @@ def main() -> None:
             return process.returncode, messages
 
         def completed(
-            operation: str, selected_project: dict, output: Path, job_id: str
+            operation: str,
+            selected_project: dict,
+            output: Path,
+            job_id: str,
+            *,
+            asset_root: Path | None = None,
         ) -> tuple[dict, list[dict]]:
-            code, messages = invoke(operation, selected_project, output, job_id)
+            code, messages = invoke(
+                operation, selected_project, output, job_id, asset_root=asset_root
+            )
             require(
                 code == 0 and messages[-1].get("type") == "complete",
                 f"Bundled {operation} failed: {messages[-1]}",
@@ -1116,7 +1357,7 @@ def main() -> None:
         )
         methods = devices["capabilities"]
         require(
-            methods["schemaVersion"] == 1
+            methods["schemaVersion"] == 2
             and methods["execution"]
             == {
                 "backend": "local-process",
@@ -1125,6 +1366,18 @@ def main() -> None:
             }
             and methods["materialModels"] == ["homogeneous-isotropic-linear-elastic"],
             "Bundled runtime misrepresented its execution or material scope.",
+        )
+        require(
+            len(methods["meshing"]) == 4
+            and methods["meshing"][-1]
+            == {
+                "id": "gmsh-occ-cad-tetra4",
+                "dimension": "3d",
+                "cellType": "tetra4",
+                "geometryKinds": ["cad"],
+                "requiredDomain": "cad-solid",
+            },
+            "Bundled runtime must identify its source-bound CAD meshing requirement.",
         )
         registered = {method["id"]: method for method in methods["methods"]}
         require(

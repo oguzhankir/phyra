@@ -1,6 +1,6 @@
 use super::*;
 fn project() -> Value {
-    json!({"schemaVersion":7,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"formulation":"strong-form","layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
+    json!({"schemaVersion":8,"namedSelections":[],"id":"test","name":"Test","revision":0,"displayUnits":"mm","geometry":{"kind":"box","length":1.,"width":0.1,"height":0.1,"radius":0.05,"thickness":0.02},"study":{"id":"study","type":"linear-static","dimension":"3d","formulation":"solid","thickness":0.1,"solver":{"kind":"fem","pinn":{"formulation":"strong-form","layers":3,"width":32,"activation":"tanh","optimizer":"adam","learningRate":0.001,"steps":1000,"interiorPoints":128,"boundaryPoints":32,"seed":42,"device":"auto"}},"material":{"name":"Generic","young":2e11,"poisson":0.3},"mesh":{"size":0.1},"constraints":[],"loads":[]}})
 }
 fn legacy_project() -> Value {
     let mut project = project();
@@ -21,7 +21,7 @@ fn unmeshed_project_round_trip() {
 #[test]
 fn malformed_version_rejected() {
     let mut value = project();
-    value["schemaVersion"] = json!(8);
+    value["schemaVersion"] = json!(9);
     assert!(validate_project(&value).is_err());
 }
 #[test]
@@ -100,7 +100,7 @@ fn legacy_schema_is_validated_before_defaults_are_added() {
     legacy["study"]["solver"] = json!({"kind":"pinn"});
     assert!(migrate_project(legacy).is_err());
     let mut unknown = legacy_project();
-    unknown["schemaVersion"] = json!(8);
+    unknown["schemaVersion"] = json!(9);
     assert!(migrate_project(unknown).is_err());
     let (unchanged, migrated) = migrate_project(project()).unwrap();
     assert_eq!(unchanged, project());
@@ -150,7 +150,7 @@ fn version_two_migration_keeps_cache_for_normal_worker_validation() {
     let opened = read_archive_details(&path, &restored).unwrap();
     assert_eq!(opened.project, project());
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 7);
+    assert_eq!(opened.project["schemaVersion"], 8);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -191,11 +191,11 @@ fn version_three_migration_preserves_named_selections_and_cache() {
     let restored = temporary.path().join("new cache");
     let opened = read_archive_details(&path, &restored).unwrap();
     let mut expected = previous;
-    expected["schemaVersion"] = json!(7);
+    expected["schemaVersion"] = json!(8);
     expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     assert_eq!(opened.project, expected);
     assert!(opened.migrated);
-    assert_eq!(opened.project["schemaVersion"], 7);
+    assert_eq!(opened.project["schemaVersion"], 8);
     assert!(!opened.dropped_cache);
     assert_eq!(
         fs::read(restored.join("buffer.bin")).unwrap(),
@@ -231,7 +231,7 @@ fn version_four_archive_preserves_definition_source_and_staged_cache_bytes() {
     let restored = temporary.path().join("restored cache");
     let opened = read_archive_details(&path, &restored).unwrap();
     let mut expected = previous;
-    expected["schemaVersion"] = json!(7);
+    expected["schemaVersion"] = json!(8);
     expected["study"]["solver"]["pinn"]["formulation"] = json!("strong-form");
     assert_eq!(opened.project, expected);
     assert!(opened.migrated);
@@ -367,7 +367,7 @@ fn frozen_version_five_energy_configuration_migrates_without_loss() {
     previous["schemaVersion"] = json!(5);
     previous["study"]["solver"]["pinn"]["formulation"] = json!("potential-energy");
     let (migrated, changed) = migrate_project(previous.clone()).unwrap();
-    previous["schemaVersion"] = json!(7);
+    previous["schemaVersion"] = json!(8);
     assert!(changed);
     assert_eq!(migrated, previous);
 }
@@ -406,7 +406,7 @@ fn frozen_version_six_definitions_and_staged_cache_migrate_without_rewriting_sou
         let restored = temporary.path().join("restored-cache");
         let opened = read_archive_details(&path, &restored).unwrap();
         let mut expected = previous;
-        expected["schemaVersion"] = json!(7);
+        expected["schemaVersion"] = json!(8);
         assert_eq!(opened.project, expected, "{kind}");
         assert!(opened.migrated, "{kind}");
         assert!(!opened.dropped_cache, "{kind}");
@@ -474,7 +474,7 @@ fn cad_archives_reject_mismatched_study_dimensions_before_result_extraction() {
             .path()
             .join(format!("results-{geometry_dimension}"));
         let error = read_archive(&path, &result_directory).unwrap_err();
-        assert!(error.contains("Invalid version 7 project"), "{error}");
+        assert!(error.contains("Invalid version 8 project"), "{error}");
         assert!(!result_directory.exists());
         assert_eq!(fs::read(&path).unwrap(), original);
         // A frozen v6 definition is checked against its own schema, then the

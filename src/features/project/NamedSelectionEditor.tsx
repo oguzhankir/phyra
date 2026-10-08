@@ -1,3 +1,4 @@
+import { isCadSolidProject } from '../../domain/project/cadSolid';
 import { Bookmark, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { assignedRegions } from '../../domain/project/regions';
 import { selectionIsCompatible, selectedBoundaries } from '../../domain/project/namedSelections';
@@ -68,8 +69,8 @@ export default function NamedSelectionEditor({
               <div className="selection-repair" role="status">
                 <strong>Boundary set needs repair</strong>
                 <p>
-                  The original geometry type or study dimension changed. Select the intended
-                  boundaries on the current geometry and replace this set explicitly.
+                  The source geometry or study dimension changed. Select the intended boundaries on
+                  the current geometry and replace this set explicitly.
                 </p>
               </div>
             )}
@@ -92,6 +93,9 @@ export default function NamedSelectionEditor({
                 w.editNamedSelection((next) => {
                   next.geometryKind = w.project.geometry.kind;
                   next.dimension = w.project.study.dimension;
+                  if (isCadSolidProject(w.project))
+                    next.geometryFingerprint = w.project.study.domain.geometryFingerprint;
+                  else delete next.geometryFingerprint;
                   next.regions = assignedRegions(chosen, 'x0');
                 });
                 w.setNotice(
@@ -107,7 +111,8 @@ export default function NamedSelectionEditor({
       <Group title="Assignment behavior">
         <p className="property-hint">
           Named selections store reusable boundary IDs for their geometry type and study dimension.
-          Profile segment IDs stay compatible when the edited profile retains them.
+          Exact CAD sets also retain their source fingerprint and need explicit repair after the
+          source changes. Profile segment IDs stay compatible when the edited profile retains them.
         </p>
         <p className="property-hint">
           Copy a set from the support or load editor. Changing or deleting the set later does not
