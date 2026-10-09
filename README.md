@@ -117,6 +117,6 @@ Built with Tauri 2, React, TypeScript, Three.js, Gmsh, scikit-fem, SciPy and PyT
 
 ## Citation
 
-If you use Phyra in research, cite **Kır, Oğuzhan. Phyra [Computer software]**, [repository](https://github.com/oguzhankir/phyra). [CITATION.cff](CITATION.cff) provides machine-readable metadata. Record the exact code revision and study settings in your methods; a versioned archival DOI and release date will be added only after an actual release.
+If you use Phyra in research, cite **Oguzhan Kir. Phyra [Computer software]**, [repository](https://github.com/oguzhankir/phyra). [CITATION.cff](CITATION.cff) provides machine-readable metadata. Record the exact code revision and study settings in your methods; a versioned archival DOI and release date will be added only after an actual release.
 
 For vulnerability reporting and current security-support limits, see [SECURITY.md](SECURITY.md).
