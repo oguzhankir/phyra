@@ -4,66 +4,37 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+## 0.4.0 (2026-10-10)
+
+Phyra v0.4.0 brings exact CAD authoring into the workbench and adds a source-bound linear-static FEM path for eligible closed solids. Surface shells and assemblies remain definition-only; CAD results are admitted only after exact face correspondence and mesh checks.
+
 ### Added
 
-- Prepare analysis creates a linear-static FEM study from one closed exact CAD solid after complete unique face correspondence. Persistent source-bound face assignments support restraints, prescribed displacement, total force and pressure through remeshing, solve and save/reopen. Changed geometry requires explicit study recreation instead of silent reassignment.
-
-- CAD mesh inspection links boundaries to exact source faces only after a complete unique BRep round-trip comparison. A searchable boundary list, viewport picking and Mesh/CAD faces switch highlight the same source through remeshing unchanged geometry. Unavailable correspondence is explicit; inspection selection stays separate from modeling and physical assignments.
-
-- Single-solid CAD mesh inspection generates independent Gmsh tetra4 meshes from exact BRep geometry. The workspace shows boundary triangles, element counts and quality distribution, and exact-versus-mesh volume. Inspection remains transient; it neither assigns physical boundaries nor by itself creates a general-solid study or replaces exact CAD exports.
-
-- New desktop CAD solid operations use editable command drafts with exact Preview, one-transaction Apply and Cancel. Provisional shapes cannot enable analysis/export or replace the last accepted shape; incomplete numeric drafts and late/cancelled previews remain blocked.
-- CAD navigation adds overlapping-entity selection with Alt-click, visible-model and selected-entity fitting that preserves viewing direction, and numbered standard-view shortcuts.
-
-- Exact no-hole loft/sweep solids or surface shells with ordered section/path selectors, placed section duplication and editable named assembly instances. Multi-body picking and isolation preserve component identity; surface shells and assembly instances remain definition-only for analysis; eligible closed loft/sweep solids use the source-bound FEM route. Offline tutorials and AI guidance describe their implemented scope.
-- Project overview and a dedicated CAD workspace for empty 2D/3D designs, constrained line/arc/circle sketches, exact solid features, STEP import, entity inspection and SI BRep or m/mm STEP export through local isolated kernels.
-- Direct blank-plane sketch editing with endpoint/grid/axis snapping, on-canvas dimensions, selection-driven constraints, local open-sketch solving and conflict/degree-of-freedom feedback. Modeling adds rigid placement, guided edge operations, standard orthographic views, retained stale previews and optional automatic rebuild.
-- AI assistance accepts CAD-only project context, bounded current exact-geometry and sketch-solve evidence, and read-only CAD inspection without attaching source files or field buffers.
-- Separate geometry validity and analysis eligibility, with explicit gates for unsupported designs and exact primitive/profile adapters that retain the authored CAD source through the existing material-to-results workflow.
+- A project overview and dedicated CAD workspace support editable 2D/3D designs, constrained sketches, exact features, STEP import, entity inspection and SI BRep or m/mm STEP export through isolated native workers. ([1d6b746](https://github.com/oguzhankir/phyra/commit/1d6b74620207fdd38066a5d1266d919288d4304c), [86c5a4b](https://github.com/oguzhankir/phyra/commit/86c5a4b496dcc5709a8817062c65b44fd7892b83))
+- Sketch and CAD editing adds snapping, on-canvas dimensions, selection-driven constraints, bounded solve feedback, exact Preview/Apply/Cancel drafts, rigid placement, edge operations and standard views. ([86c5a4b](https://github.com/oguzhankir/phyra/commit/86c5a4b496dcc5709a8817062c65b44fd7892b83), [9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- CAD mesh inspection creates independent Gmsh tetra4 meshes for one closed solid, reports element quality and exact-versus-mesh volume, and links selected mesh boundaries to exact source faces after a complete unique correspondence check. ([9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- Prepare analysis can create a source-bound 3D linear-static FEM study from one closed exact solid with complete unique face correspondence. Face assignments persist across remeshing of unchanged geometry; supported conditions include restraints, prescribed displacement, total force and pressure. Geometry edits require explicit study recreation and reassignment. ([9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- Exact loft/sweep solids or surface shells, placed sections and independent assembly instances extend authored geometry. Eligible closed loft/sweep solids can use the source-bound FEM path; surface shells and assemblies remain definition-only. ([00d36cc](https://github.com/oguzhankir/phyra/commit/00d36cc901c9ee7635b64c41868a30db3011d12), [9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- Optional AI guidance can use bounded CAD/open-sketch evidence and read-only geometry inspection without attaching project files or field buffers. ([30d78a0](https://github.com/oguzhankir/phyra/commit/30d78a046801898af2aabf7359937245109b9d63), [dab3b39](https://github.com/oguzhankir/phyra/commit/dab3b39afe0e1a3c74a73572f8cd45796419fa15))
+- Geometry validity and analysis eligibility are separate. Supported exact primitive/profile adapters retain the authored CAD definition and connect eligible studies to the existing material-to-results workflow. ([1d6b746](https://github.com/oguzhankir/phyra/commit/1d6b74620207fdd38066a5d1266d919288d4304c))
 
 ### Changed
 
-- Project schema v8 adds source-bound CAD solid domains and stamped CAD boundary sets, with frozen v7 validation before migration. Numerical workers use private immutable source snapshots. General CAD caches must match a rebuilt exact source and mesh; a rejected derived cache leaves the editable definition and imported sources available with an explicit notice. Capability schema v2 advertises the bounded CAD tetra4 mesher.
-
-- CAD now shares application menus and document tabs in one header, with modeling tools, file status, Save and Rebuild in one command strip. Compact view selectors replace the wide view-button row; Auto-save and Auto rebuild move into their relevant menus. English help and assistant guidance describe the new locations and mesh-inspection limits.
-
-- The CAD workspace uses a compact grouped toolbar, a resizable/collapsible Model and Operations navigator, and on-demand properties, measurement, analysis and export details. Project saving stays in the shared command strip; narrow workspaces collapse the navigator to retain drawing space.
-- Sketch dimension activation focuses its editable constraint value; plane axes and point-coordinate labels match the active plane. Constraint names, linked geometry selection, conflict highlighting and hover feedback make edits easier to inspect. Product-assistant responses and visible help metadata use English.
-
-- Phyra-owned source code is now Apache-2.0. Bundled GPL-covered dependencies retain their licenses; combined application metadata, notices and Corresponding Source gates explicitly preserve the applicable GPLv3 distribution obligations. Earlier GPL grants remain valid.
-
-- Application menu actions activate before the menu closes, preserving theme and other command selections during focus changes.
-- Native sketch builds discover a compatible installed MSVC toolchain on Windows; CAD worker output flushing uses the platform's native C runtime to preserve JSON framing.
-- Project schema v7 extends geometry documents and optional studies with loft, sweep and named assembly instances. Validated v1–v6 inputs migrate explicitly; unchanged numerical and v6 CAD inputs preserve compatible cache fingerprints. Unreleased CAD definitions also support rigid placement and general closed line/arc hole contours; analysis adapters remain independently bounded. Imported STEP sources are immutable native-owned definition assets transported inside project archives and retained for definition recovery.
+- Project schema v8 adds source-bound CAD solids and stamped boundary sets. Versions 1–7 validate against frozen schemas before migration; CAD field-cache reuse requires matching a rebuilt exact source and mesh. Imported STEP sources remain immutable native-owned archive assets. ([9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- The CAD workspace unifies tabs and menus in a shared header, groups editing controls, and makes model navigation and property/analysis details responsive to available space. ([9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- Phyra-owned source code is licensed under Apache-2.0. Bundled dependencies retain their own terms, the combined application remains subject to applicable GPLv3 obligations, and earlier GPL releases retain their granted rights. ([9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a))
+- README launch media and offline-help captures were refreshed to show the v0.3.0 interface and genuine saved CPU references. ([d95d2fd](https://github.com/oguzhankir/phyra/commit/d95d2fdd65a4c4203320d46d09969a3d1ad200ff))
 
 ### Fixed
 
-- CAD rebuilds and CAD/mesh inspection switches reuse the viewport's graphics context and compiled materials. Shaders compile asynchronously where supported, with explicit graphics-loss feedback; repeated shape updates no longer recreate the graphics context.
-
-- CAD profiles drawn clockwise now reach the same supported numerical adapters as counterclockwise profiles. Derived traversal is normalized without changing authored geometry, boundary identities or constraints; independent tension and extruded-solid checks cover every rectangle drawing direction.
-
-- Project validation rejects a CAD study whose dimension disagrees with its geometry before opening the document, avoiding an unusable preparation state.
-- CAD rebuilds reject primitive dimensions at or below the exact kernel tolerance with a consistent diagnostic across platforms.
-- Redundant sketch constraints receive bounded repair hints without changing the native solve, including equivalent authored constraints when native diagnostics time out. Help and assistant guidance identify these hints as potentially incomplete.
-- Packaged Windows CAD workers align native output handles and route OCCT messages to stderr without suppressing message severities, preserving JSON framing.
-
-## 0.4.0
-
-### Changed
-
-- Refreshed the README launch video and workbench, sketch and diagnostic screenshots for v0.3.0, including offline help captions that identify recorded CPU references.
-
-### Fixed
-
-- Opening a cached project releases document ownership locks during validation and rejects late association changes, preventing hangs during recovery and replacement of a newer tab state. Migration notices identify the actual schema and only claim cache reuse after validation.
-- Recovery checkpoints and cleanup can retry a temporary initialization failure without reloading the document or changing its journal identity. A session-limit close failure preserves the active recovery copy and client before any discard or cleanup.
-- Completed worker results remain pending until their document receives and accepts the buffer; failed transfers preserve the previous result for saving and export. Cancellation follows the matching request through preparation and completion.
-- New profile boundaries reserve identifiers referenced by named boundary sets, so deleting and recreating geometry cannot silently reassign an incompatible set.
-- PINN cache reuse rejects fields that violate prescribed supports or whose reported strain energy disagrees with their stress fields, accounting for the recorded training precision.
+- Project and recovery sessions preserve document ownership across validation, tab replacement, checkpoint retries and close failures; results remain pending until the owning document accepts transferred fields. ([3087038](https://github.com/oguzhankir/phyra/commit/30870382a8614408665bd95694632af175ad8ccd), [5280acf](https://github.com/oguzhankir/phyra/commit/5280acfced91a1709e6045b96ca9f2bf71794aba))
+- Cached PINN fields are rejected when they violate prescribed supports or their reported strain energy disagrees with stress-field integration; support tolerances are bounded to trusted geometry scales. ([9e03945](https://github.com/oguzhankir/phyra/commit/9e03945feb7eec609225debb86a3f448e6d3d966), [992f3d6](https://github.com/oguzhankir/phyra/commit/992f3d6ace873f901e8ea3b7603e6fbfe0603be0))
+- CAD validation rejects study/source mismatches and primitive dimensions below kernel tolerance. Counterclockwise profiles reach the same supported numerical adapters; mesh/viewport updates retain graphics resources, and packaged workers preserve portable diagnostics and JSON framing. ([705f7a9](https://github.com/oguzhankir/phyra/commit/705f7a979815d338f1507e68f587c29565db5164), [9f8840c](https://github.com/oguzhankir/phyra/commit/9f8840cf0276fd8977c47e6de3b724aa7ef45f7a), [5096fcd](https://github.com/oguzhankir/phyra/commit/5096fcdc0cf74e376b19688bc09791e32154f3ae))
+- Redundant sketch constraints receive bounded repair hints; named boundary IDs remain reserved across profile edits, and menu commands stay active during focus changes. ([afd7836](https://github.com/oguzhankir/phyra/commit/afd783643514c3f70e5db7e5118877b1c69f0482), [257a21e](https://github.com/oguzhankir/phyra/commit/257a21e3a8b880b153f1093f438ef4a0ec98e550), [5fb56ce](https://github.com/oguzhankir/phyra/commit/5fb56ce7b63a13a63e1d1eb963afb13dc8317d46))
 
 ### Security
 
-- Provider streams and model catalogs protect saved keys from every connection, including fragmented responses and cancellation. Denied MCP requests record canonical operation labels instead of private client-supplied names.
+- Optional assistant streams, model catalogs and cancellation preserve saved provider keys; denied MCP requests log canonical operation labels rather than private client-supplied names. ([773c48f](https://github.com/oguzhankir/phyra/commit/773c48fb16df2c3182a358b2d164baf0af86ca1c), [18fd67d](https://github.com/oguzhankir/phyra/commit/18fd67d19cc87ad626a55dcf0b7753d2424a3adf))
 
 ## 0.3.0
 

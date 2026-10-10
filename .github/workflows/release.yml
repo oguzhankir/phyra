@@ -42,15 +42,23 @@ jobs:
           pattern: release-*
           path: release-assets
           merge-multiple: true
-      - name: Create draft with verified installers and checksums
+      - name: Create draft with curated release notes, verified installers and checksums
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > release-notes.md <<'EOF'
-          Development release prepared from this exact tag after scientific and packaged desktop workflow checks on macOS Apple Silicon and Windows x64.
+          version="${GITHUB_REF_NAME#v}"
+          awk -v target="## $version" '
+            $0 == target || index($0, target " (") == 1 { capture = 1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+          cat >> release-notes.md <<'EOF'
 
-          Check the platform SHA256SUMS files before installing. Packaging and hosted workflow evidence do not replace consumer installation, minimum-OS or production signing review. See README.md and SECURITY.md at this tag for the supported scope and distribution limits.
+          ### Verification and distribution
 
-          This is a draft. The owner must review assets, evidence and complete Corresponding Source availability before publishing.
+          This draft is prepared from the exact tag after scientific and packaged desktop workflow checks on macOS Apple Silicon and Windows x64. Check the platform SHA256SUMS files before installing. Hosted checks do not replace consumer installation, minimum-OS or production signing review. See README.md and SECURITY.md at this tag for supported scope and distribution limits.
+
+          The owner must review assets, verification evidence and complete Corresponding Source availability before publishing.
           EOF
           gh release create "$GITHUB_REF_NAME" release-assets/* --draft --verify-tag --title "Phyra $GITHUB_REF_NAME" --notes-file release-notes.md

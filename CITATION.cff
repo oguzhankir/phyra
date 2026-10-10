@@ -2,6 +2,8 @@ cff-version: 1.2.0
 message: 'If you use Phyra in your research, please cite this software.'
 title: Phyra
 type: software
+version: 0.4.0
+date-released: 2026-10-10
 authors:
   - family-names: Kir
     given-names: Oguzhan
