@@ -10,6 +10,9 @@ on:
       release_assets:
         type: boolean
         default: false
+      verify_all_targets:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 concurrency:
@@ -25,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON((inputs.release_assets || github.event_name == 'workflow_dispatch') && '["macos-14","macos-15","macos-26","windows-2022","windows-2025"]' || '["macos-14","windows-2022"]') }}
+        os: ${{ fromJSON((inputs.release_assets || inputs.verify_all_targets || github.event_name == 'workflow_dispatch') && '["macos-14","macos-15","macos-26","windows-2022","windows-2025"]' || '["macos-14","windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

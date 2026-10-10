@@ -29,7 +29,10 @@ jobs:
     needs: readiness
     uses: ./.github/workflows/ci.yml
     with:
-      release_assets: true
+      # Source-only releases still verify every supported CI target. Installer
+      # staging stays disabled until all native source and redistribution audits pass.
+      release_assets: false
+      verify_all_targets: true
   draft:
     needs: verified-builds
     runs-on: ubuntu-latest
@@ -37,12 +40,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          path: release-assets
-          merge-multiple: true
-      - name: Create draft with curated release notes, verified installers and checksums
+      - name: Create source-only draft with curated release notes and CI evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -57,8 +55,8 @@ jobs:
 
           ### Verification and distribution
 
-          This draft is prepared from the exact tag after scientific and packaged desktop workflow checks on macOS Apple Silicon and Windows x64. Check the platform SHA256SUMS files before installing. Hosted checks do not replace consumer installation, minimum-OS or production signing review. See README.md and SECURITY.md at this tag for supported scope and distribution limits.
+          This source-only draft contains no installers or installer checksum files. The exact tag passed scientific, native and packaged desktop checks on the five configured CI targets. Build locally using README.md and CONTRIBUTING.md. Hosted checks do not replace consumer installation, minimum-OS or production signing review.
 
-          The owner must review assets, verification evidence and complete Corresponding Source availability before publishing.
+          Installer distribution remains disabled until target-specific native dependency audits, exact source provenance and complete Corresponding Source review pass.
           EOF
-          gh release create "$GITHUB_REF_NAME" release-assets/* --draft --verify-tag --title "Phyra $GITHUB_REF_NAME" --notes-file release-notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Phyra $GITHUB_REF_NAME" --notes-file release-notes.md
