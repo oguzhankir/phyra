@@ -7,6 +7,7 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 ### Security
 
 - Update Python file-locking/build tools and JavaScript math-rendering, test and URI-parsing dependencies to address reported dependency vulnerabilities.
+- Use the patched KaTeX renderer throughout Markdown math dependencies so inherited prototype properties cannot bypass rendering trust restrictions.
 
 ## 0.4.0 (2026-10-10)
 
