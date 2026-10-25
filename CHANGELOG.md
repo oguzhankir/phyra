@@ -4,6 +4,10 @@ Notable changes to Phyra are recorded here, following [Keep a Changelog](https:/
 
 ## Unreleased
 
+### Security
+
+- Update Python file-locking/build tools and JavaScript math-rendering, test and URI-parsing dependencies to address reported dependency vulnerabilities.
+
 ## 0.4.0 (2026-10-10)
 
 Phyra v0.4.0 brings exact CAD authoring into the workbench and adds a source-bound linear-static FEM path for eligible closed solids. Surface shells and assemblies remain definition-only; CAD results are admitted only after exact face correspondence and mesh checks.
