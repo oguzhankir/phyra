@@ -21,3 +21,22 @@ $$\href{https://example.test}{unsafe}$$`}</AcademicMarkdown>,
   expect(value).not.toContain('javascript:');
   expect(value).not.toContain('href="https://example.test');
 });
+
+it('keeps math links untrusted when prototype metadata is polluted', () => {
+  const original = Object.getOwnPropertyDescriptor(Object.prototype, 'processor');
+  let value: string;
+  try {
+    Object.defineProperty(Object.prototype, 'processor', {
+      configurable: true,
+      value: (option: unknown) => (option === false ? true : option),
+    });
+    value = renderToStaticMarkup(
+      <AcademicMarkdown>{String.raw`$$\href{https://example.test}{unsafe}$$`}</AcademicMarkdown>,
+    );
+  } finally {
+    if (original) Object.defineProperty(Object.prototype, 'processor', original);
+    else Reflect.deleteProperty(Object.prototype, 'processor');
+  }
+  expect(value).toContain('katex');
+  expect(value).not.toContain('href="https://example.test');
+});

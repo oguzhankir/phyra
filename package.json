@@ -41,6 +41,9 @@
     "remark-math": "^6.0.0",
     "three": "0.186.1"
   },
+  "overrides": {
+    "katex": "$katex"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.0",
     "@types/react": "^19.2.0",
